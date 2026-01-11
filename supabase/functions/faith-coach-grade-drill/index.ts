@@ -108,7 +108,7 @@ serve(async (req) => {
 
     // Env check (this is the most common cause of 500s)
     const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
-    console.log("has OPENAI_API_KEY:", !!OPENAI_API_KEY);
+    
 
     if (!OPENAI_API_KEY) {
       console.error("faith-coach-grade-drill: OPENAI_API_KEY is missing in function env");
