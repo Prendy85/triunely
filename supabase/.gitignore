@@ -2,7 +2,24 @@
 .branches
 .temp
 
+# env files (must ignore the plain .env too)
+.env
+.env.*
+*.env
+
 # dotenvx
 .env.keys
 .env.local
 .env.*.local
+
+# keys / credentials
+*key*.json
+service-account*.json
+gcloud-key.json
+
+# Android signing
+*.jks
+*.keystore
+
+# Expo local
+.expo/
