@@ -30,8 +30,29 @@ yarn-error.*
 .DS_Store
 *.pem
 
-# local env files
+# =========================
+# ENV / SECRETS (IMPORTANT)
+# =========================
+# local env files (all variants)
+.env
+.env.*
+*.env
+*.env.*
+
+# keep existing local pattern too
 .env*.local
+
+# dotenvx
+.env.keys
+.env.local
+.env.*.local
+
+# Supabase local env + local state
+supabase/.env
+supabase/.env.*
+supabase/.env.functions
+supabase/.branches/
+supabase/.temp/
 
 # typescript
 *.tsbuildinfo
@@ -41,5 +62,3 @@ app-example
 # generated native folders
 /ios
 /android
-
-supabase/.env.functions
