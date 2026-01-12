@@ -979,6 +979,23 @@ export default function Profile({ navigation }) {
     }
   }
 
+  function goToUserProfile(targetUserId, { closeModal } = {}) {
+  if (!targetUserId) return;
+
+  if (typeof closeModal === "function") {
+    closeModal();
+
+    // Small delay so the modal closes cleanly before navigating
+    setTimeout(() => {
+      navigation.navigate("UserProfile", { userId: targetUserId });
+    }, 50);
+
+    return;
+  }
+
+  navigation.navigate("UserProfile", { userId: targetUserId });
+}
+
   // --- Notifications ---
 
   async function handleOpenNotifications() {
@@ -1143,6 +1160,30 @@ export default function Profile({ navigation }) {
       </View>
     );
   }
+
+ function goToUserProfile(targetUserId, { closeModal } = {}) {
+  if (!targetUserId) return;
+
+  const go = () => {
+    // ✅ If the target is YOU, go straight to your real Profile tab
+    if (targetUserId === user?.id) {
+      navigation.navigate("MainTabs", { screen: "Profile" });
+      return;
+    }
+
+    navigation.navigate("UserProfile", { userId: targetUserId });
+  };
+
+  if (typeof closeModal === "function") {
+    closeModal();
+    // Small delay so the modal closes cleanly before navigating
+    setTimeout(go, 50);
+    return;
+  }
+
+  go();
+}
+
 
   function renderOptionPills(options, selected, onSelect) {
     return (
@@ -1816,15 +1857,19 @@ export default function Profile({ navigation }) {
                     {following.map((account) => {
                       const connInitials = safeInitials(account.display_name);
 
-                      return (
-                        <View
-                          key={account.id}
-                          style={{
-                            flexDirection: "row",
-                            alignItems: "center",
-                            marginBottom: 10,
-                          }}
-                        >
+                     return (
+  <Pressable
+    key={account.id}
+    onPress={() => goToUserProfile(account.id)}
+    hitSlop={8}
+    style={({ pressed }) => ({
+      flexDirection: "row",
+      alignItems: "center",
+      marginBottom: 10,
+      opacity: pressed ? 0.7 : 1,
+    })}
+  >
+
                           {account.avatar_url ? (
                             <Image
                               source={{ uri: account.avatar_url }}
@@ -1868,7 +1913,8 @@ export default function Profile({ navigation }) {
                           >
                             {account.display_name || "Triunely user"}
                           </Text>
-                        </View>
+                       </Pressable>
+
                       );
                     })}
                   </View>
@@ -2342,52 +2388,66 @@ export default function Profile({ navigation }) {
                             marginBottom: 10,
                           }}
                         >
-                          {profile.avatar_url ? (
-                            <Image
-                              source={{ uri: profile.avatar_url }}
-                              style={{
-                                width: 40,
-                                height: 40,
-                                borderRadius: 20,
-                                marginRight: 10,
-                              }}
-                            />
-                          ) : (
-                            <View
-                              style={{
-                                width: 40,
-                                height: 40,
-                                borderRadius: 20,
-                                backgroundColor: theme.colors.blue,
-                                justifyContent: "center",
-                                alignItems: "center",
-                                marginRight: 10,
-                              }}
-                            >
-                              <Text
-                                style={{
-                                  color: "#fff",
-                                  fontSize: 16,
-                                  fontWeight: "900",
-                                }}
-                              >
-                                {initialsLocal}
-                              </Text>
-                            </View>
-                          )}
+                       <Pressable
+  onPress={() =>
+    goToUserProfile(profile.id, { closeModal: closePeopleSearchModal })
+  }
+  hitSlop={8}
+  style={({ pressed }) => ({
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+    opacity: pressed ? 0.7 : 1,
+  })}
+>
+  {profile.avatar_url ? (
+    <Image
+      source={{ uri: profile.avatar_url }}
+      style={{
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        marginRight: 10,
+      }}
+    />
+  ) : (
+    <View
+      style={{
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: theme.colors.blue,
+        justifyContent: "center",
+        alignItems: "center",
+        marginRight: 10,
+      }}
+    >
+      <Text
+        style={{
+          color: "#fff",
+          fontSize: 16,
+          fontWeight: "900",
+        }}
+      >
+        {initialsLocal}
+      </Text>
+    </View>
+  )}
 
-                          <View style={{ flex: 1 }}>
-                            <Text
-                              style={{
-                                color: theme.colors.text,
-                                fontSize: 14,
-                                fontWeight: "900",
-                              }}
-                              numberOfLines={1}
-                            >
-                              {profile.display_name || "Triunely user"}
-                            </Text>
-                          </View>
+  <View style={{ flex: 1 }}>
+    <Text
+      style={{
+        color: theme.colors.text,
+        fontSize: 14,
+        fontWeight: "900",
+      }}
+      numberOfLines={1}
+    >
+      {profile.display_name || "Triunely user"}
+    </Text>
+  </View>
+</Pressable>
+
 
                           <Pressable
                             disabled={buttonDisabled}
@@ -2469,119 +2529,137 @@ export default function Profile({ navigation }) {
                   </Pressable>
                 </View>
 
-                {pendingRequests && pendingRequests.length > 0 ? (
-                  <ScrollView>
-                    {pendingRequests.map((req) => {
-                      const profile = req.profile;
-                      const name = profile?.display_name || "Triunely user";
-                      const avatar = profile?.avatar_url || null;
-                      const initialsReq = safeInitials(profile?.display_name);
+               {pendingRequests && pendingRequests.length > 0 ? (
+  <ScrollView>
+    {pendingRequests.map((req) => {
+      const profile = req.profile;
+      const name = profile?.display_name || "Triunely user";
+      const avatar = profile?.avatar_url || null;
+      const initialsReq = safeInitials(profile?.display_name);
 
-                      return (
-                        <View
-                          key={req.id}
-                          style={{
-                            flexDirection: "row",
-                            alignItems: "center",
-                            marginBottom: 12,
-                          }}
-                        >
-                          {avatar ? (
-                            <Image
-                              source={{ uri: avatar }}
-                              style={{
-                                width: 40,
-                                height: 40,
-                                borderRadius: 20,
-                                marginRight: 10,
-                              }}
-                            />
-                          ) : (
-                            <View
-                              style={{
-                                width: 40,
-                                height: 40,
-                                borderRadius: 20,
-                                backgroundColor: theme.colors.blue,
-                                justifyContent: "center",
-                                alignItems: "center",
-                                marginRight: 10,
-                              }}
-                            >
-                              <Text
-                                style={{
-                                  color: "#fff",
-                                  fontSize: 16,
-                                  fontWeight: "900",
-                                }}
-                              >
-                                {initialsReq}
-                              </Text>
-                            </View>
-                          )}
+      return (
+        <View
+          key={req.id}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            marginBottom: 12,
+          }}
+        >
+          {/* TAP AREA: avatar + name + subtext opens their profile */}
+          <Pressable
+            onPress={() =>
+              goToUserProfile(req.follower_id, {
+                closeModal: () => setRequestsModalVisible(false),
+              })
+            }
+            hitSlop={8}
+            style={({ pressed }) => ({
+              flexDirection: "row",
+              alignItems: "center",
+              flex: 1,
+              opacity: pressed ? 0.7 : 1,
+            })}
+          >
+            {avatar ? (
+              <Image
+                source={{ uri: avatar }}
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 20,
+                  marginRight: 10,
+                }}
+              />
+            ) : (
+              <View
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 20,
+                  backgroundColor: theme.colors.blue,
+                  justifyContent: "center",
+                  alignItems: "center",
+                  marginRight: 10,
+                }}
+              >
+                <Text
+                  style={{
+                    color: "#fff",
+                    fontSize: 16,
+                    fontWeight: "900",
+                  }}
+                >
+                  {initialsReq}
+                </Text>
+              </View>
+            )}
 
-                          <View style={{ flex: 1 }}>
-                            <Text
-                              style={{
-                                color: theme.colors.text,
-                                fontSize: 14,
-                                fontWeight: "900",
-                              }}
-                            >
-                              {name}
-                            </Text>
-                            <Text style={{ color: theme.colors.muted, fontSize: 12 }}>
-                              has sent you a fellowship request
-                            </Text>
-                          </View>
+            <View style={{ flex: 1 }}>
+              <Text
+                style={{
+                  color: theme.colors.text,
+                  fontSize: 14,
+                  fontWeight: "900",
+                }}
+              >
+                {name}
+              </Text>
+              <Text style={{ color: theme.colors.muted, fontSize: 12 }}>
+                has sent you a fellowship request
+              </Text>
+            </View>
+          </Pressable>
 
-                          <View
-                            style={{
-                              flexDirection: "row",
-                              alignItems: "center",
-                              marginLeft: 8,
-                            }}
-                          >
-                            <Pressable
-                              onPress={() => handleAcceptFellowshipRequest(req)}
-                              style={{
-                                backgroundColor: "#22c55e",
-                                paddingHorizontal: 10,
-                                paddingVertical: 8,
-                                borderRadius: 999,
-                                marginRight: 6,
-                              }}
-                            >
-                              <Text
-                                style={{
-                                  color: theme.colors.text,
-                                  fontSize: 12,
-                                  fontWeight: "900",
-                                }}
-                              >
-                                Accept
-                              </Text>
-                            </Pressable>
+          {/* ACTIONS: keep these buttons separate so they still work */}
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              marginLeft: 8,
+            }}
+          >
+            <Pressable
+              onPress={() => handleAcceptFellowshipRequest(req)}
+              style={{
+                backgroundColor: "#22c55e",
+                paddingHorizontal: 10,
+                paddingVertical: 8,
+                borderRadius: 999,
+                marginRight: 6,
+              }}
+            >
+              <Text
+                style={{
+                  color: theme.colors.text,
+                  fontSize: 12,
+                  fontWeight: "900",
+                }}
+              >
+                Accept
+              </Text>
+            </Pressable>
 
-                            <Pressable
-                              onPress={() => handleDeclineFellowshipRequest(req.id)}
-                              style={[
-                                theme.button.outline,
-                                { paddingHorizontal: 10, paddingVertical: 8, borderRadius: 999 },
-                              ]}
-                            >
-                              <Text style={theme.button.outlineText}>Decline</Text>
-                            </Pressable>
-                          </View>
-                        </View>
-                      );
-                    })}
-                  </ScrollView>
-                ) : (
-                  <Text style={{ color: theme.colors.muted }}>
-                    You have no pending fellowship requests right now.
-                  </Text>
-                )}
+            <Pressable
+              onPress={() => handleDeclineFellowshipRequest(req.id)}
+              style={[
+                theme.button.outline,
+                { paddingHorizontal: 10, paddingVertical: 8, borderRadius: 999 },
+              ]}
+            >
+              <Text style={theme.button.outlineText}>Decline</Text>
+            </Pressable>
+          </View>
+        </View>
+      );
+    })}
+  </ScrollView>
+) : (
+  <Text style={{ color: theme.colors.muted }}>
+    You have no pending fellowship requests right now.
+  </Text>
+)}
+
               </View>
             </View>
           </Modal>

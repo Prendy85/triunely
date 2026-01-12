@@ -25,6 +25,7 @@ import Community from "./src/screens/Community";
 import Daily from "./src/screens/Daily";
 import Prayer from "./src/screens/Prayer";
 import Profile from "./src/screens/Profile";
+import UserProfile from "./src/screens/UserProfile";
 
 // NEW: onboarding screen
 import CompleteProfileOnboarding from "./src/screens/CompleteProfileOnboarding";
@@ -41,6 +42,11 @@ import ChurchAdminHome from "./src/screens/ChurchAdminHome";
 import ChurchNoticeboard from "./src/screens/ChurchNoticeboard";
 import WeeklyChallengeEditor from "./src/screens/WeeklyChallengeEditor";
 import WeeklyMessageEditor from "./src/screens/WeeklyMessageEditor";
+
+// ✅ NEW: church hub + feed + church profile
+import ChurchAdminHub from "./src/screens/ChurchAdminHub";
+import ChurchFeed from "./src/screens/ChurchFeed";
+import ChurchProfilePublic from "./src/screens/ChurchProfilePublic";
 
 const Tab = createBottomTabNavigator();
 const CoachStack = createNativeStackNavigator();
@@ -119,7 +125,14 @@ function RootNavigator() {
         options={{ animation: "slide_from_right" }}
       />
 
-      {/* Church Admin: full-page screens */}
+      {/* User profiles */}
+      <RootStack.Screen
+        name="UserProfile"
+        component={UserProfile}
+        options={{ animation: "slide_from_right" }}
+      />
+
+      {/* Church Admin: entry + editors */}
       <RootStack.Screen
         name="ChurchAdminHome"
         component={ChurchAdminHome}
@@ -138,6 +151,23 @@ function RootNavigator() {
       <RootStack.Screen
         name="ChurchNoticeboard"
         component={ChurchNoticeboard}
+        options={{ animation: "slide_from_right" }}
+      />
+
+      {/* ✅ Church Admin Hub + Church Feed + Church Profile */}
+      <RootStack.Screen
+        name="ChurchAdminHub"
+        component={ChurchAdminHub}
+        options={{ animation: "slide_from_right" }}
+      />
+      <RootStack.Screen
+        name="ChurchFeed"
+        component={ChurchFeed}
+        options={{ animation: "slide_from_right" }}
+      />
+      <RootStack.Screen
+        name="ChurchProfilePublic"
+        component={ChurchProfilePublic}
         options={{ animation: "slide_from_right" }}
       />
     </RootStack.Navigator>

@@ -25,6 +25,7 @@ import { supabase } from "../lib/supabase";
 
 import { Ionicons } from "@expo/vector-icons";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
+import { useNavigation } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import GlowCard from "../components/GlowCard";
 import PostCard from "../components/PostCard";
@@ -192,7 +193,9 @@ function FeedActionButton({ icon, label, active, onPress, onLongPress }) {
 }
 
 export default function Community() {
+  const navigation = useNavigation();
   const insets = useSafeAreaInsets();
+
 
   let tabBarHeight = 0;
   try {
@@ -484,6 +487,94 @@ const [unreadFellowshipCount, setUnreadFellowshipCount] = useState(0);
       setRefreshing(false);
     }
   }
+
+  useEffect(() => {
+  if (!GLOBAL_COMMUNITY_ID) return;
+
+  const channel = supabase
+    .channel(`posts-feed-${GLOBAL_COMMUNITY_ID}`)
+    .on(
+      "postgres_changes",
+      {
+        event: "INSERT",
+        schema: "public",
+        table: "posts",
+        filter: `community_id=eq.${GLOBAL_COMMUNITY_ID}`,
+      },
+      async (payload) => {
+        const newRow = payload.new;
+        if (!newRow?.id) return;
+
+        // Pull the full post shape (so reactions/comment_count mapping stays consistent)
+        const { data: full, error } = await supabase
+          .from("posts")
+          .select(
+            `
+            id,
+            user_id,
+            content,
+            url,
+            link_title,
+            link_description,
+            link_image,
+            is_anonymous,
+            media_url,
+            media_type,
+            created_at,
+            post_reactions (
+              user_id,
+              type
+            ),
+            post_comments (
+              count
+            )
+          `
+          )
+          .eq("id", newRow.id)
+          .single();
+
+        if (error || !full) return;
+
+        const commentCount =
+          Array.isArray(full.post_comments) && full.post_comments.length > 0
+            ? full.post_comments[0].count ?? 0
+            : 0;
+
+        const mappedNew = {
+          id: full.id,
+          user_id: full.user_id,
+          content: full.content,
+          url: full.url,
+          link_title: full.link_title,
+          link_description: full.link_description,
+          link_image: full.link_image,
+          is_anonymous: full.is_anonymous,
+          media_url: full.media_url,
+          media_type: full.media_type,
+          created_at: full.created_at,
+          reactions: full.post_reactions || [],
+          comment_count: commentCount,
+        };
+
+        // Dedupe then prepend
+        setPosts((prev) => {
+          if (prev?.some((p) => p.id === mappedNew.id)) return prev;
+          return [mappedNew, ...(prev ?? [])];
+        });
+
+        // Preload author profile
+        if (!mappedNew.is_anonymous) {
+          fetchProfilesForUsers([mappedNew.user_id]);
+        }
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}, [GLOBAL_COMMUNITY_ID]);
+
 
   async function loadStories() {
     try {
@@ -1308,12 +1399,15 @@ if (linkPreview) {
     <PostCard
       post={item}
       currentUserId={currentUserId}
-      author={{
+          author={{
+        id: item.user_id,
         name: who,
         avatarUrl,
+        isAnonymous: !!item.is_anonymous,
         isOwner,
       }}
-      onDelete={(postId) => confirmDeletePost(postId)}
+      onPressAvatar={(userId) => navigation.navigate("UserProfile", { userId })}
+
       onHide={(postId) => confirmHidePost(postId)}
       onOpenComments={(post) => openComments(post)}
       onShare={(post) => sharePost(post)}

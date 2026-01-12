@@ -2,18 +2,18 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useMemo, useRef, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Animated,
-    Image,
-    Linking,
-    Modal,
-    PanResponder,
-    Platform,
-    Pressable,
-    StatusBar,
-    Text,
-    View,
+  ActivityIndicator,
+  Alert,
+  Animated,
+  Image,
+  Linking,
+  Modal,
+  PanResponder,
+  Platform,
+  Pressable,
+  StatusBar,
+  Text,
+  View,
 } from "react-native";
 import { WebView } from "react-native-webview";
 
@@ -216,7 +216,8 @@ function isYouTubeHomeRedirect(url) {
 export default function PostCard({
   post,
   currentUserId,
-  author, // { name, avatarUrl, isAnonymous, isOwner }
+  author, // { id, name, avatarUrl, isAnonymous, isOwner }
+  onPressAvatar, // (userId) => void
   onDelete,
   onHide,
   onOpenComments,
@@ -278,6 +279,9 @@ export default function PostCard({
   const avatarUrl = author?.avatarUrl || null;
   const initials = (who || "T").slice(0, 1).toUpperCase();
   const isOwner = !!author?.isOwner;
+
+  const canPressAvatar =
+    typeof onPressAvatar === "function" && !author?.isAnonymous && !!author?.id;
 
   const socialLeft =
     totalReactions > 0
@@ -719,8 +723,11 @@ export default function PostCard({
       {/* Header */}
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
         <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
-          <View
-            style={{
+          <Pressable
+            disabled={!canPressAvatar}
+            onPress={() => onPressAvatar?.(author?.id)}
+            hitSlop={10}
+            style={({ pressed }) => ({
               width: 40,
               height: 40,
               borderRadius: 20,
@@ -730,7 +737,8 @@ export default function PostCard({
               alignItems: "center",
               justifyContent: "center",
               overflow: "hidden",
-            }}
+              opacity: !canPressAvatar ? 1 : pressed ? 0.75 : 1,
+            })}
           >
             {avatarUrl ? (
               <Image source={{ uri: avatarUrl }} style={{ width: 40, height: 40 }} />
@@ -739,7 +747,7 @@ export default function PostCard({
                 {initials}
               </Text>
             )}
-          </View>
+          </Pressable>
 
           <View style={{ marginLeft: 10, flex: 1 }}>
             <Text
