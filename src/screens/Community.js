@@ -411,12 +411,21 @@ const [unreadFellowshipCount, setUnreadFellowshipCount] = useState(0);
     setError(null);
 
     try {
-     const { data, error: err } = await supabase
+    const { data, error: err } = await supabase
   .from("posts")
   .select(
     `
     id,
     user_id,
+    church_id,
+    churches:church_id (
+      id,
+      name,
+      display_name,
+      avatar_url,
+      is_verified
+    ),
+
     content,
     url,
     link_title,
@@ -453,6 +462,8 @@ const [unreadFellowshipCount, setUnreadFellowshipCount] = useState(0);
           return {
   id: row.id,
   user_id: row.user_id,
+    church_id: row.church_id,
+  church: row.churches || null,
   content: row.content,
   url: row.url,
   link_title: row.link_title,
@@ -1406,7 +1417,22 @@ if (linkPreview) {
         isAnonymous: !!item.is_anonymous,
         isOwner,
       }}
-      onPressAvatar={(userId) => navigation.navigate("UserProfile", { userId })}
+      onPressAvatar={(id) => {
+  // If this post is authored by a church, open church profile instead
+  if (item.church_id) {
+    navigation.navigate("ChurchProfilePublic", { churchId: item.church_id });
+    return;
+  }
+
+  // If it's your own avatar, jump to your real Profile tab
+  if (currentUserId && id === currentUserId) {
+    navigation.navigate("MainTabs", { screen: "Profile" });
+    return;
+  }
+
+  navigation.navigate("UserProfile", { userId: id });
+}}
+
 
       onHide={(postId) => confirmHidePost(postId)}
       onOpenComments={(post) => openComments(post)}

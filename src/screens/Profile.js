@@ -1,7 +1,8 @@
 // src/screens/Profile.js
 import { Ionicons } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native";
 import * as ImagePicker from "expo-image-picker";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -178,6 +179,10 @@ export default function Profile({ navigation }) {
 
   const [isVerified, setIsVerified] = useState(false);
   const ALWAYS_VERIFIED_EMAILS = ["mrdavey.p1985@gmail.com"];
+  // ✅ Church admin routing
+const [adminChurchId, setAdminChurchId] = useState(null);
+const [checkingChurchAdmin, setCheckingChurchAdmin] = useState(false);
+
 
   const initials = useMemo(() => {
     return safeInitials(displayName || user?.email);
@@ -230,6 +235,42 @@ export default function Profile({ navigation }) {
     }
   }
 
+  useFocusEffect(
+  useCallback(() => {
+    if (!user?.id) return;
+
+    let alive = true;
+
+    (async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("display_name, avatar_url, cover_image_url, is_verified")
+        .eq("id", user.id)
+        .single();
+
+      if (error) {
+        console.log("Profile focus refresh error:", error);
+        return;
+      }
+
+      if (!alive) return;
+
+      setDisplayName(data?.display_name ?? null);
+      setAvatarUrl(data?.avatar_url ?? null);
+      setCoverImageUrl(data?.cover_image_url ?? null);
+
+      const alwaysVerified =
+        ALWAYS_VERIFIED_EMAILS.includes((user?.email || "").toLowerCase());
+      setIsVerified(Boolean(data?.is_verified) || alwaysVerified);
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [user?.id])
+);
+
+
   // Load session + profile + groups + fellowships + pending requests + posts + notifications
   useEffect(() => {
     (async () => {
@@ -251,6 +292,29 @@ export default function Profile({ navigation }) {
         }
 
         setUser({ id: userId, email });
+        // ✅ Check whether this user is a church admin, and get their church_id
+try {
+  setCheckingChurchAdmin(true);
+
+  const { data: ca, error: caError } = await supabase
+    .from("church_admins")
+    .select("church_id")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (caError) {
+    console.log("church_admins lookup error:", caError);
+    setAdminChurchId(null);
+  } else {
+    setAdminChurchId(ca?.church_id ?? null);
+  }
+} catch (e) {
+  console.log("church_admins lookup exception:", e);
+  setAdminChurchId(null);
+} finally {
+  setCheckingChurchAdmin(false);
+}
+
 
         // 2) Load profile including About fields + avatar + cover
         const { data: profile, error: profileError } = await supabase
@@ -979,22 +1043,7 @@ export default function Profile({ navigation }) {
     }
   }
 
-  function goToUserProfile(targetUserId, { closeModal } = {}) {
-  if (!targetUserId) return;
-
-  if (typeof closeModal === "function") {
-    closeModal();
-
-    // Small delay so the modal closes cleanly before navigating
-    setTimeout(() => {
-      navigation.navigate("UserProfile", { userId: targetUserId });
-    }, 50);
-
-    return;
-  }
-
-  navigation.navigate("UserProfile", { userId: targetUserId });
-}
+ 
 
   // --- Notifications ---
 
@@ -2037,14 +2086,33 @@ export default function Profile({ navigation }) {
                 </Text>
 
                 <Pressable
-                  onPress={() => navigation.navigate("ChurchAdminHome")}
-                  style={[
-                    theme.button.primary,
-                    { marginTop: 12, borderRadius: 14, paddingVertical: 12 },
-                  ]}
-                >
-                  <Text style={theme.button.primaryText}>Open Church Admin</Text>
-                </Pressable>
+  onPress={() => {
+    if (!adminChurchId) {
+      Alert.alert(
+        "No church linked",
+        "This account is not set as an admin of a church yet."
+      );
+      return;
+    }
+
+    navigation.navigate("ChurchProfilePublic", { churchId: adminChurchId });
+  }}
+  disabled={checkingChurchAdmin}
+  style={[
+    theme.button.primary,
+    {
+      marginTop: 12,
+      borderRadius: 14,
+      paddingVertical: 12,
+      opacity: checkingChurchAdmin ? 0.7 : 1,
+    },
+  ]}
+>
+  <Text style={theme.button.primaryText}>
+    {checkingChurchAdmin ? "Checking access…" : "Open Church Profile"}
+  </Text>
+</Pressable>
+
               </View>
             </View>
 
