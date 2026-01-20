@@ -29,7 +29,8 @@ export const colors = {
   sageGlow: "rgba(85,107,84,0.12)", // optional halo/glow
 
   // Optional supporting blue (sparingly)
-  blue: "#2E6EF7",
+  blue: "#5FA0FF",
+
 
   // States
   danger: "#E5484D",

@@ -40,6 +40,11 @@ function safeInitials(name) {
 
 export default function ChurchProfilePublic({ navigation, route }) {
   const churchId = route?.params?.churchId;
+  
+
+  // ✅ Step 5B: are we viewing the default Triunely church fallback?
+  const isDefaultTriunelyChurch =
+    route?.params?.isDefaultTriunelyChurch === true;
 
   // viewer
   const [viewerId, setViewerId] = useState(null);
@@ -682,38 +687,72 @@ export default function ChurchProfilePublic({ navigation, route }) {
       {({ bottomPad }) => (
         <>
           <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: bottomPad }}>
-            {/* Title row */}
-           <View
+            
+            {/* Title row (icons on the RIGHT) */}
+<View
   style={{
     flexDirection: "row",
+    justifyContent: "flex-end",
     alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 16,
     paddingHorizontal: 4,
+    paddingTop: 6,
   }}
 >
+  {/* Message button (everyone) */}
+  <Pressable
+    onPress={() => {
+      if (!churchId) return;
 
-              <Text style={theme.text.h1}>Church</Text>
+      if (isAdmin) {
+        navigation.navigate("ChurchAdminInbox", { churchId });
+        return;
+      }
 
-              {isAdmin ? (
-                <Pressable
-                  onPress={() => setShowAdminMenu(true)}
-                  style={{
-                    width: 38,
-                    height: 38,
-                    borderRadius: 19,
-                    backgroundColor: theme.colors.surface,
-                    borderWidth: 1,
-                    borderColor: theme.colors.divider,
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                  hitSlop={8}
-                >
-                  <Ionicons name="settings-outline" size={20} color={theme.colors.text2} />
-                </Pressable>
-              ) : null}
-            </View>
+      navigation.navigate("MainTabs", {
+  screen: "Church",
+  params: {
+    screen: "ChurchInbox",
+    params: { churchId },
+  },
+});
+
+    }}
+    disabled={!churchId}
+style={{
+  paddingHorizontal: 10,
+  paddingVertical: 8,
+  alignItems: "center",
+  justifyContent: "center",
+  opacity: churchId ? 1 : 0.4,
+}}
+
+    hitSlop={10}
+  >
+    <Ionicons
+      name="chatbubble-ellipses-outline"
+      size={23}
+      color={theme.colors.text2}
+    />
+  </Pressable>
+
+  {/* Admin button (admin only) - CLIPBOARD icon */}
+  {isAdmin ? (
+    <Pressable
+      onPress={() => setShowAdminMenu(true)}
+     style={{
+  paddingHorizontal: 10,
+  paddingVertical: 8,
+  alignItems: "center",
+  justifyContent: "center",
+}}
+
+      hitSlop={10}
+    >
+      <Ionicons name="clipboard-outline" size={26} color={theme.colors.text2} />
+    </Pressable>
+  ) : null}
+</View>
+
 
             {/* Cover */}
             <View style={{ marginBottom: 18 }}>
@@ -820,6 +859,37 @@ export default function ChurchProfilePublic({ navigation, route }) {
                 ) : null}
               </View>
 
+               {/* ✅ Step 5B: Show Find Church CTA when this is the default Triunely church */}
+              {isDefaultTriunelyChurch ? (
+                <View
+                  style={{
+                    marginTop: 12,
+                    marginHorizontal: 4,
+                    padding: 14,
+                    borderRadius: 16,
+                    backgroundColor: theme.colors.surface,
+                    borderWidth: 1,
+                    borderColor: theme.colors.divider,
+                  }}
+                >
+                  <Text style={{ color: theme.colors.text, fontWeight: "900", marginBottom: 6 }}>
+                    Want to add your local church?
+                  </Text>
+
+                  <Text style={{ color: theme.colors.muted, fontWeight: "600", marginBottom: 12 }}>
+                    You’re currently viewing Triunely Church. You can search and add your local church as well.
+                  </Text>
+
+                  <Pressable
+  onPress={() => navigation.navigate("ChurchFind")}
+  style={[theme.button.primary, { borderRadius: 999, paddingVertical: 10, paddingHorizontal: 14 }]}
+>
+
+                    <Text style={theme.button.primaryText}>Find your church</Text>
+                  </Pressable>
+                </View>
+              ) : null}
+
               {/* Details preview */}
               <View style={{ marginTop: 8, paddingHorizontal: 4 }}>
                 {about ? (
@@ -847,6 +917,33 @@ export default function ChurchProfilePublic({ navigation, route }) {
                 ) : null}
               </View>
             </View>
+
+            {/* Message Church */}
+{/* Message Church (non-admin only) */}
+{!isAdmin ? (
+  <Pressable
+    onPress={() => navigation.navigate("ChurchInbox", { churchId })}
+    disabled={!churchId}
+    style={[
+      theme.button.primary,
+      {
+        marginTop: 12,
+        borderRadius: 14,
+        paddingVertical: 12,
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 8,
+        opacity: churchId ? 1 : 0.5,
+      },
+    ]}
+  >
+    <Ionicons name="mail-outline" size={18} color={theme.colors.text} />
+    <Text style={theme.button.primaryText}>Message Church</Text>
+  </Pressable>
+) : null}
+
+
 
             {/* Tabs: Posts / Noticeboard */}
             <View

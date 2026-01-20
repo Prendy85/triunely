@@ -30,8 +30,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import GlowCard from "../components/GlowCard";
 import PostCard from "../components/PostCard";
 import Screen from "../components/Screen";
+import SearchLaunchButton from "../components/SearchLaunchButton";
 import { GLOBAL_COMMUNITY_ID } from "../lib/constants";
 import { theme } from "../theme/theme";
+
 
 
 const iconButtonStyle = {
@@ -260,6 +262,10 @@ const [unreadFellowshipCount, setUnreadFellowshipCount] = useState(0);
   // Notifications (same pattern as Profile)
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
 
+  const [adminChurchId, setAdminChurchId] = useState(null);
+const [checkingChurchAdmin, setCheckingChurchAdmin] = useState(false);
+
+
 
 
   // TEMP: local notifications data (we’ll replace with Supabase next)
@@ -276,8 +282,49 @@ const [unreadFellowshipCount, setUnreadFellowshipCount] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
 
   function handleOpenSearch() {
-    setShowSearch(true);
-  }
+  navigation.navigate("GlobalSearch");
+}
+
+useEffect(() => {
+  let alive = true;
+
+  (async () => {
+    try {
+      setCheckingChurchAdmin(true);
+
+      const { data: sessData } = await supabase.auth.getSession();
+      const uid = sessData?.session?.user?.id;
+
+      if (!uid) {
+        if (alive) setAdminChurchId(null);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("church_admins")
+        .select("church_id")
+        .eq("user_id", uid)
+        .limit(1);
+
+      if (error) {
+        console.log("church_admins lookup error:", error);
+        if (alive) setAdminChurchId(null);
+        return;
+      }
+
+      if (alive) setAdminChurchId(data?.[0]?.church_id ?? null);
+    } catch (e) {
+      console.log("church_admins lookup exception:", e);
+      if (alive) setAdminChurchId(null);
+    } finally {
+      if (alive) setCheckingChurchAdmin(false);
+    }
+  })();
+
+  return () => {
+    alive = false;
+  };
+}, []);
 
 
   // Which overlay (if any) is selected for resizing
@@ -445,8 +492,10 @@ const [unreadFellowshipCount, setUnreadFellowshipCount] = useState(0);
   `
   )
 
-        .eq("community_id", GLOBAL_COMMUNITY_ID)
-        .eq("visibility", "global")
+          .eq("community_id", GLOBAL_COMMUNITY_ID)
+  // IMPORTANT: do NOT filter visibility here.
+  // We want global + church + fellowship + your own, and RLS will decide what you’re allowed to see.
+
         .order("created_at", { ascending: false })
         .limit(PAGE_LIMIT);
 
@@ -1420,9 +1469,16 @@ if (linkPreview) {
       onPressAvatar={(id) => {
   // If this post is authored by a church, open church profile instead
   if (item.church_id) {
-    navigation.navigate("ChurchProfilePublic", { churchId: item.church_id });
-    return;
-  }
+  navigation.navigate("MainTabs", {
+    screen: "Church",
+    params: {
+      screen: "ChurchProfilePublic",
+      params: { churchId: item.church_id },
+    },
+  });
+  return;
+}
+
 
   // If it's your own avatar, jump to your real Profile tab
   if (currentUserId && id === currentUserId) {
@@ -1520,30 +1576,18 @@ if (linkPreview) {
 <View style={{ flexDirection: "row", alignItems: "center" }}>
   <Text style={theme.text.h1}>Home</Text>
 
-  <Image
-    source={require("../assets/brand/triunely-logo.png")}
-    style={{
-      width: 88,
-      height: 88,
-      marginLeft: 10,
-      // optional: nudge down 1–2px if it feels too high
-      // marginTop: 1,
-    }}
-    resizeMode="contain"
-  />
+
 </View>
 
 
   {/* Right: Search + Fellowship + Notifications */}
 <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
   {/* Search */}
-  <Pressable
-    onPress={handleOpenSearch}
-    style={iconButtonStyle}
-    hitSlop={8}
-  >
-    <Ionicons name="search-outline" size={22} color={theme.colors.text2} />
-  </Pressable>
+
+  
+ {/* Search */}
+<SearchLaunchButton navigation={navigation} />
+
 
   {/* Fellowship */}
   <Pressable

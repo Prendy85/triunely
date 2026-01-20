@@ -183,6 +183,37 @@ export default function Profile({ navigation }) {
 const [adminChurchId, setAdminChurchId] = useState(null);
 const [checkingChurchAdmin, setCheckingChurchAdmin] = useState(false);
 
+const refreshChurchAdminStatus = useCallback(
+  async (userIdOverride) => {
+    const uid = userIdOverride || user?.id;
+    if (!uid) return;
+
+    try {
+      setCheckingChurchAdmin(true);
+
+      // Use .limit(1) rather than maybeSingle() to avoid errors if multiple rows exist
+      const { data, error } = await supabase
+        .from("church_admins")
+        .select("church_id")
+        .eq("user_id", uid)
+        .limit(1);
+
+      if (error) {
+        console.log("church_admins lookup error:", error);
+        setAdminChurchId(null);
+        return;
+      }
+
+      setAdminChurchId(data?.[0]?.church_id ?? null);
+    } catch (e) {
+      console.log("church_admins lookup exception:", e);
+      setAdminChurchId(null);
+    } finally {
+      setCheckingChurchAdmin(false);
+    }
+  },
+  [user?.id]
+);
 
   const initials = useMemo(() => {
     return safeInitials(displayName || user?.email);
@@ -270,6 +301,12 @@ const [checkingChurchAdmin, setCheckingChurchAdmin] = useState(false);
   }, [user?.id])
 );
 
+useFocusEffect(
+  useCallback(() => {
+    if (!user?.id) return;
+    refreshChurchAdminStatus(user.id);
+  }, [user?.id, refreshChurchAdminStatus])
+);
 
   // Load session + profile + groups + fellowships + pending requests + posts + notifications
   useEffect(() => {
@@ -292,28 +329,10 @@ const [checkingChurchAdmin, setCheckingChurchAdmin] = useState(false);
         }
 
         setUser({ id: userId, email });
-        // ✅ Check whether this user is a church admin, and get their church_id
-try {
-  setCheckingChurchAdmin(true);
+ 
+        // ✅ Check whether this user is a church admin (and get church_id)
+await refreshChurchAdminStatus(userId);
 
-  const { data: ca, error: caError } = await supabase
-    .from("church_admins")
-    .select("church_id")
-    .eq("user_id", userId)
-    .maybeSingle();
-
-  if (caError) {
-    console.log("church_admins lookup error:", caError);
-    setAdminChurchId(null);
-  } else {
-    setAdminChurchId(ca?.church_id ?? null);
-  }
-} catch (e) {
-  console.log("church_admins lookup exception:", e);
-  setAdminChurchId(null);
-} finally {
-  setCheckingChurchAdmin(false);
-}
 
 
         // 2) Load profile including About fields + avatar + cover
@@ -482,6 +501,31 @@ try {
       }
     })();
   }, []);
+
+  useEffect(() => {
+  if (!user?.id) return;
+
+  const channel = supabase
+    .channel(`church_admins_profile_${user.id}`)
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "church_admins",
+        filter: `user_id=eq.${user.id}`,
+      },
+      () => {
+        refreshChurchAdminStatus(user.id);
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}, [user?.id, refreshChurchAdminStatus]);
+
 
   // --------- POSTCARD ACTIONS (reactions / comments / share / delete) ---------
 
@@ -1605,6 +1649,8 @@ try {
               <Text style={theme.text.h1}>Profile</Text>
 
               <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+
+           
                 {/* Notifications */}
                 <Pressable
                   onPress={handleOpenNotifications}
@@ -2085,33 +2131,22 @@ try {
                   Manage weekly encouragement and church announcements.
                 </Text>
 
-                <Pressable
-  onPress={() => {
-    if (!adminChurchId) {
-      Alert.alert(
-        "No church linked",
-        "This account is not set as an admin of a church yet."
-      );
-      return;
-    }
+    <View style={{ marginTop: 12 }}>
+  {checkingChurchAdmin ? (
+    <Text style={[theme.text.muted, { fontWeight: "700" }]}>
+      Checking admin access…
+    </Text>
+  ) : adminChurchId ? (
+    <Text style={[theme.text.muted, { fontWeight: "700" }]}>
+      You are set as a church admin. Use the Church tab at the bottom to open your church profile.
+    </Text>
+  ) : (
+    <Text style={[theme.text.muted, { fontWeight: "700" }]}>
+      This account is not set as a church admin yet.
+    </Text>
+  )}
+</View>
 
-    navigation.navigate("ChurchProfilePublic", { churchId: adminChurchId });
-  }}
-  disabled={checkingChurchAdmin}
-  style={[
-    theme.button.primary,
-    {
-      marginTop: 12,
-      borderRadius: 14,
-      paddingVertical: 12,
-      opacity: checkingChurchAdmin ? 0.7 : 1,
-    },
-  ]}
->
-  <Text style={theme.button.primaryText}>
-    {checkingChurchAdmin ? "Checking access…" : "Open Church Profile"}
-  </Text>
-</Pressable>
 
               </View>
             </View>

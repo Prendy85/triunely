@@ -52,9 +52,7 @@ export default function ChurchAdminHub({ route, navigation }) {
           Admin hub {role ? `(${role})` : ""} — manage your church presence on Triunely.
         </Text>
 
-        {loading ? (
-          <ActivityIndicator />
-        ) : null}
+        {loading ? <ActivityIndicator /> : null}
 
         {/* MAIN NAV */}
         <View style={{ gap: 10, marginTop: 8 }}>
@@ -90,6 +88,19 @@ export default function ChurchAdminHub({ route, navigation }) {
           <Text style={{ fontWeight: "800", fontSize: 14 }}>Admin tools</Text>
 
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+            {/* ✅ NEW: Shared Inbox */}
+            <Pressable
+              onPress={() =>
+                navigation.navigate("ChurchAdminInbox", {
+                  churchId,
+                  churchName: name,
+                })
+              }
+              style={pillStyle}
+            >
+              <Text style={pillText}>Inbox</Text>
+            </Pressable>
+
             <Pressable
               onPress={() =>
                 navigation.navigate("WeeklyMessageEditor", {
