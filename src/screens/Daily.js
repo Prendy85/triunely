@@ -42,7 +42,7 @@ import GlowButton from "../components/GlowButton";
 import GlowCard from "../components/GlowCard";
 import WeeklyChallengeSpotlight from "../components/WeeklyChallengeSpotlight";
 import WeeklyMessageCard from "../components/WeeklyMessageCard";
-import { GLOBAL_COMMUNITY_ID } from "../lib/constants";
+import { HOME_COMMUNITY_ID } from "../lib/constants";
 import { theme } from "../theme/theme";
 
 
@@ -401,8 +401,10 @@ const [formationY, setFormationY] = useState(0);
       // 5) Insert into posts (Global/Home feed)
       const { error } = await supabase.from("posts").insert({
         user_id: user.id,
-        community_id: GLOBAL_COMMUNITY_ID,
-        visibility: "global",
+        community_id: HOME_COMMUNITY_ID,
+
+visibility: "communities",
+
         is_anonymous: false,
         content,
         url: challenge?.action_url ? String(challenge.action_url).trim() : null,

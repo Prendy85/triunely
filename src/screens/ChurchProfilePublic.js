@@ -23,10 +23,9 @@ import PostCard from "../components/PostCard";
 import PostCommentsModal from "../components/PostCommentsModal";
 import Screen from "../components/Screen";
 import VerifiedBadge from "../components/VerifiedBadge";
-import { GLOBAL_COMMUNITY_ID } from "../lib/constants";
+import { HOME_COMMUNITY_ID } from "../lib/constants";
 import { supabase } from "../lib/supabase";
 import { theme } from "../theme/theme";
-
 
 const POSTS_ENABLED = true;
 const PAGE_LIMIT = 50;
@@ -40,11 +39,9 @@ function safeInitials(name) {
 
 export default function ChurchProfilePublic({ navigation, route }) {
   const churchId = route?.params?.churchId;
-  
 
   // ✅ Step 5B: are we viewing the default Triunely church fallback?
-  const isDefaultTriunelyChurch =
-    route?.params?.isDefaultTriunelyChurch === true;
+  const isDefaultTriunelyChurch = route?.params?.isDefaultTriunelyChurch === true;
 
   // viewer
   const [viewerId, setViewerId] = useState(null);
@@ -56,6 +53,11 @@ export default function ChurchProfilePublic({ navigation, route }) {
   // admin permission
   const [isAdmin, setIsAdmin] = useState(false);
   const [checkingAdmin, setCheckingAdmin] = useState(false);
+
+  // ✅ membership (join workflow)
+  const [membershipLoading, setMembershipLoading] = useState(false);
+  const [membershipStatus, setMembershipStatus] = useState("none"); // none | pending | approved | rejected | left | unknown
+  const [membershipRow, setMembershipRow] = useState(null);
 
   // tabs (requested: posts <-> noticeboard)
   const [activeTab, setActiveTab] = useState("posts"); // posts | noticeboard
@@ -107,9 +109,19 @@ export default function ChurchProfilePublic({ navigation, route }) {
         // 2) load church
         await loadChurch(churchId);
 
-        // 3) admin check
-        if (uid) await checkIsAdmin(uid, churchId);
-        else setIsAdmin(false);
+       let admin = false;
+
+// 3) admin check
+if (uid) admin = await checkIsAdmin(uid, churchId);
+else setIsAdmin(false);
+
+// 3b) membership status (skip for admins)
+if (uid && !admin) await loadMembership(uid, churchId);
+else {
+  setMembershipRow(null);
+  setMembershipStatus(admin ? "approved" : "none");
+}
+
 
         // 4) load church posts
         if (POSTS_ENABLED) await loadChurchPosts(churchId);
@@ -125,7 +137,9 @@ export default function ChurchProfilePublic({ navigation, route }) {
   async function loadChurch(id) {
     const { data, error } = await supabase
       .from("churches")
-      .select("id, name, display_name, avatar_url, cover_image_url, about, website, location, is_verified")
+      .select(
+        "id, name, display_name, avatar_url, cover_image_url, about, website, location, is_verified"
+      )
       .eq("id", id)
       .single();
 
@@ -140,28 +154,210 @@ export default function ChurchProfilePublic({ navigation, route }) {
     setLocation(data?.location ?? "");
   }
 
-  async function checkIsAdmin(uid, id) {
+  async function checkIsAdmin(_uid, id) {
+  try {
+    setCheckingAdmin(true);
+
+    const { data, error } = await supabase.rpc("is_church_admin", {
+      target_church_id: id,
+    });
+
+    if (error) {
+      console.log("checkIsAdmin rpc error:", error);
+      setIsAdmin(false);
+      return false;
+    }
+
+    const admin = Boolean(data);
+    setIsAdmin(admin);
+
+    if (admin) setMembershipStatus("approved");
+    return admin;
+  } finally {
+    setCheckingAdmin(false);
+  }
+}
+
+
+  // ✅ membership lookup for Join button + status
+  async function loadMembership(uid, id) {
     try {
-      setCheckingAdmin(true);
+      setMembershipLoading(true);
 
       const { data, error } = await supabase
-        .from("church_admins")
-        .select("user_id, church_id")
+        .from("church_memberships")
+        .select("id, user_id, church_id, status, created_at")
         .eq("user_id", uid)
         .eq("church_id", id)
-        .maybeSingle();
+        .order("created_at", { ascending: false })
+        .limit(1);
 
       if (error) {
-        console.log("checkIsAdmin error:", error);
-        setIsAdmin(false);
+        console.log("loadMembership error:", error);
+        setMembershipStatus("unknown");
+        setMembershipRow(null);
         return;
       }
 
-      setIsAdmin(Boolean(data));
+      const row = Array.isArray(data) && data.length > 0 ? data[0] : null;
+      setMembershipRow(row || null);
+
+      const status = row?.status ? String(row.status).toLowerCase() : "none";
+
+      // normalize to our UI states
+      if (status === "approved") setMembershipStatus("approved");
+      else if (status === "pending") setMembershipStatus("pending");
+      else if (status === "rejected") setMembershipStatus("rejected");
+      else if (status === "left") setMembershipStatus("left");
+      else if (status === "requested") setMembershipStatus("pending"); // defensive
+      else setMembershipStatus(row ? "unknown" : "none");
+    } catch (e) {
+      console.log("loadMembership exception:", e);
+      setMembershipStatus("unknown");
+      setMembershipRow(null);
     } finally {
-      setCheckingAdmin(false);
+      setMembershipLoading(false);
     }
   }
+
+  async function handleJoinChurch() {
+    if (!viewerId) {
+      Alert.alert("Please sign in", "You need to be signed in to join a church.");
+      return;
+    }
+    if (!churchId) return;
+    if (isAdmin) return;
+
+    // If already approved/pending, do nothing
+    if (membershipStatus === "approved") {
+      Alert.alert("You're already a member", "You’re already linked to this church.");
+      return;
+    }
+    if (membershipStatus === "pending") {
+      Alert.alert("Request pending", "Your join request is already pending approval.");
+      return;
+    }
+
+    try {
+      setMembershipLoading(true);
+
+      const payload = {
+        user_id: viewerId,
+        church_id: churchId,
+        status: "pending",
+      };
+
+      const { error } = await supabase.from("church_memberships").insert(payload);
+
+      if (error) {
+        // Unique constraint / already exists
+        if (error.code === "23505") {
+          await loadMembership(viewerId, churchId);
+          Alert.alert("Request already sent", "Your join request is already on file.");
+          return;
+        }
+
+        console.log("handleJoinChurch insert error:", error);
+        Alert.alert("Could not join", error?.message || "Please try again.");
+        return;
+      }
+
+      await loadMembership(viewerId, churchId);
+      Alert.alert("Request sent", "Your request to join has been sent to the church.");
+    } catch (e) {
+      console.log("handleJoinChurch exception:", e);
+      Alert.alert("Could not join", "Please try again.");
+    } finally {
+      setMembershipLoading(false);
+    }
+  }
+
+  async function handleCancelJoinRequest() {
+  if (!viewerId) {
+    Alert.alert("Please sign in", "You need to be signed in.");
+    return;
+  }
+  if (!churchId) return;
+  if (!membershipRow?.id) return;
+
+  try {
+    setMembershipLoading(true);
+
+    const { error } = await supabase
+      .from("church_memberships")
+      .delete()
+      .eq("id", membershipRow.id);
+
+    if (error) {
+      console.log("cancel request delete error:", error);
+      Alert.alert("Could not cancel", error?.message || "Please try again.");
+      return;
+    }
+
+    setMembershipRow(null);
+    setMembershipStatus("none");
+    Alert.alert("Cancelled", "Your join request has been cancelled.");
+  } catch (e) {
+    console.log("cancel request exception:", e);
+    Alert.alert("Could not cancel", "Please try again.");
+  } finally {
+    setMembershipLoading(false);
+  }
+}
+
+async function handleLeaveChurch() {
+  if (!viewerId) {
+    Alert.alert("Please sign in", "You need to be signed in.");
+    return;
+  }
+  if (!churchId) return;
+
+  // We need a membership row to update.
+  if (!membershipRow?.id) {
+    Alert.alert("Not linked", "We couldn't find your membership record.");
+    return;
+  }
+
+  Alert.alert(
+    "Leave church",
+    "Are you sure you want to leave this church? You can request to rejoin later.",
+    [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Leave",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            setMembershipLoading(true);
+
+            const { error } = await supabase
+              .from("church_memberships")
+              .update({ status: "left" })
+              .eq("id", membershipRow.id)
+              .eq("user_id", viewerId); // extra safety
+
+            if (error) {
+              console.log("leave church update error:", error);
+              Alert.alert("Could not leave", error?.message || "Please try again.");
+              return;
+            }
+
+            // Refresh UI state
+            await loadMembership(viewerId, churchId);
+
+            Alert.alert("Left church", "You have left this church.");
+          } catch (e) {
+            console.log("leave church exception:", e);
+            Alert.alert("Could not leave", "Please try again.");
+          } finally {
+            setMembershipLoading(false);
+          }
+        },
+      },
+    ]
+  );
+}
+
 
   async function loadChurchPosts(id) {
     try {
@@ -192,7 +388,7 @@ export default function ChurchProfilePublic({ navigation, route }) {
           )
         `
         )
-        .eq("community_id", GLOBAL_COMMUNITY_ID)
+        .eq("community_id", HOME_COMMUNITY_ID)
         .eq("church_id", id)
         .in("visibility", ["global", "church"])
         .order("created_at", { ascending: false })
@@ -235,17 +431,81 @@ export default function ChurchProfilePublic({ navigation, route }) {
   }
 
   useFocusEffect(
-  useCallback(() => {
-    if (!churchId) return;
+    useCallback(() => {
+      if (!churchId) return;
 
-    // Reload the church record when the screen is focused again
-    loadChurch(churchId);
+      // Reload the church record when the screen is focused again
+      loadChurch(churchId);
 
-    // Re-check admin + refresh posts too (keeps it consistent)
-    if (viewerId) checkIsAdmin(viewerId, churchId);
-    if (POSTS_ENABLED) loadChurchPosts(churchId);
-  }, [churchId, viewerId])
-);
+      // Re-check admin + refresh posts too (keeps it consistent)
+    (async () => {
+  const admin = viewerId ? await checkIsAdmin(viewerId, churchId) : false;
+
+  if (viewerId && !admin) {
+    await loadMembership(viewerId, churchId);
+  } else {
+    setMembershipRow(null);
+    setMembershipStatus(admin ? "approved" : "none");
+  }
+})();
+
+
+      if (POSTS_ENABLED) loadChurchPosts(churchId);
+    }, [churchId, viewerId])
+  );
+
+  async function handleLeaveChurch() {
+  if (!viewerId) {
+    Alert.alert("Please sign in", "You need to be signed in.");
+    return;
+  }
+  if (!churchId) return;
+
+  // We need a membership row to update.
+  if (!membershipRow?.id) {
+    Alert.alert("Not linked", "We couldn't find your membership record.");
+    return;
+  }
+
+  Alert.alert(
+    "Leave church",
+    "Are you sure you want to leave this church? You can request to rejoin later.",
+    [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Leave",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            setMembershipLoading(true);
+
+            const { error } = await supabase
+              .from("church_memberships")
+              .update({ status: "left" })
+              .eq("id", membershipRow.id)
+              .eq("user_id", viewerId); // extra safety
+
+            if (error) {
+              console.log("leave church update error:", error);
+              Alert.alert("Could not leave", error?.message || "Please try again.");
+              return;
+            }
+
+            // Refresh UI state
+            await loadMembership(viewerId, churchId);
+
+            Alert.alert("Left church", "You have left this church.");
+          } catch (e) {
+            console.log("leave church exception:", e);
+            Alert.alert("Could not leave", "Please try again.");
+          } finally {
+            setMembershipLoading(false);
+          }
+        },
+      },
+    ]
+  );
+}
 
   async function uploadImageToChurch(pathPrefix, asset) {
     const fileExtFromUri =
@@ -380,10 +640,7 @@ export default function ChurchProfilePublic({ navigation, route }) {
         location: location || null,
       };
 
-      const { error } = await supabase
-        .from("churches")
-        .update(updates)
-        .eq("id", church.id);
+      const { error } = await supabase.from("churches").update(updates).eq("id", church.id);
 
       if (error) throw error;
 
@@ -444,15 +701,18 @@ export default function ChurchProfilePublic({ navigation, route }) {
           mediaType = contentType;
         } catch (e) {
           console.log("ChurchProfilePublic upload error:", e);
-          Alert.alert("Upload failed", "We couldn’t upload your image. You can still post text only.");
+          Alert.alert(
+            "Upload failed",
+            "We couldn’t upload your image. You can still post text only."
+          );
         }
       }
 
       const payload = {
         user_id: userId,
+        community_id: HOME_COMMUNITY_ID,
         church_id: churchId,
-        community_id: GLOBAL_COMMUNITY_ID,
-        visibility: "global",
+        visibility: "church",
         is_anonymous: false,
         content: content.trim(),
       };
@@ -641,18 +901,12 @@ export default function ChurchProfilePublic({ navigation, route }) {
   }
 
   function renderNoticeboardTab() {
-  return (
-    <View style={{ marginTop: 10 }}>
-      <ChurchNoticeboardPanel
-        churchId={churchId}
-        bottomPad={0}
-        showHeader={false}
-        embedded={true}
-      />
-    </View>
-  );
-}
-
+    return (
+      <View style={{ marginTop: 10 }}>
+        <ChurchNoticeboardPanel churchId={churchId} bottomPad={0} showHeader={false} embedded={true} />
+      </View>
+    );
+  }
 
   if (loading) {
     return (
@@ -687,72 +941,63 @@ export default function ChurchProfilePublic({ navigation, route }) {
       {({ bottomPad }) => (
         <>
           <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: bottomPad }}>
-            
             {/* Title row (icons on the RIGHT) */}
-<View
-  style={{
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    alignItems: "center",
-    paddingHorizontal: 4,
-    paddingTop: 6,
-  }}
->
-  {/* Message button (everyone) */}
-  <Pressable
-    onPress={() => {
-      if (!churchId) return;
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "flex-end",
+                alignItems: "center",
+                paddingHorizontal: 4,
+                paddingTop: 6,
+              }}
+            >
+              {/* Message button (everyone) */}
+              <Pressable
+                onPress={() => {
+                  if (!churchId) return;
 
-      if (isAdmin) {
-        navigation.navigate("ChurchAdminInbox", { churchId });
-        return;
-      }
+                  if (isAdmin) {
+                    navigation.navigate("ChurchAdminInbox", { churchId });
+                    return;
+                  }
 
-      navigation.navigate("MainTabs", {
-  screen: "Church",
-  params: {
-    screen: "ChurchInbox",
-    params: { churchId },
-  },
-});
+                  navigation.navigate("MainTabs", {
+                    screen: "Church",
+                    params: {
+                      screen: "ChurchInbox",
+                      params: { churchId },
+                    },
+                  });
+                }}
+                disabled={!churchId}
+                style={{
+                  paddingHorizontal: 10,
+                  paddingVertical: 8,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  opacity: churchId ? 1 : 0.4,
+                }}
+                hitSlop={10}
+              >
+                <Ionicons name="chatbubble-ellipses-outline" size={23} color={theme.colors.text2} />
+              </Pressable>
 
-    }}
-    disabled={!churchId}
-style={{
-  paddingHorizontal: 10,
-  paddingVertical: 8,
-  alignItems: "center",
-  justifyContent: "center",
-  opacity: churchId ? 1 : 0.4,
-}}
-
-    hitSlop={10}
-  >
-    <Ionicons
-      name="chatbubble-ellipses-outline"
-      size={23}
-      color={theme.colors.text2}
-    />
-  </Pressable>
-
-  {/* Admin button (admin only) - CLIPBOARD icon */}
-  {isAdmin ? (
-    <Pressable
-      onPress={() => setShowAdminMenu(true)}
-     style={{
-  paddingHorizontal: 10,
-  paddingVertical: 8,
-  alignItems: "center",
-  justifyContent: "center",
-}}
-
-      hitSlop={10}
-    >
-      <Ionicons name="clipboard-outline" size={26} color={theme.colors.text2} />
-    </Pressable>
-  ) : null}
-</View>
-
+              {/* Admin button (admin only) - CLIPBOARD icon */}
+              {isAdmin ? (
+                <Pressable
+                  onPress={() => setShowAdminMenu(true)}
+                  style={{
+                    paddingHorizontal: 10,
+                    paddingVertical: 8,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                  hitSlop={10}
+                >
+                  <Ionicons name="clipboard-outline" size={26} color={theme.colors.text2} />
+                </Pressable>
+              ) : null}
+            </View>
 
             {/* Cover */}
             <View style={{ marginBottom: 18 }}>
@@ -859,7 +1104,7 @@ style={{
                 ) : null}
               </View>
 
-               {/* ✅ Step 5B: Show Find Church CTA when this is the default Triunely church */}
+              {/* ✅ Step 5B: Show Find Church CTA when this is the default Triunely church */}
               {isDefaultTriunelyChurch ? (
                 <View
                   style={{
@@ -881,12 +1126,97 @@ style={{
                   </Text>
 
                   <Pressable
-  onPress={() => navigation.navigate("ChurchFind")}
-  style={[theme.button.primary, { borderRadius: 999, paddingVertical: 10, paddingHorizontal: 14 }]}
->
-
+                    onPress={() => navigation.navigate("ChurchFind")}
+                    style={[theme.button.primary, { borderRadius: 999, paddingVertical: 10, paddingHorizontal: 14 }]}
+                  >
                     <Text style={theme.button.primaryText}>Find your church</Text>
                   </Pressable>
+                </View>
+              ) : null}
+
+              {/* ✅ Join CTA (non-admin, not approved) */}
+              {!isAdmin && !isDefaultTriunelyChurch ? (
+                <View style={{ marginTop: 12, paddingHorizontal: 4 }}>
+                  {membershipLoading ? (
+                    <View style={{ flexDirection: "row", alignItems: "center" }}>
+                      <ActivityIndicator size="small" color={theme.colors.gold} />
+                      <Text style={{ color: theme.colors.muted, marginLeft: 10, fontWeight: "700" }}>
+                        Checking membership…
+                      </Text>
+                    </View>
+                 ) : membershipStatus === "approved" ? (
+  <View
+    style={{
+      padding: 12,
+      borderRadius: 14,
+      backgroundColor: theme.colors.surface,
+      borderWidth: 1,
+      borderColor: theme.colors.divider,
+    }}
+  >
+    <Text style={{ color: theme.colors.text, fontWeight: "900" }}>Member</Text>
+    <Text style={{ color: theme.colors.muted, marginTop: 4, fontWeight: "600" }}>
+      You’re linked to this church.
+    </Text>
+
+    <Pressable
+      onPress={handleLeaveChurch}
+      disabled={membershipLoading}
+      style={[
+        theme.button.outline,
+        {
+          marginTop: 10,
+          borderRadius: 14,
+          paddingVertical: 10,
+          opacity: membershipLoading ? 0.6 : 1,
+        },
+      ]}
+    >
+      <Text style={theme.button.outlineText}>Leave church</Text>
+    </Pressable>
+  </View>
+
+                  ) : membershipStatus === "pending" ? (
+                    <View
+                      style={{
+                        padding: 12,
+                        borderRadius: 14,
+                        backgroundColor: theme.colors.surface,
+                        borderWidth: 1,
+                        borderColor: theme.colors.divider,
+                      }}
+                    >
+                      <Text style={{ color: theme.colors.text, fontWeight: "900" }}>Request pending</Text>
+                      <Text style={{ color: theme.colors.muted, marginTop: 4, fontWeight: "600" }}>
+                        Your join request is waiting for approval.
+                            <Pressable
+      onPress={handleCancelJoinRequest}
+      style={[theme.button.outline, { marginTop: 10, borderRadius: 14, paddingVertical: 10 }]}
+    >
+      <Text style={theme.button.outlineText}>Cancel request</Text>
+    </Pressable>
+
+                      </Text>
+                    </View>
+                  ) : (
+                    <Pressable
+                      onPress={handleJoinChurch}
+                      style={[
+                        theme.button.primary,
+                        {
+                          borderRadius: 14,
+                          paddingVertical: 12,
+                          flexDirection: "row",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: 8,
+                        },
+                      ]}
+                    >
+                      <Ionicons name="add-circle-outline" size={18} color={theme.colors.text} />
+                      <Text style={theme.button.primaryText}>Join this church</Text>
+                    </Pressable>
+                  )}
                 </View>
               ) : null}
 
@@ -911,39 +1241,34 @@ style={{
                 ) : null}
 
                 {checkingAdmin ? (
-                  <Text style={{ color: theme.colors.muted, marginTop: 6 }}>
-                    Checking admin permissions…
-                  </Text>
+                  <Text style={{ color: theme.colors.muted, marginTop: 6 }}>Checking admin permissions…</Text>
                 ) : null}
               </View>
             </View>
 
-            {/* Message Church */}
-{/* Message Church (non-admin only) */}
-{!isAdmin ? (
-  <Pressable
-    onPress={() => navigation.navigate("ChurchInbox", { churchId })}
-    disabled={!churchId}
-    style={[
-      theme.button.primary,
-      {
-        marginTop: 12,
-        borderRadius: 14,
-        paddingVertical: 12,
-        flexDirection: "row",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 8,
-        opacity: churchId ? 1 : 0.5,
-      },
-    ]}
-  >
-    <Ionicons name="mail-outline" size={18} color={theme.colors.text} />
-    <Text style={theme.button.primaryText}>Message Church</Text>
-  </Pressable>
-) : null}
-
-
+            {/* Message Church (non-admin only) */}
+            {!isAdmin ? (
+              <Pressable
+                onPress={() => navigation.navigate("ChurchInbox", { churchId })}
+                disabled={!churchId}
+                style={[
+                  theme.button.primary,
+                  {
+                    marginTop: 12,
+                    borderRadius: 14,
+                    paddingVertical: 12,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 8,
+                    opacity: churchId ? 1 : 0.5,
+                  },
+                ]}
+              >
+                <Ionicons name="mail-outline" size={18} color={theme.colors.text} />
+                <Text style={theme.button.primaryText}>Message Church</Text>
+              </Pressable>
+            ) : null}
 
             {/* Tabs: Posts / Noticeboard */}
             <View
@@ -1005,9 +1330,7 @@ style={{
                   {renderPostsTab()}
                 </View>
               ) : (
-                <View>
-                  {renderNoticeboardTab()}
-                </View>
+                <View>{renderNoticeboardTab()}</View>
               )}
             </View>
           </ScrollView>
@@ -1065,6 +1388,17 @@ style={{
                   style={[theme.button.primary, { borderRadius: 14, paddingVertical: 12, marginBottom: 10 }]}
                 >
                   <Text style={theme.button.primaryText}>Open Admin Hub</Text>
+                </Pressable>
+
+                {/* ✅ Admin: Edit full profile screen (ChurchEdit) */}
+                <Pressable
+                  onPress={() => {
+                    setShowAdminMenu(false);
+                    navigation.navigate("ChurchEdit", { churchId: church.id });
+                  }}
+                  style={[theme.button.outline, { borderRadius: 14, paddingVertical: 12, marginBottom: 10 }]}
+                >
+                  <Text style={theme.button.outlineText}>Edit Church Profile</Text>
                 </Pressable>
 
                 <Pressable

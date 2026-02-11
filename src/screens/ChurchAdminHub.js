@@ -3,9 +3,14 @@ import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import Screen from "../components/Screen";
 import { supabase } from "../lib/supabase";
+import { theme } from "../theme/theme";
 
 export default function ChurchAdminHub({ route, navigation }) {
   const { churchId, churchName, role } = route?.params || {};
+
+  console.log("ChurchAdminHub route params:", route?.params);
+console.log("ChurchAdminHub churchId:", churchId);
+
 
   const [loading, setLoading] = useState(true);
   const [church, setChurch] = useState(null);
@@ -45,14 +50,14 @@ export default function ChurchAdminHub({ route, navigation }) {
   const name = church?.name || churchName || "Church";
 
   return (
-    <Screen>
+    <Screen backgroundColor={theme.colors.bg}>
       <View style={{ padding: 16, gap: 12 }}>
-        <Text style={{ fontSize: 22, fontWeight: "800" }}>{name}</Text>
-        <Text style={{ opacity: 0.7 }}>
+        <Text style={{ fontSize: 22, fontWeight: "900", color: theme.colors.text }}>{name}</Text>
+        <Text style={{ color: theme.colors.muted, fontWeight: "700" }}>
           Admin hub {role ? `(${role})` : ""} — manage your church presence on Triunely.
         </Text>
 
-        {loading ? <ActivityIndicator /> : null}
+        {loading ? <ActivityIndicator color={theme.colors.gold} /> : null}
 
         {/* MAIN NAV */}
         <View style={{ gap: 10, marginTop: 8 }}>
@@ -82,13 +87,14 @@ export default function ChurchAdminHub({ route, navigation }) {
             <Text style={cardSub}>View the church page details (public-facing).</Text>
           </Pressable>
 
-          <View style={{ height: 1, backgroundColor: "rgba(0,0,0,0.08)", marginVertical: 6 }} />
+          <View style={{ height: 1, backgroundColor: theme.colors.divider, marginVertical: 6 }} />
 
           {/* ADMIN TOOLS */}
-          <Text style={{ fontWeight: "800", fontSize: 14 }}>Admin tools</Text>
+          <Text style={{ fontWeight: "900", fontSize: 14, color: theme.colors.text }}>
+            Admin tools
+          </Text>
 
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-            {/* ✅ NEW: Shared Inbox */}
             <Pressable
               onPress={() =>
                 navigation.navigate("ChurchAdminInbox", {
@@ -127,10 +133,25 @@ export default function ChurchAdminHub({ route, navigation }) {
 
             <Pressable
               onPress={() => navigation.navigate("ChurchNoticeboard", { churchId })}
-              style={[pillStyle, { opacity: 0.75 }]}
+              style={pillStyle}
             >
               <Text style={pillText}>Noticeboard</Text>
             </Pressable>
+
+            {/* ✅ NEW: Admins manager */}
+    <Pressable
+  onPress={() =>
+    navigation.navigate("ChurchAdminAdmins", {
+      churchId,
+      churchName: name,
+    })
+  }
+  style={pillStyle}
+>
+  <Text style={pillText}>Admins</Text>
+</Pressable>
+
+
           </View>
 
           <View style={{ marginTop: 12 }}>
@@ -141,11 +162,12 @@ export default function ChurchAdminHub({ route, navigation }) {
                 paddingHorizontal: 12,
                 borderRadius: 10,
                 borderWidth: 1,
-                borderColor: "rgba(0,0,0,0.12)",
+                borderColor: theme.colors.divider,
                 alignSelf: "flex-start",
+                backgroundColor: theme.colors.surface,
               }}
             >
-              <Text style={{ fontWeight: "800" }}>Back to Churches</Text>
+              <Text style={{ fontWeight: "900", color: theme.colors.text2 }}>Back to Churches</Text>
             </Pressable>
           </View>
         </View>
@@ -158,19 +180,20 @@ const cardStyle = {
   padding: 14,
   borderWidth: 1,
   borderRadius: 14,
-  borderColor: "rgba(0,0,0,0.10)",
-  backgroundColor: "rgba(255,255,255,0.70)",
+  borderColor: theme.colors.divider,
+  backgroundColor: theme.colors.surface,
 };
 
 const cardTitle = {
   fontSize: 16,
   fontWeight: "900",
+  color: theme.colors.text,
 };
 
 const cardSub = {
   marginTop: 6,
-  opacity: 0.75,
-  fontWeight: "600",
+  color: theme.colors.muted,
+  fontWeight: "700",
 };
 
 const pillStyle = {
@@ -178,9 +201,11 @@ const pillStyle = {
   paddingHorizontal: 12,
   borderRadius: 10,
   borderWidth: 1,
-  borderColor: "rgba(0,0,0,0.12)",
+  borderColor: theme.colors.divider,
+  backgroundColor: theme.colors.surface,
 };
 
 const pillText = {
-  fontWeight: "800",
+  fontWeight: "900",
+  color: theme.colors.text2,
 };

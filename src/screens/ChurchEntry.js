@@ -1,63 +1,70 @@
 // src/screens/ChurchEntry.js
 import { useFocusEffect } from "@react-navigation/native";
-import { useCallback, useState } from "react";
-import { ActivityIndicator, Text, View } from "react-native";
+import { useCallback, useRef, useState } from "react";
+import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { supabase } from "../lib/supabase";
 import { theme } from "../theme/theme";
 
 /**
- * This screen is a router for the bottom Church tab.
- * It finds the logged-in user's churchId and then navigates to ChurchProfilePublic.
+ * Church tab router:
+ * - If user has an APPROVED church membership -> open that church
+ * - Otherwise -> show "Find your church" UI (button -> ChurchFind)
  *
  * IMPORTANT:
- * You must wire getMyChurchId() to match your schema.
+ * This intentionally has ZERO "default church" fallback.
+ * A church only opens if the user is actually a member/admin.
  */
 export default function ChurchEntry({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [errorText, setErrorText] = useState("");
+  const [showFind, setShowFind] = useState(false);
 
-  const getMyChurchId = useCallback(async (userId) => {
-    /**
-     * OPTION A (most common): profiles has a church_id column
-     *   - profiles: id, church_id
-     */
-    try {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("church_id")
-        .eq("id", userId)
-        .single();
+  // Prevent setState on unmounted component after navigation.replace(...)
+  const isActiveRef = useRef(true);
 
-      // If the column doesn't exist, PostgREST will error — we fall through to Option B.
-      if (!error && data?.church_id) return data.church_id;
-    } catch (e) {
-      // fall through
-    }
-
-    /**
-     * OPTION B: membership table (adjust table/columns to match your DB)
-     * Examples you might have:
-     *  - church_members (user_id, church_id, status)
-     *  - user_churches (user_id, church_id)
-     */
+  const resolveChurchId = useCallback(async (userId) => {
+    // 1) Approved membership
     try {
       const { data, error } = await supabase
         .from("church_memberships")
-        .select("church_id")
+        .select("church_id, created_at")
         .eq("user_id", userId)
+        .eq("status", "approved")
+        .order("created_at", { ascending: false })
         .limit(1);
 
-      if (!error && data?.[0]?.church_id) return data[0].church_id;
+      if (!error && Array.isArray(data) && data.length > 0) {
+        return data[0].church_id ?? null;
+      }
     } catch (e) {
-      // fall through
+      // ignore
+    }
+
+    // 2) Optional: admin routing support (only if your church_admins table exists)
+    try {
+      const { data, error } = await supabase
+        .from("church_admins")
+        .select("church_id, created_at")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+      if (!error && Array.isArray(data) && data.length > 0) {
+        return data[0].church_id ?? null;
+      }
+    } catch (e) {
+      // ignore
     }
 
     return null;
   }, []);
 
-  const routeToChurch = useCallback(async () => {
+  const route = useCallback(async () => {
+    if (!isActiveRef.current) return;
+
     setLoading(true);
     setErrorText("");
+    setShowFind(false);
 
     try {
       const { data: sessionData, error: sessionError } =
@@ -65,34 +72,117 @@ export default function ChurchEntry({ navigation }) {
       if (sessionError) throw sessionError;
 
       const userId = sessionData?.session?.user?.id;
+
+      // If not logged in (or session missing), default to Find UI (do not navigate)
       if (!userId) {
-        setErrorText("Not signed in.");
+        if (!isActiveRef.current) return;
+        setShowFind(true);
         return;
       }
 
-      const churchId = await getMyChurchId(userId);
+      const churchId = await resolveChurchId(userId);
 
       if (!churchId) {
-        setErrorText("No church connected to this account yet.");
+        // No church membership -> show Find Your Church UI
+        if (!isActiveRef.current) return;
+        setShowFind(true);
         return;
       }
 
-      // Navigate into the actual church profile screen
-      navigation.navigate("ChurchProfilePublic", { churchId });
+      // Has church -> go to Church
+      navigation.replace("ChurchProfilePublic", { churchId });
+      return;
     } catch (e) {
       console.log("ChurchEntry routing error:", e);
-      setErrorText("We couldn't open your church right now.");
+      if (!isActiveRef.current) return;
+      setErrorText("We couldn't open Church right now.");
     } finally {
+      if (!isActiveRef.current) return;
       setLoading(false);
     }
-  }, [getMyChurchId, navigation]);
+  }, [navigation, resolveChurchId]);
 
   useFocusEffect(
     useCallback(() => {
-      routeToChurch();
-    }, [routeToChurch])
+      isActiveRef.current = true;
+      route();
+
+      return () => {
+        isActiveRef.current = false;
+      };
+    }, [route])
   );
 
+  // Error fallback
+  if (!loading && errorText) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: theme.colors.bg,
+          justifyContent: "center",
+          alignItems: "center",
+          padding: 16,
+        }}
+      >
+        <Text style={{ color: theme.colors.text, fontWeight: "900", fontSize: 16 }}>
+          Church
+        </Text>
+
+        <Text style={{ color: "tomato", marginTop: 10, textAlign: "center" }}>
+          {errorText}
+        </Text>
+
+        <Text
+          onPress={() => navigation.navigate("ChurchFind")}
+          style={{ color: theme.colors.gold, marginTop: 16, fontWeight: "900" }}
+        >
+          Find your church
+        </Text>
+      </View>
+    );
+  }
+
+  // No membership -> show Find UI here (matches your required behavior)
+  if (!loading && showFind) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: theme.colors.bg,
+          justifyContent: "center",
+          alignItems: "center",
+          padding: 16,
+        }}
+      >
+        <Text style={{ color: theme.colors.text, fontWeight: "900", fontSize: 18 }}>
+          Find your church
+        </Text>
+
+        <Text style={{ color: theme.colors.muted, marginTop: 10, textAlign: "center" }}>
+          Join your church to access its hub, updates and community.
+        </Text>
+
+        <Pressable
+          onPress={() => navigation.navigate("ChurchFind")}
+          style={{
+            marginTop: 18,
+            paddingVertical: 12,
+            paddingHorizontal: 18,
+            borderRadius: 14,
+            borderWidth: 1,
+            borderColor: theme.colors.gold,
+          }}
+        >
+          <Text style={{ color: theme.colors.gold, fontWeight: "900" }}>
+            Find your church
+          </Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  // Loading state
   return (
     <View
       style={{
@@ -103,40 +193,10 @@ export default function ChurchEntry({ navigation }) {
         padding: 16,
       }}
     >
-      {loading ? (
-        <>
-          <ActivityIndicator size="large" color={theme.colors.gold} />
-          <Text style={{ color: theme.colors.muted, marginTop: 10 }}>
-            Opening your church…
-          </Text>
-        </>
-      ) : (
-        <>
-          <Text style={{ color: theme.colors.text, fontWeight: "900", fontSize: 16 }}>
-            Church
-          </Text>
-          <Text
-            style={{
-              color: theme.colors.muted,
-              textAlign: "center",
-              marginTop: 8,
-              marginBottom: 12,
-            }}
-          >
-            {errorText || "Ready"}
-          </Text>
-
-          {/* Optional: if you have a Church Directory screen */}
-          {/* 
-          <Pressable
-            onPress={() => navigation.navigate("ChurchDirectory")}
-            style={[theme.button.primary, { paddingHorizontal: 16, paddingVertical: 12, borderRadius: 999 }]}
-          >
-            <Text style={theme.button.primaryText}>Find a church</Text>
-          </Pressable>
-          */}
-        </>
-      )}
+      <ActivityIndicator size="large" color={theme.colors.gold} />
+      <Text style={{ color: theme.colors.muted, marginTop: 10 }}>
+        Opening Church…
+      </Text>
     </View>
   );
 }

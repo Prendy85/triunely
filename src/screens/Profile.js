@@ -160,8 +160,7 @@ export default function Profile({ navigation }) {
   // Notifications
   const [notifications, setNotifications] = useState([]);
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
-  const [notificationsModalVisible, setNotificationsModalVisible] =
-    useState(false);
+ 
 
   const [isEditingAbout, setIsEditingAbout] = useState(false);
   const [savingAbout, setSavingAbout] = useState(false);
@@ -1091,46 +1090,10 @@ await refreshChurchAdminStatus(userId);
 
   // --- Notifications ---
 
-  async function handleOpenNotifications() {
-    if (!user?.id) return;
+  function handleOpenNotifications() {
+  navigation.navigate("Notifications");
+}
 
-    setNotificationsModalVisible(true);
-
-    try {
-      const { data, error } = await supabase
-        .from("notifications")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false });
-
-      if (error) {
-        console.log("notifications refresh error:", error);
-        return;
-      }
-
-      setNotifications(data || []);
-
-      const unread = (data || []).filter((n) => !n.is_read).length;
-      setUnreadNotificationCount(unread);
-
-      if (unread > 0) {
-        const unreadIds = data.filter((n) => !n.is_read).map((n) => n.id);
-
-        const { error: markError } = await supabase
-          .from("notifications")
-          .update({ is_read: true })
-          .in("id", unreadIds);
-
-        if (markError) {
-          console.log("mark notifications read error:", markError);
-        } else {
-          setUnreadNotificationCount(0);
-        }
-      }
-    } catch (e) {
-      console.log("Error opening notifications", e);
-    }
-  }
 
   // --- CUSTOM KEYBOARD HANDLERS FOR PEOPLE SEARCH ---
 
@@ -2767,104 +2730,7 @@ await refreshChurchAdminStatus(userId);
             </View>
           </Modal>
 
-          {/* Notifications Modal */}
-          <Modal
-            visible={notificationsModalVisible}
-            transparent
-            animationType="slide"
-            onRequestClose={() => setNotificationsModalVisible(false)}
-          >
-            <View
-              style={{
-                flex: 1,
-                backgroundColor: "rgba(0,0,0,0.7)",
-                justifyContent: "flex-end",
-              }}
-            >
-              <View
-                style={{
-                  backgroundColor: theme.colors.surface,
-                  borderTopLeftRadius: 18,
-                  borderTopRightRadius: 18,
-                  padding: 16,
-                  maxHeight: "70%",
-                }}
-              >
-                <View
-                  style={{
-                    flexDirection: "row",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    marginBottom: 12,
-                  }}
-                >
-                  <Text style={theme.text.h2}>Notifications</Text>
-
-                  <Pressable
-                    onPress={() => setNotificationsModalVisible(false)}
-                    style={[
-                      theme.button.outline,
-                      { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999 },
-                    ]}
-                  >
-                    <Text style={theme.button.outlineText}>Close</Text>
-                  </Pressable>
-                </View>
-
-                {notifications && notifications.length > 0 ? (
-                  <ScrollView>
-                    {notifications.map((n) => {
-                      const createdAtText = formatDateTime(n.created_at);
-
-                      return (
-                        <View
-                          key={n.id}
-                          style={{
-                            marginBottom: 10,
-                            paddingVertical: 10,
-                            borderBottomWidth: 1,
-                            borderBottomColor: theme.colors.divider,
-                          }}
-                        >
-                          <Text
-                            style={{
-                              color: theme.colors.text,
-                              fontWeight: n.is_read ? "700" : "900",
-                              marginBottom: 2,
-                            }}
-                          >
-                            {n.title || "Notification"}
-                          </Text>
-
-                          {n.body ? (
-                            <Text
-                              style={{
-                                color: theme.colors.text2,
-                                fontSize: 13,
-                                marginBottom: 2,
-                              }}
-                            >
-                              {n.body}
-                            </Text>
-                          ) : null}
-
-                          {createdAtText ? (
-                            <Text style={{ color: theme.colors.muted, fontSize: 11 }}>
-                              {createdAtText}
-                            </Text>
-                          ) : null}
-                        </View>
-                      );
-                    })}
-                  </ScrollView>
-                ) : (
-                  <Text style={{ color: theme.colors.muted }}>
-                    You have no notifications yet.
-                  </Text>
-                )}
-              </View>
-            </View>
-          </Modal>
+          
         </>
       )}
     </Screen>

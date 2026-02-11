@@ -23,6 +23,7 @@ import Coach from "./src/screens/Coach";
 import CoachChats from "./src/screens/CoachChats";
 import Community from "./src/screens/Community";
 import Daily from "./src/screens/Daily";
+import NotificationsScreen from "./src/screens/NotificationsScreen";
 import Prayer from "./src/screens/Prayer";
 import Profile from "./src/screens/Profile";
 import UserProfile from "./src/screens/UserProfile";
@@ -47,6 +48,7 @@ import WeeklyChallengeEditor from "./src/screens/WeeklyChallengeEditor";
 import WeeklyMessageEditor from "./src/screens/WeeklyMessageEditor";
 
 // church hub + feed + church profile + inbox
+import ChurchAdminAdmins from "./src/screens/ChurchAdminAdmins";
 import ChurchAdminHub from "./src/screens/ChurchAdminHub";
 import ChurchAdminInbox from "./src/screens/ChurchAdminInbox";
 import ChurchAdminThread from "./src/screens/ChurchAdminThread";
@@ -56,10 +58,17 @@ import ChurchFind from "./src/screens/ChurchFind";
 import ChurchInbox from "./src/screens/ChurchInbox";
 import ChurchProfilePublic from "./src/screens/ChurchProfilePublic";
 
+// ✅ Existing: ChurchEdit screen
+import ChurchEdit from "./src/screens/ChurchEdit";
+
+// ✅ Step 2B: ADD ChurchCreateChurch screen
+import ChurchCreateChurch from "./src/screens/ChurchCreateChurch";
 
 const Tab = createBottomTabNavigator();
 const CoachStack = createNativeStackNavigator();
 const CommunityStack = createNativeStackNavigator();
+const PrayerStack = createNativeStackNavigator();
+const ProfileStack = createNativeStackNavigator();
 const ChurchStack = createNativeStackNavigator();
 const RootStack = createNativeStackNavigator();
 
@@ -70,18 +79,30 @@ const CHARITY_PER_SUBSCRIBER = 2;
 const GOAL_SUBSCRIBERS = 1_000_000;
 
 /**
- * IMPORTANT:
- * Set this to your real Triunely Church row id in Supabase once you know it.
- * For now it can be null; ChurchEntry will show a friendly fallback screen.
+ * NotificationsBell
+ * - headerRight bell button (used by stacks)
  */
-const TRIUNELY_CHURCH_ID = "d32ac34f-6468-41b6-aabc-c314230cd7c4";
-
+function NotificationsBell({ navigation }) {
+  return (
+    <Pressable
+      onPress={() => navigation.navigate("Notifications")}
+      style={{ paddingHorizontal: 12, paddingVertical: 8 }}
+      hitSlop={10}
+    >
+      <Ionicons name="notifications-outline" size={22} color={theme.colors.gold} />
+    </Pressable>
+  );
+}
 
 /**
  * ChurchEntry
  * - This is the first screen in the Church tab.
  * - It decides which church profile to open.
- * - For now it tries to find a membership in a defensive way, without breaking builds.
+ *
+ * REQUIRED BEHAVIOR:
+ * - If user has APPROVED membership -> open that church
+ * - Else if user is admin (church_admins) -> open that church
+ * - Else -> go to ChurchFind (NO default church fallback)
  */
 function ChurchEntry({ navigation }) {
   const [loading, setLoading] = useState(true);
@@ -99,75 +120,51 @@ function ChurchEntry({ navigation }) {
         const { data: sessData, error: sessErr } = await supabase.auth.getSession();
         if (sessErr) throw sessErr;
 
-       const uid = sessData?.session?.user?.id;
+        const uid = sessData?.session?.user?.id;
 
-if (!uid) {
-  const finalId = TRIUNELY_CHURCH_ID || null;
-
-  if (!alive) return;
-  setResolvedChurchId(finalId);
-
-  if (finalId) {
-    navigation.replace("ChurchProfilePublic", {
-      churchId: finalId,
-      isDefaultTriunelyChurch: true,
-    });
-  }
-
-  return;
-}
-
-
-                // Resolve which church to open for this user.
-        // Order:
-        // 1) profiles.church_id (if you store it there)
-        // 2) church_members (normal membership)
-        // 3) church_admins (admin but not a "member" row)
-        // 4) TRIUNELY_CHURCH_ID fallback
-        let profileChurchId = null;
-        let memberChurchId = null;
-        let adminChurchId = null;
-
-        // 1) profiles.church_id (safe if column exists; ignore if it doesn't)
-        try {
-          const { data, error } = await supabase
-            .from("profiles")
-            .select("church_id")
-            .eq("id", uid)
-            .single();
-
-          if (!error && data?.church_id) {
-            profileChurchId = data.church_id;
-          }
-        } catch (e) {
-          // Ignore: column/table might differ
+        // If not signed in (shouldn't happen in tabs), go to Find Church.
+        if (!uid) {
+          if (!alive) return;
+          setResolvedChurchId(null);
+          navigation.replace("ChurchFind");
+          return;
         }
 
-        // 2) church_members (user_id, church_id)
+        // Resolve which church to open for this user.
+        // Order:
+        // 1) APPROVED church_memberships
+        // 2) church_admins (admin but not a membership row)
+        //
+        // IMPORTANT: NO default/fallback church.
+        let approvedMemberChurchId = null;
+        let adminChurchId = null;
+
+        // 1) Approved membership (user_id, church_id, status)
         try {
-  // Your actual table name (from Supabase): church_memberships (user_id, church_id)
-  const { data, error } = await supabase
-    .from("church_memberships")
-    .select("church_id")
-    .eq("user_id", uid)
-    .limit(1);
+          const { data, error } = await supabase
+            .from("church_memberships")
+            .select("church_id, created_at")
+            .eq("user_id", uid)
+            .eq("status", "approved")
+            .order("created_at", { ascending: false })
+            .limit(1);
 
-  if (error) {
-    console.log("church_memberships lookup error:", error);
-  } else if (Array.isArray(data) && data.length > 0) {
-    memberChurchId = data?.[0]?.church_id ?? null;
-  }
-} catch (e) {
-  console.log("church_memberships lookup exception:", e);
-}
+          if (error) {
+            console.log("church_memberships lookup error:", error);
+          } else if (Array.isArray(data) && data.length > 0) {
+            approvedMemberChurchId = data?.[0]?.church_id ?? null;
+          }
+        } catch (e) {
+          console.log("church_memberships lookup exception:", e);
+        }
 
-
-        // 3) church_admins (user_id, church_id) — admin routing support
+        // 2) church_admins (user_id, church_id) — admin routing support
         try {
           const { data, error } = await supabase
             .from("church_admins")
-            .select("church_id")
+            .select("church_id, created_at")
             .eq("user_id", uid)
+            .order("created_at", { ascending: false })
             .limit(1);
 
           if (!error && Array.isArray(data) && data.length > 0) {
@@ -177,25 +174,26 @@ if (!uid) {
           // Ignore: table may not exist yet
         }
 
-        const finalId =
-          profileChurchId || memberChurchId || adminChurchId || TRIUNELY_CHURCH_ID || null;
-
+        const finalId = approvedMemberChurchId || adminChurchId || null;
 
         if (!alive) return;
         setResolvedChurchId(finalId);
 
-        // If we have a church id, immediately route to the profile within the Church tab stack
+        // If we have a church id, route to it.
+        // Otherwise, go to Find your church.
         if (finalId) {
           navigation.replace("ChurchProfilePublic", {
-  churchId: finalId,
-  isDefaultTriunelyChurch: finalId === TRIUNELY_CHURCH_ID,
-});
-
+            churchId: finalId,
+          });
+        } else {
+          navigation.replace("ChurchFind");
         }
       } catch (e) {
         if (!alive) return;
+        console.log("ChurchEntry routing error:", e);
         setErrorText(e?.message || "Could not load your church right now.");
-        setResolvedChurchId(TRIUNELY_CHURCH_ID || null);
+        setResolvedChurchId(null);
+        navigation.replace("ChurchFind");
       } finally {
         if (alive) setLoading(false);
       }
@@ -208,50 +206,68 @@ if (!uid) {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, backgroundColor: theme.colors.bg, justifyContent: "center", alignItems: "center" }}>
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: theme.colors.bg,
+          justifyContent: "center",
+          alignItems: "center",
+        }}
+      >
         <ActivityIndicator size="large" color={theme.colors.gold} />
         <Text style={{ color: theme.colors.muted, marginTop: 8 }}>Loading church…</Text>
       </View>
     );
   }
 
-  // If we didn't resolve any church id, show a safe fallback UI.
-  // Later we will replace this with your Join/Find Church page with an X dismiss.
+  // We should almost always have navigated away. If not, show a safe fallback UI.
   if (!resolvedChurchId) {
     return (
-      <View style={{ flex: 1, backgroundColor: theme.colors.bg, justifyContent: "center", alignItems: "center", padding: 16 }}>
-        <Text style={{ color: theme.colors.text, fontSize: 18, fontWeight: "900", marginBottom: 6 }}>
-          Find a church
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: theme.colors.bg,
+          justifyContent: "center",
+          alignItems: "center",
+          padding: 16,
+        }}
+      >
+        <Text
+          style={{
+            color: theme.colors.text,
+            fontSize: 18,
+            fontWeight: "900",
+            marginBottom: 6,
+          }}
+        >
+          Find your church
         </Text>
 
         <Text style={{ color: theme.colors.muted, textAlign: "center", marginBottom: 16 }}>
-          You’re not linked to a church yet. Next we’ll add the Join/Find Church screen here.
+          You’re not linked to a church yet.
         </Text>
 
         {errorText ? (
-          <Text style={{ color: "tomato", fontWeight: "800", textAlign: "center", marginBottom: 12 }}>
+          <Text
+            style={{
+              color: "tomato",
+              fontWeight: "800",
+              textAlign: "center",
+              marginBottom: 12,
+            }}
+          >
             {errorText}
           </Text>
         ) : null}
 
         <Pressable
-          onPress={() => {
-            if (!TRIUNELY_CHURCH_ID) return;
-            navigation.replace("ChurchProfilePublic", {
-  churchId: TRIUNELY_CHURCH_ID,
-  isDefaultTriunelyChurch: true,
-});
-
-          }}
+          onPress={() => navigation.replace("ChurchFind")}
           style={[
             theme.button.primary,
-            { borderRadius: 14, paddingVertical: 12, paddingHorizontal: 14, opacity: TRIUNELY_CHURCH_ID ? 1 : 0.5 },
+            { borderRadius: 14, paddingVertical: 12, paddingHorizontal: 14 },
           ]}
-          disabled={!TRIUNELY_CHURCH_ID}
         >
-          <Text style={theme.button.primaryText}>
-            {TRIUNELY_CHURCH_ID ? "Open Triunely Church" : "Set TRIUNELY_CHURCH_ID to enable"}
-          </Text>
+          <Text style={theme.button.primaryText}>Find your church</Text>
         </Pressable>
       </View>
     );
@@ -259,7 +275,14 @@ if (!uid) {
 
   // If we have a resolved id but navigation.replace hasn't fired for some reason
   return (
-    <View style={{ flex: 1, backgroundColor: theme.colors.bg, justifyContent: "center", alignItems: "center" }}>
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: theme.colors.bg,
+        justifyContent: "center",
+        alignItems: "center",
+      }}
+    >
       <ActivityIndicator size="small" color={theme.colors.gold} />
       <Text style={{ color: theme.colors.muted, marginTop: 8 }}>Opening church…</Text>
     </View>
@@ -278,8 +301,27 @@ function CoachStackNavigator() {
 function CommunityStackNavigator() {
   return (
     <CommunityStack.Navigator screenOptions={{ headerShown: false }}>
+
       <CommunityStack.Screen name="CommunityMain" component={Community} />
     </CommunityStack.Navigator>
+  );
+}
+
+function PrayerStackNavigator() {
+  return (
+   <PrayerStack.Navigator screenOptions={{ headerShown: false }}>
+
+      <PrayerStack.Screen name="PrayerMain" component={Prayer} />
+    </PrayerStack.Navigator>
+  );
+}
+
+function ProfileStackNavigator() {
+  return (
+   <ProfileStack.Navigator screenOptions={{ headerShown: false }}>
+
+      <ProfileStack.Screen name="ProfileMain" component={Profile} />
+    </ProfileStack.Navigator>
   );
 }
 
@@ -297,12 +339,26 @@ function ChurchStackNavigator() {
       <ChurchStack.Screen name="ChurchEntry" component={ChurchEntry} />
 
       <ChurchStack.Screen name="ChurchProfilePublic" component={ChurchProfilePublic} />
-      <ChurchStack.Screen
-  name="ChurchFind"
-  component={ChurchFind}
-  options={{ animation: "slide_from_right" }}
-/>
 
+      {/* ✅ ChurchCreateChurch inside Church tab stack */}
+      <ChurchStack.Screen
+        name="ChurchCreateChurch"
+        component={ChurchCreateChurch}
+        options={{ animation: "slide_from_right" }}
+      />
+
+      {/* ✅ ChurchEdit inside Church tab stack */}
+      <ChurchStack.Screen
+        name="ChurchEdit"
+        component={ChurchEdit}
+        options={{ animation: "slide_from_right" }}
+      />
+
+      <ChurchStack.Screen
+        name="ChurchFind"
+        component={ChurchFind}
+        options={{ animation: "slide_from_right" }}
+      />
 
       <ChurchStack.Screen
         name="ChurchInbox"
@@ -324,6 +380,13 @@ function ChurchStackNavigator() {
         component={ChurchAdminHub}
         options={{ animation: "slide_from_right" }}
       />
+
+      <ChurchStack.Screen
+        name="ChurchAdminAdmins"
+        component={ChurchAdminAdmins}
+        options={{ animation: "slide_from_right" }}
+      />
+
       <ChurchStack.Screen
         name="ChurchFeed"
         component={ChurchFeed}
@@ -388,10 +451,10 @@ function MainTabs() {
     >
       <Tab.Screen name="Daily" component={Daily} />
       <Tab.Screen name="Coach" component={CoachStackNavigator} />
-      <Tab.Screen name="Prayer" component={Prayer} />
+      <Tab.Screen name="Prayer" component={PrayerStackNavigator} />
       <Tab.Screen name="Community" component={CommunityStackNavigator} />
       <Tab.Screen name="Church" component={ChurchStackNavigator} />
-      <Tab.Screen name="Profile" component={Profile} />
+      <Tab.Screen name="Profile" component={ProfileStackNavigator} />
     </Tab.Navigator>
   );
 }
@@ -400,6 +463,12 @@ function RootNavigator() {
   return (
     <RootStack.Navigator screenOptions={{ headerShown: false }}>
       <RootStack.Screen name="MainTabs" component={MainTabs} />
+
+      <RootStack.Screen
+        name="Notifications"
+        component={NotificationsScreen}
+        options={{ animation: "slide_from_right", headerShown: false }}
+      />
 
       <RootStack.Screen
         name="GlobalSearch"
@@ -425,11 +494,10 @@ function RootNavigator() {
       />
 
       <RootStack.Screen
-  name="ChurchFind"
-  component={ChurchFind}
-  options={{ animation: "slide_from_right" }}
-/>
-
+        name="ChurchFind"
+        component={ChurchFind}
+        options={{ animation: "slide_from_right" }}
+      />
 
       {/* Keep these RootStack church routes as fallback for now */}
       <RootStack.Screen
@@ -437,6 +505,21 @@ function RootNavigator() {
         component={ChurchProfilePublic}
         options={{ animation: "slide_from_right" }}
       />
+
+      {/* ✅ ChurchCreateChurch fallback route */}
+      <RootStack.Screen
+        name="ChurchCreateChurch"
+        component={ChurchCreateChurch}
+        options={{ animation: "slide_from_right" }}
+      />
+
+      {/* ChurchEdit fallback route */}
+      <RootStack.Screen
+        name="ChurchEdit"
+        component={ChurchEdit}
+        options={{ animation: "slide_from_right" }}
+      />
+
       <RootStack.Screen
         name="ChurchInbox"
         component={ChurchInbox}
@@ -457,6 +540,13 @@ function RootNavigator() {
         component={ChurchAdminHub}
         options={{ animation: "slide_from_right" }}
       />
+
+      <RootStack.Screen
+        name="ChurchAdminAdmins"
+        component={ChurchAdminAdmins}
+        options={{ animation: "slide_from_right" }}
+      />
+
       <RootStack.Screen
         name="ChurchFeed"
         component={ChurchFeed}
@@ -583,9 +673,7 @@ export default function App() {
             }}
           >
             <ActivityIndicator size="large" color={theme.colors.gold} />
-            <Text style={{ color: theme.colors.muted, marginTop: 8 }}>
-              Loading your profile…
-            </Text>
+            <Text style={{ color: theme.colors.muted, marginTop: 8 }}>Loading your profile…</Text>
           </View>
         ) : (
           <PointsProvider>

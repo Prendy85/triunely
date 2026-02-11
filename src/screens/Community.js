@@ -31,7 +31,7 @@ import GlowCard from "../components/GlowCard";
 import PostCard from "../components/PostCard";
 import Screen from "../components/Screen";
 import SearchLaunchButton from "../components/SearchLaunchButton";
-import { GLOBAL_COMMUNITY_ID } from "../lib/constants";
+import { HOME_COMMUNITY_ID } from "../lib/constants";
 import { theme } from "../theme/theme";
 
 
@@ -256,7 +256,7 @@ export default function Community() {
   const [viewerCanvasLayout, setViewerCanvasLayout] = useState(null);
 
    // Notifications overlay (Modal below uses showNotifications)
-  const [showNotifications, setShowNotifications] = useState(false);
+  
 const [unreadFellowshipCount, setUnreadFellowshipCount] = useState(0);
 
   // Notifications (same pattern as Profile)
@@ -265,17 +265,6 @@ const [unreadFellowshipCount, setUnreadFellowshipCount] = useState(0);
   const [adminChurchId, setAdminChurchId] = useState(null);
 const [checkingChurchAdmin, setCheckingChurchAdmin] = useState(false);
 
-
-
-
-  // TEMP: local notifications data (we’ll replace with Supabase next)
-  const [notifications, setNotifications] = useState([
-    { id: "n1", text: "Someone reacted to your post", read: false },
-    { id: "n2", text: "Someone commented on a post you follow", read: false },
-    { id: "n3", text: "A new story was posted", read: true },
-  ]);
-
-  const unreadNotifications = notifications.filter((n) => !n.read).length;
 
    // Search overlay
   const [showSearch, setShowSearch] = useState(false);
@@ -448,7 +437,7 @@ useEffect(() => {
   }, []);
 
   async function fetchPosts(isRefresh = false) {
-    if (!GLOBAL_COMMUNITY_ID) return;
+    if (!HOME_COMMUNITY_ID) return;
 
     if (isRefresh) {
       setRefreshing(true);
@@ -492,7 +481,8 @@ useEffect(() => {
   `
   )
 
-          .eq("community_id", GLOBAL_COMMUNITY_ID)
+          .eq("community_id", HOME_COMMUNITY_ID)
+
   // IMPORTANT: do NOT filter visibility here.
   // We want global + church + fellowship + your own, and RLS will decide what you’re allowed to see.
 
@@ -549,17 +539,18 @@ useEffect(() => {
   }
 
   useEffect(() => {
-  if (!GLOBAL_COMMUNITY_ID) return;
+  if (!HOME_COMMUNITY_ID) return;
 
   const channel = supabase
-    .channel(`posts-feed-${GLOBAL_COMMUNITY_ID}`)
+    .channel(`posts-feed-${HOME_COMMUNITY_ID}`)
+
     .on(
       "postgres_changes",
       {
         event: "INSERT",
         schema: "public",
         table: "posts",
-        filter: `community_id=eq.${GLOBAL_COMMUNITY_ID}`,
+        filter: `community_id=eq.${HOME_COMMUNITY_ID}`,
       },
       async (payload) => {
         const newRow = payload.new;
@@ -633,7 +624,7 @@ useEffect(() => {
   return () => {
     supabase.removeChannel(channel);
   };
-}, [GLOBAL_COMMUNITY_ID]);
+}, [HOME_COMMUNITY_ID]);
 
 
   async function loadStories() {
@@ -1010,7 +1001,7 @@ useEffect(() => {
           return;
         }
 
-        setNotifications(data || []);
+       
         setUnreadNotificationCount((data || []).filter((n) => !n.is_read).length);
       } catch (e) {
         console.log("notifications load exception:", e);
@@ -1019,49 +1010,10 @@ useEffect(() => {
   }, []);
 
   async function handleOpenNotifications() {
-      setShowNotifications(true);
+      navigation.navigate("Notifications");
+return;
 
-    try {
-      const { data: sessionData, error: sessionError } =
-        await supabase.auth.getSession();
-      if (sessionError) throw sessionError;
 
-      const userId = sessionData?.session?.user?.id;
-      if (!userId) return;
-
-      const { data, error } = await supabase
-        .from("notifications")
-        .select("*")
-        .eq("user_id", userId)
-        .order("created_at", { ascending: false });
-
-      if (error) {
-        console.log("notifications refresh error:", error);
-        return;
-      }
-
-      setNotifications(data || []);
-
-      const unread = (data || []).filter((n) => !n.is_read).length;
-      setUnreadNotificationCount(unread);
-
-      if (unread > 0) {
-        const unreadIds = (data || []).filter((n) => !n.is_read).map((n) => n.id);
-
-        const { error: markError } = await supabase
-          .from("notifications")
-          .update({ is_read: true })
-          .in("id", unreadIds);
-
-        if (markError) {
-          console.log("mark notifications read error:", markError);
-        } else {
-          setUnreadNotificationCount(0);
-        }
-      }
-    } catch (e) {
-      console.log("Error opening notifications", e);
-    }
   }
 
 function handleOpenFellowship() {
@@ -1184,13 +1136,15 @@ function handleOpenFellowship() {
       }
 
       // ---------- 2) Insert the post row ----------
-      const payload = {
-        user_id: userId,
-        community_id: GLOBAL_COMMUNITY_ID,
-        content: content.trim(),
-        visibility: "global",
-        is_anonymous: !!isAnonymous,
-      };
+  const payload = {
+  user_id: userId,
+  community_id: HOME_COMMUNITY_ID,
+  content: content.trim(),
+  visibility: "communities",
+  is_anonymous: !!isAnonymous,
+};
+
+
 
       if (url && url.trim()) payload.url = url.trim();
       if (mediaUrl) {
@@ -1393,12 +1347,12 @@ if (linkPreview) {
         .from("posts")
         .insert({
           user_id: currentUserId,
-          community_id: GLOBAL_COMMUNITY_ID,
+          community_id: HOME_COMMUNITY_ID,
           content: post.content,
           url: post.url,
           media_url: post.media_url,
           media_type: post.media_type,
-          visibility: "global",
+          visibility: "communities",
           is_anonymous: false,
         })
         .select(
@@ -1459,13 +1413,25 @@ if (linkPreview) {
     <PostCard
       post={item}
       currentUserId={currentUserId}
-          author={{
+         author={
+  item.church_id && item.church
+    ? {
+        id: item.church_id,
+        name: item.church.display_name || item.church.name || "Church",
+        avatarUrl: item.church.avatar_url || null,
+        isAnonymous: false,
+        isOwner: false,
+        isVerified: !!item.church.is_verified,
+      }
+    : {
         id: item.user_id,
         name: who,
         avatarUrl,
         isAnonymous: !!item.is_anonymous,
         isOwner,
-      }}
+      }
+}
+
       onPressAvatar={(id) => {
   // If this post is authored by a church, open church profile instead
   if (item.church_id) {
@@ -2033,106 +1999,6 @@ if (linkPreview) {
 
               {/* Tap outside to close */}
               <Pressable style={{ flex: 1 }} onPress={() => setShowSearch(false)} />
-            </View>
-          </Modal>
-
-          {/* NOTIFICATIONS OVERLAY */}
-          <Modal
-            visible={showNotifications}
-            animationType="slide"
-            transparent={true}
-            onRequestClose={() => setShowNotifications(false)}
-          >
-            <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.55)" }}>
-              <View
-                style={{
-                  marginTop: insets.top + 10,
-                  marginHorizontal: 12,
-                  borderRadius: 18,
-                  overflow: "hidden",
-                  backgroundColor: theme.colors.surface,
-                  borderWidth: 1,
-                  borderColor: theme.colors.divider,
-                }}
-              >
-                {/* Header */}
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    paddingHorizontal: 14,
-                    paddingVertical: 12,
-                    borderBottomWidth: 1,
-                    borderBottomColor: theme.colors.divider,
-                  }}
-                >
-                  <Text style={{ color: theme.colors.text, fontWeight: "900", fontSize: 16 }}>Notifications</Text>
-
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                    <Pressable
-                      onPress={() => setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))}
-                      style={{
-                        paddingHorizontal: 10,
-                        paddingVertical: 6,
-                        borderRadius: 999,
-                        backgroundColor: theme.colors.goldHalo,
-                        borderWidth: 1,
-                        borderColor: theme.colors.goldOutline,
-                      }}
-                    >
-                      <Text style={{ color: theme.colors.text, fontWeight: "900", fontSize: 12 }}>Mark all read</Text>
-                    </Pressable>
-
-                    <Pressable
-                      onPress={() => setShowNotifications(false)}
-                      hitSlop={10}
-                      style={{ paddingHorizontal: 10, paddingVertical: 6 }}
-                    >
-                      <Text style={{ color: theme.colors.muted, fontWeight: "900", fontSize: 16 }}>✕</Text>
-                    </Pressable>
-                  </View>
-                </View>
-
-                {/* List */}
-                <View style={{ maxHeight: 520, paddingBottom: 10 }}>
-                  <FlatList
-                    data={notifications}
-                    keyExtractor={(item) => item.id}
-                    renderItem={({ item }) => (
-                      <Pressable
-                        onPress={() => {
-                          setNotifications((prev) => prev.map((n) => (n.id === item.id ? { ...n, read: true } : n)));
-                        }}
-                        style={({ pressed }) => ({
-                          paddingHorizontal: 14,
-                          paddingVertical: 12,
-                          borderTopWidth: 1,
-                          borderTopColor: theme.colors.divider,
-                          backgroundColor: pressed
-                            ? theme.colors.sageSoft || "rgba(134,171,142,0.10)"
-                            : item.read
-                            ? "transparent"
-                            : theme.colors.goldHalo || "rgba(255,215,0,0.10)",
-                        })}
-                      >
-                        <Text style={{ color: theme.colors.text, fontWeight: item.read ? "700" : "900" }}>
-                          {item.text}
-                        </Text>
-                        <Text style={{ color: theme.colors.muted, marginTop: 4, fontSize: 12 }}>Tap to mark read</Text>
-                      </Pressable>
-                    )}
-                    ListEmptyComponent={
-                      <Text style={{ color: theme.colors.muted, textAlign: "center", padding: 16 }}>
-                        No notifications yet.
-                      </Text>
-                    }
-                  />
-                </View>
-              </View>
-
-              {/* Tap outside to close */}
-              <Pressable style={{ flex: 1 }} onPress={() => setShowNotifications(false)} />
             </View>
           </Modal>
 
