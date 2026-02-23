@@ -3,23 +3,23 @@ import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { useCallback, useMemo, useState } from "react";
 import {
-    ActivityIndicator,
-    FlatList,
-    Image,
-    Pressable,
-    SafeAreaView,
-    Text,
-    View,
+  ActivityIndicator,
+  FlatList,
+  Image,
+  Pressable,
+  SafeAreaView,
+  Text,
+  View,
 } from "react-native";
 
 import {
-    deleteNotification,
-    fetchNotifications,
-    fetchProfilesByIds,
-    fetchUnreadCount,
-    markAllRead,
-    markNotificationRead,
-    respondToChurchJoinRequest,
+  deleteNotification,
+  fetchNotifications,
+  fetchProfilesByIds,
+  fetchUnreadCount,
+  markAllRead,
+  markNotificationRead,
+  respondToChurchJoinRequest,
 } from "../lib/notifications";
 
 import { theme } from "../theme/theme";
@@ -109,14 +109,23 @@ export default function NotificationsScreen() {
         setErrorText("");
         setDecisionLoadingByNotifId((prev) => ({ ...prev, [notifId]: true }));
 
-        // 1) approve membership via RPC
-        await respondToChurchJoinRequest({ item, decision: "accepted" });
+       // 0) mark read immediately so badge clears even if delete fails
+await markNotificationRead(notifId);
 
-        // 2) remove this notification so it disappears
-        await deleteNotification(notifId);
+// 1) approve membership via RPC
+await respondToChurchJoinRequest({ item, decision: "accepted" });
 
-        // 3) reload list
-        await load();
+// 2) OPTIONAL: try delete so it disappears from list
+// If delete is blocked by RLS, it will throw — we ignore that.
+try {
+  await deleteNotification(notifId);
+} catch (e) {
+  console.log("deleteNotification blocked/failed (ok):", e?.message || e);
+}
+
+// 3) reload list
+await load();
+
       } catch (e) {
         setErrorText(e?.message || "Failed to accept join request");
       } finally {
@@ -139,14 +148,22 @@ export default function NotificationsScreen() {
         setErrorText("");
         setDecisionLoadingByNotifId((prev) => ({ ...prev, [notifId]: true }));
 
-        // 1) reject membership via RPC
-        await respondToChurchJoinRequest({ item, decision: "declined" });
+       // 0) mark read immediately so badge clears even if delete fails
+await markNotificationRead(notifId);
 
-        // 2) remove this notification so it disappears
-        await deleteNotification(notifId);
+// 1) reject membership via RPC
+await respondToChurchJoinRequest({ item, decision: "declined" });
 
-        // 3) reload list
-        await load();
+// 2) OPTIONAL: try delete so it disappears from list
+try {
+  await deleteNotification(notifId);
+} catch (e) {
+  console.log("deleteNotification blocked/failed (ok):", e?.message || e);
+}
+
+// 3) reload list
+await load();
+
       } catch (e) {
         setErrorText(e?.message || "Failed to decline join request");
       } finally {

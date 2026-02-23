@@ -2,20 +2,21 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useMemo, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Image,
-    Pressable,
-    ScrollView,
-    Share,
-    Text,
-    View,
+  ActivityIndicator,
+  Alert,
+  Image,
+  Pressable,
+  ScrollView,
+  Share,
+  Text,
+  View,
 } from "react-native";
 
 import PostCard from "../components/PostCard";
 import PostCommentsModal from "../components/PostCommentsModal";
 import Screen from "../components/Screen";
 import VerifiedBadge from "../components/VerifiedBadge";
+import { getOrCreateDirectConversation } from "../lib/messages";
 import { supabase } from "../lib/supabase";
 import { theme } from "../theme/theme";
 
@@ -61,6 +62,7 @@ export default function UserProfile({ route, navigation }) {
   const [profile, setProfile] = useState(null);
   const [displayName, setDisplayName] = useState("");
   const [isVerified, setIsVerified] = useState(false);
+  const [handle, setHandle] = useState("");
 
   // Groups joined (read-only)
   const [groupsJoined, setGroupsJoined] = useState([]);
@@ -80,6 +82,8 @@ export default function UserProfile({ route, navigation }) {
   const initials = useMemo(() => {
     return safeInitials(displayName);
   }, [displayName]);
+
+  const isMe = Boolean(currentUserId && targetUserId && currentUserId === targetUserId);
 
   async function loadPosts(userId) {
     if (!userId) return;
@@ -143,12 +147,12 @@ export default function UserProfile({ route, navigation }) {
 
         const meId = sessionData?.session?.user?.id ?? null;
         setCurrentUserId(meId);
-        // ✅ If someone taps *their own* avatar anywhere, send them to the real Profile tab
-if (meId && targetUserId === meId) {
-  navigation.navigate("MainTabs", { screen: "Profile" });
-  return;
-}
 
+        // ✅ If someone taps *their own* avatar anywhere, send them to the real Profile tab
+        if (meId && targetUserId === meId) {
+          navigation.navigate("MainTabs", { screen: "Profile" });
+          return;
+        }
 
         // 2) target profile
         const { data: p, error: pError } = await supabase
@@ -157,6 +161,7 @@ if (meId && targetUserId === meId) {
             `
             id,
             display_name,
+            handle,
             avatar_url,
             cover_image_url,
             is_verified,
@@ -178,6 +183,7 @@ if (meId && targetUserId === meId) {
 
         setProfile(p);
         setDisplayName(p?.display_name || "Triunely user");
+        setHandle(p?.handle || "");
         setIsVerified(Boolean(p?.is_verified));
 
         // 3) groups joined (read-only)
@@ -212,6 +218,19 @@ if (meId && targetUserId === meId) {
       }
     })();
   }, [targetUserId]);
+
+  // --------- DM action ---------
+
+  async function handleMessageUser() {
+    try {
+      if (!targetUserId) return;
+      const conversationId = await getOrCreateDirectConversation(targetUserId);
+      navigation.navigate("Chat", { conversationId });
+    } catch (e) {
+      console.log("UserProfile handleMessageUser error", e);
+      Alert.alert("Error", "We couldn't start a message right now.");
+    }
+  }
 
   // --------- PostCard actions (share / reactions / comments) ---------
 
@@ -342,10 +361,7 @@ if (meId && targetUserId === meId) {
           ) : (
             <View>
               {groupsJoined.map((name) => (
-                <Text
-                  key={name}
-                  style={{ color: theme.colors.text, fontWeight: "700", marginBottom: 2 }}
-                >
+                <Text key={name} style={{ color: theme.colors.text, fontWeight: "700", marginBottom: 2 }}>
                   • {name}
                 </Text>
               ))}
@@ -560,25 +576,49 @@ if (meId && targetUserId === meId) {
               </View>
 
               {/* Name + verified */}
-              <View
-                style={{
-                  marginTop: 10,
-                  paddingHorizontal: 4,
-                  flexDirection: "row",
-                  alignItems: "baseline",
-                }}
-              >
-                <Text
-                  style={{ color: theme.colors.text, fontSize: 22, fontWeight: "900" }}
-                  numberOfLines={1}
-                >
-                  {displayName || "Triunely user"}
-                </Text>
+              <View style={{ marginTop: 10, paddingHorizontal: 4 }}>
+                <View style={{ flexDirection: "row", alignItems: "baseline" }}>
+                  <Text
+                    style={{ color: theme.colors.text, fontSize: 22, fontWeight: "900" }}
+                    numberOfLines={1}
+                  >
+                    {displayName || "Triunely user"}
+                  </Text>
 
-                {isVerified ? (
-                  <View style={{ marginLeft: 6, marginTop: 1 }}>
-                    <VerifiedBadge size={15} />
-                  </View>
+                  {isVerified ? (
+                    <View style={{ marginLeft: 6, marginTop: 1 }}>
+                      <VerifiedBadge size={15} />
+                    </View>
+                  ) : null}
+                </View>
+
+                {/* Handle */}
+                {handle ? (
+                  <Text style={{ color: theme.colors.muted, fontWeight: "800", marginTop: 4 }}>
+                    @{handle}
+                  </Text>
+                ) : null}
+
+                {/* Message button (only if not me) */}
+                {!isMe ? (
+                  <Pressable
+                    onPress={handleMessageUser}
+                    style={[
+                      theme.button.primary,
+                      {
+                        marginTop: 10,
+                        borderRadius: 14,
+                        paddingVertical: 12,
+                        alignItems: "center",
+                        flexDirection: "row",
+                        justifyContent: "center",
+                        gap: 8,
+                      },
+                    ]}
+                  >
+                    <Ionicons name="chatbubble-ellipses" size={18} color={theme.colors.text} />
+                    <Text style={theme.button.primaryText}>Message</Text>
+                  </Pressable>
                 ) : null}
               </View>
             </View>

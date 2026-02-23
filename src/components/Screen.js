@@ -1,6 +1,6 @@
 // src/components/Screen.js
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
-import { View } from "react-native";
+import { Platform, View } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { theme } from "../theme/theme";
 
@@ -11,7 +11,8 @@ import { theme } from "../theme/theme";
  * - Exposes bottomPad so FlatList/ScrollView can avoid the bottom tab bar
  * - Default background is Triunely light theme (white)
  *
- * NEW: `edges` prop lets a screen opt into bottom safe area if needed.
+ * `edges` prop lets a screen opt into bottom safe area if needed.
+ * NEW: `keyboardSafe` lets a screen include bottom edge on Android so IME (keyboard) insets resize the layout.
  */
 export default function Screen({
   children,
@@ -20,6 +21,7 @@ export default function Screen({
   style,
   contentStyle,
   edges = ["top", "left", "right"],
+  keyboardSafe = false,
 }) {
   const insets = useSafeAreaInsets();
 
@@ -33,6 +35,12 @@ export default function Screen({
   const horizontalPad = padded ? theme.spacing.md : 0;
   const bottomPad = insets.bottom + tabBarHeight;
 
+  // ✅ If keyboardSafe on Android, include "bottom" so IME inset (keyboard) resizes the view.
+  const effectiveEdges =
+    keyboardSafe && Platform.OS === "android"
+      ? Array.from(new Set([...(edges || []), "bottom"]))
+      : edges;
+
   return (
     <SafeAreaView
       style={[
@@ -41,11 +49,11 @@ export default function Screen({
           width: "100%",
           backgroundColor,
           alignItems: "stretch",
-          overflow: "visible", // allow carousel peeks, shadows, etc.
+          overflow: "visible",
         },
         style,
       ]}
-      edges={edges}
+      edges={effectiveEdges}
     >
       <View
         style={[

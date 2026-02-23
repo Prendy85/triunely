@@ -6,13 +6,17 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import * as Linking from "expo-linking";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { PointsProvider } from "./src/context/PointsContext";
 import { supabase } from "./src/lib/supabase";
+
+// ✅ NEW: central realtime wrapper (Step 7 onwards)
+import { RealtimeProvider } from "./src/context/RealtimeProvider";
 
 // Theme
 import { theme } from "./src/theme/theme";
@@ -23,6 +27,7 @@ import Coach from "./src/screens/Coach";
 import CoachChats from "./src/screens/CoachChats";
 import Community from "./src/screens/Community";
 import Daily from "./src/screens/Daily";
+import MessagesInbox from "./src/screens/MessagesInbox";
 import NotificationsScreen from "./src/screens/NotificationsScreen";
 import Prayer from "./src/screens/Prayer";
 import Profile from "./src/screens/Profile";
@@ -62,7 +67,9 @@ import ChurchProfilePublic from "./src/screens/ChurchProfilePublic";
 import ChurchEdit from "./src/screens/ChurchEdit";
 
 // ✅ Step 2B: ADD ChurchCreateChurch screen
+import Chat from "./src/screens/Chat";
 import ChurchCreateChurch from "./src/screens/ChurchCreateChurch";
+import DirectMessageUserSearch from "./src/screens/DirectMessageUserSearch";
 
 const Tab = createBottomTabNavigator();
 const CoachStack = createNativeStackNavigator();
@@ -301,7 +308,6 @@ function CoachStackNavigator() {
 function CommunityStackNavigator() {
   return (
     <CommunityStack.Navigator screenOptions={{ headerShown: false }}>
-
       <CommunityStack.Screen name="CommunityMain" component={Community} />
     </CommunityStack.Navigator>
   );
@@ -309,8 +315,7 @@ function CommunityStackNavigator() {
 
 function PrayerStackNavigator() {
   return (
-   <PrayerStack.Navigator screenOptions={{ headerShown: false }}>
-
+    <PrayerStack.Navigator screenOptions={{ headerShown: false }}>
       <PrayerStack.Screen name="PrayerMain" component={Prayer} />
     </PrayerStack.Navigator>
   );
@@ -318,8 +323,7 @@ function PrayerStackNavigator() {
 
 function ProfileStackNavigator() {
   return (
-   <ProfileStack.Navigator screenOptions={{ headerShown: false }}>
-
+    <ProfileStack.Navigator screenOptions={{ headerShown: false }}>
       <ProfileStack.Screen name="ProfileMain" component={Profile} />
     </ProfileStack.Navigator>
   );
@@ -465,6 +469,18 @@ function RootNavigator() {
       <RootStack.Screen name="MainTabs" component={MainTabs} />
 
       <RootStack.Screen
+        name="MessagesInbox"
+        component={MessagesInbox}
+        options={{ animation: "slide_from_right" }}
+      />
+
+      <RootStack.Screen
+        name="DirectMessageUserSearch"
+        component={DirectMessageUserSearch}
+        options={{ animation: "slide_from_right" }}
+      />
+
+      <RootStack.Screen
         name="Notifications"
         component={NotificationsScreen}
         options={{ animation: "slide_from_right", headerShown: false }}
@@ -572,6 +588,13 @@ function RootNavigator() {
         component={ChurchNoticeboard}
         options={{ animation: "slide_from_right" }}
       />
+
+      <RootStack.Screen
+        name="Chat"
+        component={Chat}
+        options={{ animation: "slide_from_right" }}
+      />
+
       <RootStack.Screen
         name="ChurchCreateGroup"
         component={ChurchCreateGroup}
@@ -587,6 +610,31 @@ export default function App() {
 
   const [profile, setProfile] = useState(null);
   const [profileLoading, setProfileLoading] = useState(false);
+
+  // ✅ React Navigation linking config (more reliable deep links)
+  const linking = useMemo(
+    () => ({
+      prefixes: [Linking.createURL("/")],
+      config: {
+        screens: {
+          // You can expand this later; for now, keep it simple/stable.
+          MainTabs: {
+            screens: {
+              Daily: "daily",
+              Coach: "coach",
+              Prayer: "prayer",
+              Community: "community",
+              Church: "church",
+              Profile: "profile",
+            },
+          },
+          Notifications: "notifications",
+          GlobalSearch: "search",
+        },
+      },
+    }),
+    []
+  );
 
   // Keep session in sync with Supabase
   useEffect(() => {
@@ -661,48 +709,55 @@ export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        {!session ? (
-          <AuthScreen />
-        ) : profileLoading ? (
-          <View
-            style={{
-              flex: 1,
-              backgroundColor: theme.colors.bg,
-              justifyContent: "center",
-              alignItems: "center",
-            }}
-          >
-            <ActivityIndicator size="large" color={theme.colors.gold} />
-            <Text style={{ color: theme.colors.muted, marginTop: 8 }}>Loading your profile…</Text>
-          </View>
-        ) : (
-          <PointsProvider>
-            {profile && profile.has_completed_onboarding === false ? (
-              <CompleteProfileOnboarding
-                profile={profile}
-                onFinished={(updatedProfile) => {
-                  setProfile(updatedProfile);
-                  setShowImpact(true);
-                }}
-              />
-            ) : (
-              <>
-                <NavigationContainer>
-                  <RootNavigator />
-                </NavigationContainer>
-
-                <ImpactModal
-                  visible={showImpact}
-                  onClose={() => setShowImpact(false)}
-                  subscribers={CURRENT_SUBSCRIBERS}
-                  pricePerMonth={SUBSCRIPTION_PRICE}
-                  charityPerSubscriber={CHARITY_PER_SUBSCRIBER}
-                  goalSubscribers={GOAL_SUBSCRIBERS}
+        <KeyboardProvider>
+          {!session ? (
+            <AuthScreen />
+          ) : profileLoading ? (
+            <View
+              style={{
+                flex: 1,
+                backgroundColor: theme.colors.bg,
+                justifyContent: "center",
+                alignItems: "center",
+              }}
+            >
+              <ActivityIndicator size="large" color={theme.colors.gold} />
+              <Text style={{ color: theme.colors.muted, marginTop: 8 }}>
+                Loading your profile…
+              </Text>
+            </View>
+          ) : (
+            <PointsProvider>
+              {profile && profile.has_completed_onboarding === false ? (
+                <CompleteProfileOnboarding
+                  profile={profile}
+                  onFinished={(updatedProfile) => {
+                    setProfile(updatedProfile);
+                    setShowImpact(true);
+                  }}
                 />
-              </>
-            )}
-          </PointsProvider>
-        )}
+              ) : (
+                <>
+                  {/* ✅ RealtimeProvider wraps nav so all screens can share a single live wiring source */}
+                  <RealtimeProvider session={session} profile={profile}>
+                    <NavigationContainer linking={linking}>
+                      <RootNavigator />
+                    </NavigationContainer>
+                  </RealtimeProvider>
+
+                  <ImpactModal
+                    visible={showImpact}
+                    onClose={() => setShowImpact(false)}
+                    subscribers={CURRENT_SUBSCRIBERS}
+                    pricePerMonth={SUBSCRIPTION_PRICE}
+                    charityPerSubscriber={CHARITY_PER_SUBSCRIBER}
+                    goalSubscribers={GOAL_SUBSCRIBERS}
+                  />
+                </>
+              )}
+            </PointsProvider>
+          )}
+        </KeyboardProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

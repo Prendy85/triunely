@@ -25,14 +25,17 @@ import { supabase } from "../lib/supabase";
 
 import { Ionicons } from "@expo/vector-icons";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
-import { useNavigation } from "@react-navigation/native";
+import { useFocusEffect, useNavigation } from "@react-navigation/native";
+import { useCallback } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import GlowCard from "../components/GlowCard";
 import PostCard from "../components/PostCard";
 import Screen from "../components/Screen";
 import SearchLaunchButton from "../components/SearchLaunchButton";
+import { useRealtime } from "../context/RealtimeProvider";
 import { HOME_COMMUNITY_ID } from "../lib/constants";
 import { theme } from "../theme/theme";
+
 
 
 
@@ -199,6 +202,7 @@ export default function Community() {
   const insets = useSafeAreaInsets();
 
 
+
   let tabBarHeight = 0;
   try {
     tabBarHeight = useBottomTabBarHeight();
@@ -216,6 +220,23 @@ export default function Community() {
 
   const [currentUserId, setCurrentUserId] = useState(null);
   const [profileAvatarUrl, setProfileAvatarUrl] = useState(null);
+  const rt = useRealtime();
+
+// Always live values (provided by RealtimeProvider)
+const unreadNotificationCount = rt?.unreadNotificationCount ?? 0;
+const unreadFellowshipCount = rt?.pendingFellowshipCount ?? 0;
+useFocusEffect(
+  useCallback(() => {
+    // When you come back from Notifications screen, force recount now
+    rt?.refreshCounts?.();
+  }, [rt])
+);
+
+console.log("RT COUNTS:", { unreadNotificationCount, unreadFellowshipCount });
+
+console.log("USER ID IN RT:", rt?.userId);
+
+
 
   // NEW: cache profiles for feed authors (so posts show real name/avatar)
   const [profilesById, setProfilesById] = useState({}); // { [userId]: { id, display_name, avatar_url } }
@@ -256,11 +277,6 @@ export default function Community() {
   const [viewerCanvasLayout, setViewerCanvasLayout] = useState(null);
 
    // Notifications overlay (Modal below uses showNotifications)
-  
-const [unreadFellowshipCount, setUnreadFellowshipCount] = useState(0);
-
-  // Notifications (same pattern as Profile)
-  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
 
   const [adminChurchId, setAdminChurchId] = useState(null);
 const [checkingChurchAdmin, setCheckingChurchAdmin] = useState(false);
@@ -273,6 +289,7 @@ const [checkingChurchAdmin, setCheckingChurchAdmin] = useState(false);
   function handleOpenSearch() {
   navigation.navigate("GlobalSearch");
 }
+
 
 useEffect(() => {
   let alive = true;
@@ -979,36 +996,6 @@ useEffect(() => {
     }
   }
 
-  // Load notifications + unread count on mount (same behaviour as Profile)
-  useEffect(() => {
-    (async () => {
-      try {
-        const { data: sessionData, error: sessionError } =
-          await supabase.auth.getSession();
-        if (sessionError) throw sessionError;
-
-        const userId = sessionData?.session?.user?.id;
-        if (!userId) return;
-
-        const { data, error } = await supabase
-          .from("notifications")
-          .select("*")
-          .eq("user_id", userId)
-          .order("created_at", { ascending: false });
-
-        if (error) {
-          console.log("notifications load error:", error);
-          return;
-        }
-
-       
-        setUnreadNotificationCount((data || []).filter((n) => !n.is_read).length);
-      } catch (e) {
-        console.log("notifications load exception:", e);
-      }
-    })();
-  }, []);
-
   async function handleOpenNotifications() {
       navigation.navigate("Notifications");
 return;
@@ -1017,9 +1004,12 @@ return;
   }
 
 function handleOpenFellowship() {
-  // TEMP: Replace this with the exact Profile behaviour later (navigate or open modal)
-  Alert.alert("Fellowship", "Open Fellowship here (copy Profile.js behaviour).");
+  navigation.navigate("MainTabs", {
+    screen: "Profile",
+    params: { openFellowshipRequests: true },
+  });
 }
+
 
   // Old helper is still used as a fallback if overlays don't have normalized coords
   function getOverlayPositionStyle(position) {
@@ -1554,6 +1544,19 @@ if (linkPreview) {
  {/* Search */}
 <SearchLaunchButton navigation={navigation} />
 
+{/* Messages (Unified Inbox) */}
+<Pressable
+  onPress={() => navigation.navigate("MessagesInbox")}
+  style={iconButtonStyle}
+  hitSlop={8}
+>
+  <Ionicons
+    name="chatbubble-ellipses-outline"
+    size={22}
+    color={theme.colors.text2}
+  />
+</Pressable>
+
 
   {/* Fellowship */}
   <Pressable
@@ -1570,6 +1573,8 @@ if (linkPreview) {
       </View>
     )}
   </Pressable>
+
+
 
   {/* Notifications */}
   <Pressable

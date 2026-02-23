@@ -24,8 +24,10 @@ import PostCommentsModal from "../components/PostCommentsModal";
 import Screen from "../components/Screen";
 import VerifiedBadge from "../components/VerifiedBadge";
 import { HOME_COMMUNITY_ID } from "../lib/constants";
+import { getOrCreateChurchConversation } from "../lib/messages";
 import { supabase } from "../lib/supabase";
 import { theme } from "../theme/theme";
+
 
 const POSTS_ENABLED = true;
 const PAGE_LIMIT = 50;
@@ -220,57 +222,68 @@ else {
     }
   }
 
-  async function handleJoinChurch() {
-    if (!viewerId) {
-      Alert.alert("Please sign in", "You need to be signed in to join a church.");
-      return;
-    }
-    if (!churchId) return;
-    if (isAdmin) return;
+async function handleJoinChurch() {
+  if (!viewerId) {
+    Alert.alert("Please sign in", "You need to be signed in to join a church.");
+    return;
+  }
+  if (!churchId) return;
+  if (isAdmin) return;
 
-    // If already approved/pending, do nothing
-    if (membershipStatus === "approved") {
-      Alert.alert("You're already a member", "You’re already linked to this church.");
-      return;
-    }
-    if (membershipStatus === "pending") {
-      Alert.alert("Request pending", "Your join request is already pending approval.");
-      return;
-    }
+  if (membershipStatus === "approved") {
+    Alert.alert("You're already a member", "You’re already linked to this church.");
+    return;
+  }
+  if (membershipStatus === "pending") {
+    Alert.alert("Request pending", "Your join request is already pending approval.");
+    return;
+  }
 
-    try {
-      setMembershipLoading(true);
+  try {
+    setMembershipLoading(true);
 
-      const payload = {
-        user_id: viewerId,
-        church_id: churchId,
-        status: "pending",
-      };
+    // ✅ If a record exists (including 'left'), reopen it
+    if (membershipRow?.id) {
+      const { error: updErr } = await supabase
+        .from("church_memberships")
+        .update({ status: "pending" })
+        .eq("id", membershipRow.id)
+        .eq("user_id", viewerId);
 
-      const { error } = await supabase.from("church_memberships").insert(payload);
-
-      if (error) {
-        // Unique constraint / already exists
-        if (error.code === "23505") {
-          await loadMembership(viewerId, churchId);
-          Alert.alert("Request already sent", "Your join request is already on file.");
-          return;
-        }
-
-        console.log("handleJoinChurch insert error:", error);
-        Alert.alert("Could not join", error?.message || "Please try again.");
+      if (updErr) {
+        console.log("reopen membership update error:", updErr);
+        Alert.alert("Could not rejoin", updErr.message || "Please try again.");
         return;
       }
 
       await loadMembership(viewerId, churchId);
       Alert.alert("Request sent", "Your request to join has been sent to the church.");
-    } catch (e) {
-      console.log("handleJoinChurch exception:", e);
-      Alert.alert("Could not join", "Please try again.");
-    } finally {
-      setMembershipLoading(false);
+      return;
     }
+
+    // ✅ No row exists → insert new
+    const { error: insErr } = await supabase.from("church_memberships").insert({
+      user_id: viewerId,
+      church_id: churchId,
+      status: "pending",
+    });
+
+    if (insErr) {
+      console.log("handleJoinChurch insert error:", insErr);
+      Alert.alert("Could not join", insErr.message || "Please try again.");
+      return;
+    }
+
+    await loadMembership(viewerId, churchId);
+    Alert.alert("Request sent", "Your request to join has been sent to the church.");
+  } catch (e) {
+    console.log("handleJoinChurch exception:", e);
+    Alert.alert("Could not join", e?.message || "Please try again.");
+  } finally {
+    setMembershipLoading(false);
   }
+}
+
 
   async function handleCancelJoinRequest() {
   if (!viewerId) {
@@ -326,33 +339,36 @@ async function handleLeaveChurch() {
       {
         text: "Leave",
         style: "destructive",
-        onPress: async () => {
-          try {
-            setMembershipLoading(true);
+      onPress: async () => {
+  try {
+    setMembershipLoading(true);
 
-            const { error } = await supabase
-              .from("church_memberships")
-              .update({ status: "left" })
-              .eq("id", membershipRow.id)
-              .eq("user_id", viewerId); // extra safety
+    const { error } = await supabase.rpc("leave_church", {
+      p_membership_id: membershipRow.id,
+    });
 
-            if (error) {
-              console.log("leave church update error:", error);
-              Alert.alert("Could not leave", error?.message || "Please try again.");
-              return;
-            }
+    if (error) {
+      console.log("leave_church rpc error:", error);
+      Alert.alert("Could not leave", error.message || "Please try again.");
+      return;
+    }
 
-            // Refresh UI state
-            await loadMembership(viewerId, churchId);
+    // IMPORTANT: clear local state immediately so UI doesn't think you're still a member
+    setMembershipRow(null);
+    setMembershipStatus("none");
 
-            Alert.alert("Left church", "You have left this church.");
-          } catch (e) {
-            console.log("leave church exception:", e);
-            Alert.alert("Could not leave", "Please try again.");
-          } finally {
-            setMembershipLoading(false);
-          }
-        },
+    // Reload from DB for safety (should return none now)
+    await loadMembership(viewerId, churchId);
+
+    Alert.alert("Left church", "You have left this church.");
+  } catch (e) {
+    console.log("leave church exception:", e);
+    Alert.alert("Could not leave", e?.message || "Please try again.");
+  } finally {
+    setMembershipLoading(false);
+  }
+},
+
       },
     ]
   );
@@ -454,58 +470,7 @@ async function handleLeaveChurch() {
     }, [churchId, viewerId])
   );
 
-  async function handleLeaveChurch() {
-  if (!viewerId) {
-    Alert.alert("Please sign in", "You need to be signed in.");
-    return;
-  }
-  if (!churchId) return;
 
-  // We need a membership row to update.
-  if (!membershipRow?.id) {
-    Alert.alert("Not linked", "We couldn't find your membership record.");
-    return;
-  }
-
-  Alert.alert(
-    "Leave church",
-    "Are you sure you want to leave this church? You can request to rejoin later.",
-    [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Leave",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            setMembershipLoading(true);
-
-            const { error } = await supabase
-              .from("church_memberships")
-              .update({ status: "left" })
-              .eq("id", membershipRow.id)
-              .eq("user_id", viewerId); // extra safety
-
-            if (error) {
-              console.log("leave church update error:", error);
-              Alert.alert("Could not leave", error?.message || "Please try again.");
-              return;
-            }
-
-            // Refresh UI state
-            await loadMembership(viewerId, churchId);
-
-            Alert.alert("Left church", "You have left this church.");
-          } catch (e) {
-            console.log("leave church exception:", e);
-            Alert.alert("Could not leave", "Please try again.");
-          } finally {
-            setMembershipLoading(false);
-          }
-        },
-      },
-    ]
-  );
-}
 
   async function uploadImageToChurch(pathPrefix, asset) {
     const fileExtFromUri =
@@ -951,36 +916,23 @@ async function handleLeaveChurch() {
                 paddingTop: 6,
               }}
             >
-              {/* Message button (everyone) */}
-              <Pressable
-                onPress={() => {
-                  if (!churchId) return;
+          
 
-                  if (isAdmin) {
-                    navigation.navigate("ChurchAdminInbox", { churchId });
-                    return;
-                  }
+          {/* Messages (Unified Inbox) */}
+<Pressable
+  onPress={() => navigation.navigate("MessagesInbox")}
+  style={{
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  }}
+  hitSlop={10}
+>
+  <Ionicons name="chatbubble-ellipses-outline" size={26} color={theme.colors.text2} />
+</Pressable>
 
-                  navigation.navigate("MainTabs", {
-                    screen: "Church",
-                    params: {
-                      screen: "ChurchInbox",
-                      params: { churchId },
-                    },
-                  });
-                }}
-                disabled={!churchId}
-                style={{
-                  paddingHorizontal: 10,
-                  paddingVertical: 8,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  opacity: churchId ? 1 : 0.4,
-                }}
-                hitSlop={10}
-              >
-                <Ionicons name="chatbubble-ellipses-outline" size={23} color={theme.colors.text2} />
-              </Pressable>
+
 
               {/* Admin button (admin only) - CLIPBOARD icon */}
               {isAdmin ? (
@@ -1249,7 +1201,18 @@ async function handleLeaveChurch() {
             {/* Message Church (non-admin only) */}
             {!isAdmin ? (
               <Pressable
-                onPress={() => navigation.navigate("ChurchInbox", { churchId })}
+                onPress={async () => {
+  try {
+    if (!churchId) return;
+
+    const conversationId = await getOrCreateChurchConversation(churchId);
+    navigation.navigate("Chat", { conversationId });
+  } catch (e) {
+    console.log("Message Church error", e);
+    Alert.alert("Messages", e?.message || "Could not open messages right now.");
+  }
+}}
+
                 disabled={!churchId}
                 style={[
                   theme.button.primary,

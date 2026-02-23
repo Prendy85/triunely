@@ -107,7 +107,8 @@ function normalizePostRow(row) {
   };
 }
 
-export default function Profile({ navigation }) {
+export default function Profile({ navigation, route }) {
+
 
   const [loading, setLoading] = useState(true);
 
@@ -264,6 +265,17 @@ const refreshChurchAdminStatus = useCallback(
       setLoadingPosts(false);
     }
   }
+
+  // If we arrived from Community with a request to open fellowship modal
+useEffect(() => {
+  if (route?.params?.openFellowshipRequests) {
+    setRequestsModalVisible(true);
+
+    // clear param so it doesn't re-open every time you return
+    navigation.setParams({ openFellowshipRequests: false });
+  }
+}, [route?.params?.openFellowshipRequests, navigation]);
+
 
   useFocusEffect(
   useCallback(() => {
@@ -1612,6 +1624,20 @@ await refreshChurchAdminStatus(userId);
               <Text style={theme.text.h1}>Profile</Text>
 
               <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+
+                {/* Messages (Unified Inbox) */}
+<Pressable
+  onPress={() => navigation.navigate("MessagesInbox")}
+  style={iconButtonStyle}
+  hitSlop={8}
+>
+  <Ionicons
+    name="chatbubble-ellipses-outline"
+    size={22}
+    color={theme.colors.text2}
+  />
+</Pressable>
+
 
            
                 {/* Notifications */}
