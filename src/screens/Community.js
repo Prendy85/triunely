@@ -31,12 +31,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import GlowCard from "../components/GlowCard";
 import PostCard from "../components/PostCard";
 import Screen from "../components/Screen";
-import SearchLaunchButton from "../components/SearchLaunchButton";
+import UnifiedInboxHeaderButton from "../components/UnifiedInboxHeaderButton";
+import { useFellowshipRequestsModal } from "../context/FellowshipRequestsModalProvider";
 import { useRealtime } from "../context/RealtimeProvider";
 import { HOME_COMMUNITY_ID } from "../lib/constants";
 import { theme } from "../theme/theme";
-
-
 
 
 const iconButtonStyle = {
@@ -72,13 +71,237 @@ const STORY_INNER = STORY_SIZE - STORY_RING * 2; // avatar size inside ring
 
 const SAGE_TINT = "rgba(120, 150, 110, 0.14)"; // calm sage halo for meta UI
 
+const HEAVENLY_GOLD = "#D99400";
+const DEEP_OLIVE = "#4F633B";
+const SOFT_GOLD_BG = "rgba(217, 148, 0, 0.10)";
+const SOFT_OLIVE_BG = "rgba(79, 99, 59, 0.10)";
+const CARD_BORDER = "rgba(217, 148, 0, 0.18)";
+
+function CommunityQuickCard({ icon, iconColor, title, subtitle, onPress }) {
+     return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => ({
+        flex: 1,
+        minHeight: 112,
+        borderRadius: 18,
+        paddingVertical: 10,
+        paddingHorizontal: 6,
+        backgroundColor: theme.colors.surface,
+        borderWidth: 1,
+        borderColor: CARD_BORDER,
+        alignItems: "center",
+        justifyContent: "center",
+        shadowColor: HEAVENLY_GOLD,
+        shadowOpacity: pressed ? 0.06 : 0.10,
+        shadowRadius: 8,
+        shadowOffset: { width: 0, height: 3 },
+        elevation: pressed ? 1 : 3,
+        transform: [{ scale: pressed ? 0.98 : 1 }],
+      })}
+    >
+      <View
+        style={{
+          width: 40,
+          height: 40,
+          borderRadius: 20,
+          backgroundColor: iconColor === DEEP_OLIVE ? SOFT_OLIVE_BG : SOFT_GOLD_BG,
+          alignItems: "center",
+          justifyContent: "center",
+          marginBottom: 8,
+          borderWidth: 1,
+          borderColor: CARD_BORDER,
+        }}
+      >
+        <Ionicons name={icon} size={20} color={iconColor} />
+      </View>
+
+      <Text
+        style={{
+          color: theme.colors.text,
+          fontSize: 11.5,
+          fontWeight: "900",
+          textAlign: "center",
+        }}
+        numberOfLines={1}
+      >
+        {title}
+      </Text>
+
+      <Text
+        style={{
+          color: theme.colors.muted,
+          fontSize: 9.5,
+          fontWeight: "700",
+          textAlign: "center",
+          marginTop: 4,
+          lineHeight: 12,
+          minHeight: 24,
+        }}
+        numberOfLines={2}
+      >
+        {subtitle}
+      </Text>
+
+      <View
+        style={{
+          marginTop: 7,
+          width: 18,
+          height: 18,
+          borderRadius: 9,
+          borderWidth: 1,
+          borderColor: HEAVENLY_GOLD,
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <Ionicons name="chevron-forward" size={10} color={HEAVENLY_GOLD} />
+      </View>
+    </Pressable>
+  );
+}
+
+function SuggestedNetworkCard({
+  imageUrl,
+  badgeIcon,
+  title,
+  subtitle,
+  members,
+  action,
+  onPress,
+}) {
+  const isJoin = action === "Join";
+
+  return (
+  <Pressable
+    onPress={onPress}
+    style={({ pressed }) => ({
+      width: 178,
+      marginRight: 10,
+      borderRadius: 16,
+      backgroundColor: theme.colors.surface,
+      borderWidth: 1,
+      borderColor: theme.colors.divider,
+      overflow: "hidden",
+      shadowColor: "#000",
+      shadowOpacity: pressed ? 0.03 : 0.06,
+      shadowRadius: 8,
+      shadowOffset: { width: 0, height: 4 },
+      elevation: pressed ? 1 : 3,
+      transform: [{ scale: pressed ? 0.985 : 1 }],
+    })}
+  >
+      <View style={{ height: 70, backgroundColor: theme.colors.surfaceAlt }}>
+        <Image
+          source={{ uri: imageUrl }}
+          style={{ width: "100%", height: "100%" }}
+          resizeMode="cover"
+        />
+
+        <View
+          style={{
+            position: "absolute",
+            left: 10,
+            bottom: -17,
+            width: 36,
+            height: 36,
+            borderRadius: 18,
+            backgroundColor: DEEP_OLIVE,
+            borderWidth: 2,
+            borderColor: theme.colors.surface,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Ionicons name={badgeIcon} size={17} color="#fff" />
+        </View>
+      </View>
+
+      <View style={{ paddingTop: 22, paddingHorizontal: 10, paddingBottom: 10 }}>
+        <Text
+          style={{
+            color: theme.colors.text,
+            fontSize: 13,
+            fontWeight: "900",
+            lineHeight: 16,
+          }}
+          numberOfLines={2}
+        >
+          {title}
+        </Text>
+
+        <Text
+          style={{
+            color: theme.colors.muted,
+            fontSize: 10.5,
+            fontWeight: "700",
+            lineHeight: 14,
+            marginTop: 4,
+            minHeight: 28,
+          }}
+          numberOfLines={2}
+        >
+          {subtitle}
+        </Text>
+
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginTop: 8,
+            gap: 6,
+          }}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
+            <Ionicons name="people-outline" size={13} color={DEEP_OLIVE} />
+            <Text
+              style={{
+                color: theme.colors.muted,
+                fontSize: 10,
+                fontWeight: "800",
+                marginLeft: 4,
+              }}
+              numberOfLines={1}
+            >
+              {members}
+            </Text>
+          </View>
+
+          <Pressable
+            onPress={onPress}
+            style={({ pressed }) => ({
+              minWidth: 54,
+              borderRadius: 999,
+              paddingVertical: 5,
+              paddingHorizontal: 8,
+              alignItems: "center",
+              backgroundColor: isJoin ? "transparent" : theme.colors.surface,
+              borderWidth: 1,
+              borderColor: isJoin ? HEAVENLY_GOLD : DEEP_OLIVE,
+              opacity: pressed ? 0.75 : 1,
+            })}
+          >
+            <Text
+              style={{
+                color: isJoin ? HEAVENLY_GOLD : DEEP_OLIVE,
+                fontWeight: "900",
+                fontSize: 10.5,
+              }}
+            >
+              {action}
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+    </Pressable>
+  );
+}
 const isYouTubeUrl = (u) => {
   if (!u) return false;
   const s = String(u).toLowerCase();
   return s.includes("youtube.com") || s.includes("youtu.be");
 };
-
-
 
 // Robust YouTube video id + thumbnail extractor
 
@@ -200,6 +423,7 @@ function FeedActionButton({ icon, label, active, onPress, onLongPress }) {
 export default function Community() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
+  const { openFellowshipRequests } = useFellowshipRequestsModal();
 
 
 
@@ -225,6 +449,18 @@ export default function Community() {
 // Always live values (provided by RealtimeProvider)
 const unreadNotificationCount = rt?.unreadNotificationCount ?? 0;
 const unreadFellowshipCount = rt?.pendingFellowshipCount ?? 0;
+const unreadMessageCount =
+  rt?.unreadMessageCount ??
+  rt?.unreadInboxCount ??
+  rt?.messageUnreadCount ??
+  0;
+  console.log("COMMUNITY HEADER MESSAGE COUNT:", {
+  unreadMessageCount,
+  unreadMessageCount_key: rt?.unreadMessageCount,
+  unreadInboxCount_key: rt?.unreadInboxCount,
+  messageUnreadCount_key: rt?.messageUnreadCount,
+  rtKeys: rt ? Object.keys(rt) : null,
+});
 useFocusEffect(
   useCallback(() => {
     // When you come back from Notifications screen, force recount now
@@ -1004,10 +1240,7 @@ return;
   }
 
 function handleOpenFellowship() {
-  navigation.navigate("MainTabs", {
-    screen: "Profile",
-    params: { openFellowshipRequests: true },
-  });
+  openFellowshipRequests();
 }
 
 
@@ -1518,88 +1751,318 @@ if (linkPreview) {
 
   const renderFeedHeader = () => (
     <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 6 }}>
-      {/* Top header bar */}
-      {/* Header row (Profile-style) */}
+ {/* Top header row */}
 <View
   style={{
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 16,
+    marginBottom: 18,
+    minHeight: 42,
   }}
 >
- {/* Left: Home + Logo (logo to the RIGHT of the word) */}
-<View style={{ flexDirection: "row", alignItems: "center" }}>
-  <Text style={theme.text.h1}>Home</Text>
+ {/* Left: Community */}
+<View style={{ flexDirection: "row", alignItems: "center", flexShrink: 1 }}>
+  <Text
+    style={{
+      color: theme.colors.text,
+      fontSize: 24,
+      fontWeight: "900",
+      letterSpacing: -0.5,
+    }}
+  >
+    Community
+  </Text>
+</View>
 
+  {/* Right: Messages + Notifications + Fellowship + Search */}
+  <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
+    {/* Messages / Unified Inbox */}
+    <UnifiedInboxHeaderButton
+      navigation={navigation}
+      iconButtonStyle={{
+        ...iconButtonStyle,
+        width: 30,
+        height: 30,
+        borderRadius: 15,
+      }}
+      iconBadgeStyle={iconBadgeStyle}
+      iconSize={23}
+    />
 
+    {/* Notifications */}
+    <Pressable
+      onPress={handleOpenNotifications}
+      style={{
+        ...iconButtonStyle,
+        width: 30,
+        height: 30,
+        borderRadius: 15,
+      }}
+      hitSlop={8}
+    >
+      <Ionicons name="notifications-outline" size={24} color={DEEP_OLIVE} />
+
+      {unreadNotificationCount > 0 && (
+        <View
+          style={{
+            ...iconBadgeStyle,
+            top: -6,
+            right: -5,
+            minWidth: 20,
+            height: 20,
+            borderRadius: 10,
+          }}
+        >
+          <Text style={{ color: "#fff", fontSize: 10, fontWeight: "900" }}>
+            {unreadNotificationCount > 99 ? "99+" : unreadNotificationCount}
+          </Text>
+        </View>
+      )}
+    </Pressable>
+
+    {/* Fellowship requests */}
+    <Pressable
+      onPress={handleOpenFellowship}
+      style={{
+        ...iconButtonStyle,
+        width: 30,
+        height: 30,
+        borderRadius: 15,
+      }}
+      hitSlop={8}
+    >
+      <Ionicons name="people-outline" size={25} color={DEEP_OLIVE} />
+
+      {unreadFellowshipCount > 0 && (
+        <View
+          style={{
+            ...iconBadgeStyle,
+            top: -6,
+            right: -6,
+            minWidth: 20,
+            height: 20,
+            borderRadius: 10,
+          }}
+        >
+          <Text style={{ color: "#fff", fontSize: 10, fontWeight: "900" }}>
+            {unreadFellowshipCount > 99 ? "99+" : unreadFellowshipCount}
+          </Text>
+        </View>
+      )}
+    </Pressable>
+
+    {/* Search */}
+    <Pressable
+      onPress={handleOpenSearch}
+      style={{
+        ...iconButtonStyle,
+        width: 30,
+        height: 30,
+        borderRadius: 15,
+      }}
+      hitSlop={8}
+    >
+      <Ionicons name="search-outline" size={26} color={DEEP_OLIVE} />
+    </Pressable>
+  </View>
 </View>
 
 
-  {/* Right: Search + Fellowship + Notifications */}
-<View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-  {/* Search */}
-
-  
- {/* Search */}
-<SearchLaunchButton navigation={navigation} />
-
-{/* Messages (Unified Inbox) */}
-<Pressable
-  onPress={() => navigation.navigate("MessagesInbox")}
-  style={iconButtonStyle}
-  hitSlop={8}
->
-  <Ionicons
-    name="chatbubble-ellipses-outline"
-    size={22}
-    color={theme.colors.text2}
+  {/* Community hero */}
+<View style={{ marginBottom: 16 }}>
+  <View
+    pointerEvents="none"
+    style={{
+      position: "absolute",
+      top: -42,
+      right: -18,
+      width: 230,
+      height: 150,
+      borderRadius: 30,
+      backgroundColor: "rgba(217, 148, 0, 0.08)",
+      opacity: 0.9,
+    }}
   />
-</Pressable>
 
+  <View
+    pointerEvents="none"
+    style={{
+      position: "absolute",
+      top: -8,
+      right: 38,
+      width: 86,
+      height: 86,
+      borderRadius: 43,
+      backgroundColor: "rgba(217, 148, 0, 0.12)",
+      shadowColor: HEAVENLY_GOLD,
+      shadowOpacity: 0.28,
+      shadowRadius: 28,
+      shadowOffset: { width: 0, height: 0 },
+      elevation: 8,
+    }}
+  />
 
-  {/* Fellowship */}
-  <Pressable
-    onPress={handleOpenFellowship}
-    style={iconButtonStyle}
-    hitSlop={8}
+  <Text
+    style={{
+      color: theme.colors.muted,
+      fontSize: 16,
+      fontWeight: "700",
+      lineHeight: 23,
+      marginTop: 0,
+      maxWidth: 330,
+    }}
   >
-    <Ionicons name="people-outline" size={22} color={theme.colors.text2} />
-    {unreadFellowshipCount > 0 && (
-      <View style={iconBadgeStyle}>
-        <Text style={{ color: theme.colors.text, fontSize: 10, fontWeight: "900" }}>
-          {unreadFellowshipCount}
-        </Text>
-      </View>
-    )}
-  </Pressable>
-
-
-
-  {/* Notifications */}
-  <Pressable
-    onPress={handleOpenNotifications}
-    style={iconButtonStyle}
-    hitSlop={8}
-  >
-    <Ionicons name="notifications-outline" size={22} color={theme.colors.text2} />
-    {unreadNotificationCount > 0 && (
-      <View style={iconBadgeStyle}>
-        <Text style={{ color: theme.colors.text, fontSize: 10, fontWeight: "900" }}>
-          {unreadNotificationCount}
-        </Text>
-      </View>
-    )}
-  </Pressable>
+    Discover people, events, networks, and Christian life nearby.
+  </Text>
 </View>
 
+{/* Community quick cards */}
+<View
+  style={{
+    flexDirection: "row",
+    alignItems: "stretch",
+    justifyContent: "space-between",
+    gap: 8,
+    marginBottom: 24,
+  }}
+>
+  <CommunityQuickCard
+    icon="people-outline"
+    iconColor={DEEP_OLIVE}
+    title="Fellowship"
+    subtitle={"Connect with\nChristians"}
+    onPress={() => Alert.alert("Fellowship", "The full Fellowship Hub is coming next.")}
+  />
+
+  <CommunityQuickCard
+    icon="calendar-outline"
+    iconColor={HEAVENLY_GOLD}
+    title="Events"
+    subtitle={"Find what’s\nhappening"}
+    onPress={() => Alert.alert("Events", "The Events Hub is coming next.")}
+  />
+
+  <CommunityQuickCard
+    icon="people-circle-outline"
+    iconColor={HEAVENLY_GOLD}
+    title="Networks"
+    subtitle={"Join purpose-led\nspaces"}
+    onPress={() => navigation.navigate("Networks")}
+  />
+
+  <CommunityQuickCard
+    icon="location-outline"
+    iconColor={DEEP_OLIVE}
+    title="Local"
+    subtitle={"Discover Christian\nlife nearby"}
+    onPress={() => Alert.alert("Local", "Local Christian life is coming next.")}
+  />
 </View>
 
+{/* Suggested Networks */}
+<View style={{ marginBottom: 20 }}>
+  <View
+    style={{
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: 12,
+    }}
+  >
+    <Text
+      style={{
+        color: theme.colors.text,
+        fontSize: 24,
+        fontWeight: "900",
+      }}
+    >
+      Suggested Networks
+    </Text>
 
-      {/* Optional subtitle */}
-      <Text style={[theme.text.sub, { marginBottom: 12, color: theme.colors.sageSoft }]}>
-        Encouragements and shared links from Triunely.
+    <Pressable onPress={() => navigation.navigate("Networks")}>
+      <Text
+        style={{
+          color: HEAVENLY_GOLD,
+          fontWeight: "900",
+          fontSize: 14,
+        }}
+      >
+        View all ›
       </Text>
+    </Pressable>
+  </View>
+
+  <ScrollView
+    horizontal
+    showsHorizontalScrollIndicator={false}
+    contentContainerStyle={{ paddingRight: 16 }}
+  >
+    <SuggestedNetworkCard
+      imageUrl="https://images.unsplash.com/photo-1507692049790-de58290a4334?q=80&w=1200&auto=format&fit=crop"
+      badgeIcon="hand-left-outline"
+      title="Men’s Prayer Network"
+      subtitle="Brothers strengthening faith together"
+      members="1.2K members"
+      action="Join"
+      onPress={() => navigation.push("NetworkDetail", { networkId: "mens-prayer" })}
+    />
+
+    <SuggestedNetworkCard
+      imageUrl="https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?q=80&w=1200&auto=format&fit=crop"
+      badgeIcon="briefcase-outline"
+      title="Christian Business Network"
+      subtitle="Faith-driven purpose. Kingdom impact."
+      members="856 members"
+      action="Request"
+      onPress={() => navigation.push("NetworkDetail", { networkId: "business" })}
+    />
+
+    <SuggestedNetworkCard
+      imageUrl="https://images.unsplash.com/photo-1529699211952-734e80c4d42b?q=80&w=1200&auto=format&fit=crop"
+      badgeIcon="extension-puzzle-outline"
+      title="Chess Fellowship"
+      subtitle="Sharpen your mind. Glorify God."
+      members="423 members"
+      action="Join"
+      onPress={() => navigation.push("NetworkDetail", { networkId: "chess" })}
+    />
+  </ScrollView>
+
+  <View
+    style={{
+      flexDirection: "row",
+      justifyContent: "center",
+      gap: 8,
+      marginTop: 12,
+    }}
+  >
+    <View
+      style={{
+        width: 7,
+        height: 7,
+        borderRadius: 4,
+        backgroundColor: HEAVENLY_GOLD,
+      }}
+    />
+    <View
+      style={{
+        width: 7,
+        height: 7,
+        borderRadius: 4,
+        backgroundColor: theme.colors.divider,
+      }}
+    />
+    <View
+      style={{
+        width: 7,
+        height: 7,
+        borderRadius: 4,
+        backgroundColor: theme.colors.divider,
+      }}
+    />
+  </View>
+</View>   
 
       {/* Stories */}
       <View style={{ marginBottom: 12 }}>
@@ -1834,6 +2297,107 @@ if (linkPreview) {
           </Pressable>
         </View>
       </GlowCard>
+
+      {/* Community Feed header */}
+<View style={{ marginTop: 20, marginBottom: 12 }}>
+  <Text
+    style={{
+      color: theme.colors.text,
+      fontSize: 24,
+      fontWeight: "900",
+      marginBottom: 12,
+    }}
+  >
+    Community Feed
+  </Text>
+
+  <View
+    style={{
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+    }}
+  >
+    <Pressable
+      onPress={() => Alert.alert("Feed filter", "Showing all posts for now.")}
+      style={{
+        paddingVertical: 8,
+        paddingHorizontal: 14,
+        borderRadius: 999,
+        backgroundColor: DEEP_OLIVE,
+        borderWidth: 1,
+        borderColor: DEEP_OLIVE,
+      }}
+    >
+      <Text style={{ color: "#fff", fontSize: 12, fontWeight: "900" }}>All</Text>
+    </Pressable>
+
+    <Pressable
+      onPress={() => Alert.alert("My Church", "Church feed filtering is coming later.")}
+      style={{
+        paddingVertical: 8,
+        paddingHorizontal: 13,
+        borderRadius: 999,
+        backgroundColor: theme.colors.surface,
+        borderWidth: 1,
+        borderColor: theme.colors.divider,
+      }}
+    >
+      <Text style={{ color: theme.colors.text2, fontSize: 12, fontWeight: "800" }}>
+        My Church
+      </Text>
+    </Pressable>
+
+    <Pressable
+      onPress={() => Alert.alert("My Networks", "Network feed filtering is coming later.")}
+      style={{
+        paddingVertical: 8,
+        paddingHorizontal: 13,
+        borderRadius: 999,
+        backgroundColor: theme.colors.surface,
+        borderWidth: 1,
+        borderColor: theme.colors.divider,
+      }}
+    >
+      <Text style={{ color: theme.colors.text2, fontSize: 12, fontWeight: "800" }}>
+        My Networks
+      </Text>
+    </Pressable>
+
+    <Pressable
+      onPress={() => Alert.alert("Local", "Local feed filtering is coming later.")}
+      style={{
+        paddingVertical: 8,
+        paddingHorizontal: 13,
+        borderRadius: 999,
+        backgroundColor: theme.colors.surface,
+        borderWidth: 1,
+        borderColor: theme.colors.divider,
+      }}
+    >
+      <Text style={{ color: theme.colors.text2, fontSize: 12, fontWeight: "800" }}>
+        Local
+      </Text>
+    </Pressable>
+
+    <Pressable
+      onPress={() => Alert.alert("Filters", "Advanced feed filters are coming later.")}
+      style={{
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: theme.colors.surface,
+        borderWidth: 1,
+        borderColor: theme.colors.divider,
+        alignItems: "center",
+        justifyContent: "center",
+        marginLeft: "auto",
+      }}
+    >
+      <Ionicons name="options-outline" size={18} color={DEEP_OLIVE} />
+    </Pressable>
+  </View>
+</View>
 
       {error ? <Text style={{ color: theme.colors.danger, marginTop: 10 }}>{error}</Text> : null}
     </View>

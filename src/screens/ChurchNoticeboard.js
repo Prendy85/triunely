@@ -87,6 +87,25 @@ export default function ChurchNoticeboard({ route, navigation }) {
     }
 
     setItems(data || []);
+    try {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (user?.id && churchId) {
+    await supabase.from("church_noticeboard_reads").upsert(
+      {
+        user_id: user.id,
+        church_id: churchId,
+        last_seen_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id,church_id" }
+    );
+  }
+} catch (e) {
+  console.log("noticeboard mark seen error:", e);
+}
   }
 
   function resetNewNoticeForm() {

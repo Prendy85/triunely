@@ -100,6 +100,42 @@ export default function NotificationsScreen() {
     [navigation]
   );
 
+  const handleOpenEventInvite = useCallback(
+  async (item) => {
+    try {
+      if (!item?.id) return;
+
+      console.log("EVENT INVITE NOTIFICATION PRESSED:", {
+        notificationId: item.id,
+        payload: item?.payload,
+        eventId: item?.payload?.event_id,
+      });
+
+      if (item.is_read === false) {
+        await markNotificationRead(item.id);
+      }
+
+      const eventId = item?.payload?.event_id;
+
+      if (!eventId) {
+        setErrorText("This event invitation is missing its event link.");
+        await load();
+        return;
+      }
+
+     navigation.navigate("EventDetails", {
+  eventId,
+});
+
+      await load();
+    } catch (e) {
+      console.log("handleOpenEventInvite error:", e);
+      setErrorText(e?.message || "Failed to open event invitation");
+    }
+  },
+  [navigation, load]
+);
+
   const handleAcceptJoin = useCallback(
     async (item) => {
       const notifId = item?.id;
@@ -369,6 +405,75 @@ await load();
         </View>
       );
     }
+
+    // Special UI for event invitations
+if (item.type === "event_invite") {
+  const eventTitle = item?.payload?.event_title || "event";
+
+  return (
+    <Pressable
+      onPress={() => handleOpenEventInvite(item)}
+      style={({ pressed }) => ({
+        paddingHorizontal: 14,
+        paddingVertical: 12,
+        borderBottomWidth: 1,
+        borderBottomColor: theme.colors.divider,
+        backgroundColor: theme.colors.bg,
+        opacity: pressed ? 0.75 : 1,
+      })}
+    >
+      <View style={{ flexDirection: "row", alignItems: "center" }}>
+        <Ionicons
+          name="calendar-outline"
+          size={22}
+          color={isUnread ? theme.colors.gold : theme.colors.muted}
+        />
+
+        <View style={{ marginLeft: 10, flex: 1 }}>
+          <Text
+            style={{
+              color: theme.colors.text,
+              fontWeight: isUnread ? "900" : "800",
+            }}
+            numberOfLines={1}
+          >
+            {item.title || "New event invitation"}
+          </Text>
+
+          <Text
+            style={{ color: theme.colors.muted, marginTop: 3 }}
+            numberOfLines={2}
+          >
+            {item.body || `You have been invited to ${eventTitle}.`}
+          </Text>
+
+          <Text
+            style={{
+              color: theme.colors.goldPressed,
+              fontSize: 12,
+              fontWeight: "900",
+              marginTop: 6,
+            }}
+          >
+            Tap to view and respond
+          </Text>
+        </View>
+
+        <View style={{ alignItems: "flex-end", marginLeft: 10 }}>
+          <Text style={{ color: theme.colors.muted, fontSize: 12 }}>
+            {time}
+          </Text>
+          <Ionicons
+            name="chevron-forward"
+            size={18}
+            color={theme.colors.muted}
+            style={{ marginTop: 6 }}
+          />
+        </View>
+      </View>
+    </Pressable>
+  );
+}
 
     // Default UI for all other notifications
     const icon = "notifications-outline";

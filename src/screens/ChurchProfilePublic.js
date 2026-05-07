@@ -22,7 +22,10 @@ import NewPostModal from "../components/NewPostModal";
 import PostCard from "../components/PostCard";
 import PostCommentsModal from "../components/PostCommentsModal";
 import Screen from "../components/Screen";
+import SearchLaunchButton from "../components/SearchLaunchButton";
 import VerifiedBadge from "../components/VerifiedBadge";
+import { useFellowshipRequestsModal } from "../context/FellowshipRequestsModalProvider";
+import { useRealtime } from "../context/RealtimeProvider";
 import { HOME_COMMUNITY_ID } from "../lib/constants";
 import { getOrCreateChurchConversation } from "../lib/messages";
 import { supabase } from "../lib/supabase";
@@ -31,6 +34,29 @@ import { theme } from "../theme/theme";
 
 const POSTS_ENABLED = true;
 const PAGE_LIMIT = 50;
+const iconBadgeStyle = {
+  
+  position: "absolute",
+  top: -2,
+  right: -2,
+  minWidth: 16,
+  height: 16,
+  paddingHorizontal: 3,
+  borderRadius: 999,
+  backgroundColor: theme.colors.gold,
+  justifyContent: "center",
+  alignItems: "center",
+  borderWidth: 1,
+  borderColor: theme.colors.goldOutline,
+};
+const iconButtonStyle = {
+  width: 36,
+  height: 36,
+  borderRadius: 18,
+  justifyContent: "center",
+  alignItems: "center",
+  backgroundColor: "transparent",
+};
 
 function safeInitials(name) {
   if (!name) return "?";
@@ -41,6 +67,26 @@ function safeInitials(name) {
 
 export default function ChurchProfilePublic({ navigation, route }) {
   const churchId = route?.params?.churchId;
+    const rt = useRealtime();
+    const { openFellowshipRequests } = useFellowshipRequestsModal();
+
+  const unreadMessageCount =
+    rt?.unreadMessageCount ??
+    rt?.unreadInboxCount ??
+    rt?.messageUnreadCount ??
+    0;
+
+    const unreadNotificationCount = rt?.unreadNotificationCount ?? 0;
+const pendingFellowshipCount = rt?.pendingFellowshipCount ?? 0;
+
+
+    console.log("COMMUNITY HEADER MESSAGE COUNT:", {
+  unreadMessageCount,
+  unreadMessageCount_key: rt?.unreadMessageCount,
+  unreadInboxCount_key: rt?.unreadInboxCount,
+  messageUnreadCount_key: rt?.messageUnreadCount,
+  rtKeys: rt ? Object.keys(rt) : null,
+});
 
   // ✅ Step 5B: are we viewing the default Triunely church fallback?
   const isDefaultTriunelyChurch = route?.params?.isDefaultTriunelyChurch === true;
@@ -449,6 +495,7 @@ async function handleLeaveChurch() {
   useFocusEffect(
     useCallback(() => {
       if (!churchId) return;
+            rt?.refreshCounts?.();
 
       // Reload the church record when the screen is focused again
       loadChurch(churchId);
@@ -467,7 +514,7 @@ async function handleLeaveChurch() {
 
 
       if (POSTS_ENABLED) loadChurchPosts(churchId);
-    }, [churchId, viewerId])
+        }, [churchId, viewerId, rt])
   );
 
 
@@ -827,6 +874,7 @@ async function handleLeaveChurch() {
             <Text style={theme.button.primaryText}>Create a church post</Text>
           </Pressable>
         ) : null}
+        
 
         {postsLoading ? (
           <View style={{ paddingVertical: 18, alignItems: "center" }}>
@@ -906,50 +954,76 @@ async function handleLeaveChurch() {
       {({ bottomPad }) => (
         <>
           <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: bottomPad }}>
-            {/* Title row (icons on the RIGHT) */}
-            <View
-              style={{
-                flexDirection: "row",
-                justifyContent: "flex-end",
-                alignItems: "center",
-                paddingHorizontal: 4,
-                paddingTop: 6,
-              }}
-            >
-          
-
-          {/* Messages (Unified Inbox) */}
-<Pressable
-  onPress={() => navigation.navigate("MessagesInbox")}
+            
+          {/* Header row with title + icons (standardized) */}
+<View
   style={{
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    justifyContent: "space-between",
+    marginBottom: 16,
+    paddingHorizontal: 16,
+    paddingTop: 8,
   }}
-  hitSlop={10}
 >
-  <Ionicons name="chatbubble-ellipses-outline" size={26} color={theme.colors.text2} />
-</Pressable>
+  <Text style={theme.text.h1}>My Church</Text>
 
+  <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+  {/* Messages */}
+  <Pressable
+    onPress={() => navigation.navigate("MessagesInbox")}
+    style={iconButtonStyle}
+    hitSlop={8}
+  >
+    <Ionicons name="chatbubble-ellipses-outline" size={22} color={theme.colors.text2} />
+    {unreadMessageCount > 0 && (
+      <View style={iconBadgeStyle}>
+        <Text style={{ color: theme.colors.text, fontSize: 10, fontWeight: "900" }}>
+          {unreadMessageCount > 99 ? "99+" : String(unreadMessageCount)}
+        </Text>
+      </View>
+    )}
+  </Pressable>
 
+  {/* Notifications */}
+  <Pressable
+    onPress={() => navigation.navigate("Notifications")}
+    style={iconButtonStyle}
+    hitSlop={8}
+  >
+    <Ionicons name="notifications-outline" size={22} color={theme.colors.text2} />
+    {unreadNotificationCount > 0 && (
+      <View style={iconBadgeStyle}>
+        <Text style={{ color: theme.colors.text, fontSize: 10, fontWeight: "900" }}>
+          {unreadNotificationCount > 99 ? "99+" : String(unreadNotificationCount)}
+        </Text>
+      </View>
+    )}
+  </Pressable>
 
-              {/* Admin button (admin only) - CLIPBOARD icon */}
-              {isAdmin ? (
-                <Pressable
-                  onPress={() => setShowAdminMenu(true)}
-                  style={{
-                    paddingHorizontal: 10,
-                    paddingVertical: 8,
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                  hitSlop={10}
-                >
-                  <Ionicons name="clipboard-outline" size={26} color={theme.colors.text2} />
-                </Pressable>
-              ) : null}
-            </View>
+  {/* Fellowship */}
+  <Pressable onPress={() => openFellowshipRequests()} style={iconButtonStyle} hitSlop={8}>
+    <Ionicons name="people-outline" size={22} color={theme.colors.text2} />
+    {pendingFellowshipCount > 0 && (
+      <View style={iconBadgeStyle}>
+        <Text style={{ color: theme.colors.text, fontSize: 10, fontWeight: "900" }}>
+          {pendingFellowshipCount > 99 ? "99+" : String(pendingFellowshipCount)}
+        </Text>
+      </View>
+    )}
+  </Pressable>
+
+  {/* Search */}
+  <SearchLaunchButton navigation={navigation} />
+
+  {/* Admin (clipboard) — admin only */}
+  {isAdmin ? (
+    <Pressable onPress={() => setShowAdminMenu(true)} style={iconButtonStyle} hitSlop={8}>
+      <Ionicons name="clipboard-outline" size={22} color={theme.colors.text2} />
+    </Pressable>
+  ) : null}
+</View>
+</View>
 
             {/* Cover */}
             <View style={{ marginBottom: 18 }}>
@@ -1128,29 +1202,30 @@ async function handleLeaveChurch() {
     </Pressable>
   </View>
 
-                  ) : membershipStatus === "pending" ? (
-                    <View
-                      style={{
-                        padding: 12,
-                        borderRadius: 14,
-                        backgroundColor: theme.colors.surface,
-                        borderWidth: 1,
-                        borderColor: theme.colors.divider,
-                      }}
-                    >
-                      <Text style={{ color: theme.colors.text, fontWeight: "900" }}>Request pending</Text>
-                      <Text style={{ color: theme.colors.muted, marginTop: 4, fontWeight: "600" }}>
-                        Your join request is waiting for approval.
-                            <Pressable
+                ) : membershipStatus === "pending" ? (
+  <View
+    style={{
+      padding: 12,
+      borderRadius: 14,
+      backgroundColor: theme.colors.surface,
+      borderWidth: 1,
+      borderColor: theme.colors.divider,
+    }}
+  >
+    <Text style={{ color: theme.colors.text, fontWeight: "900" }}>Request pending</Text>
+
+    <Text style={{ color: theme.colors.muted, marginTop: 4, fontWeight: "600" }}>
+      Your join request is waiting for approval.
+    </Text>
+
+    <Pressable
       onPress={handleCancelJoinRequest}
       style={[theme.button.outline, { marginTop: 10, borderRadius: 14, paddingVertical: 10 }]}
     >
       <Text style={theme.button.outlineText}>Cancel request</Text>
     </Pressable>
-
-                      </Text>
-                    </View>
-                  ) : (
+  </View>
+) : (
                     <Pressable
                       onPress={handleJoinChurch}
                       style={[

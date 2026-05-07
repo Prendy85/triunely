@@ -20,8 +20,8 @@ export async function fetchNotifications({
   let q = supabase
     .from("notifications")
     .select(
-      "id, created_at, type, title, body, church_id, membership_id, related_user_id, is_read"
-    )
+  "id, created_at, type, title, body, church_id, membership_id, related_user_id, is_read, payload"
+)
     .eq("user_id", user.id)
     .order("created_at", { ascending: false })
     .limit(limit);

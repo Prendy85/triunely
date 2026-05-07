@@ -6,10 +6,12 @@ import { AppState, Modal, Pressable, Text, View } from "react-native";
 
 export default function WeeklyMessageCard({
   theme,
+  messageTitle = null,
   sourceLabel = "Triunely",
-  speakerLabel = null, // e.g. "Pastor John"
-  videoUrl = null, // mp4 url
-  weekLabel = null, // e.g. "Mon 6 Jan – Sun 12 Jan"
+  speakerLabel = null,
+  videoUrl = null,
+  weekLabel = null,
+  noticeboardUnreadCount = 0,
   onPressChallenges,
   onPressNoticeboard,
   onPressChurchProfile,
@@ -32,6 +34,7 @@ export default function WeeklyMessageCard({
       appStateRef.current = next;
       setAppState(next);
     });
+
     return () => sub.remove();
   }, []);
 
@@ -45,14 +48,20 @@ export default function WeeklyMessageCard({
 
     const now = new Date();
     const day = now.getDay(); // Sun=0 ... Sat=6
-    const diffToMonday = (day === 0 ? -6 : 1) - day;
+    const diffToMonday = (day + 6) % 7;
+
     const monday = new Date(now);
-    monday.setDate(now.getDate() + diffToMonday);
+    monday.setDate(now.getDate() - diffToMonday);
 
     const sunday = new Date(monday);
     sunday.setDate(monday.getDate() + 6);
 
-    const fmt = (d) => d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+    const fmt = (d) =>
+      d.toLocaleDateString(undefined, {
+        day: "numeric",
+        month: "short",
+      });
+
     return `${fmt(monday)} – ${fmt(sunday)}`;
   }, [weekLabel]);
 
@@ -110,11 +119,9 @@ export default function WeeklyMessageCard({
     } catch (e) {
       const msg = String(e?.message || e);
 
-      // This is your exact error: app was considered background at the moment of play()
       if (msg.includes("AudioFocusNotAcquiredException")) {
         pendingAutoplayRef.current = true;
 
-        // Retry shortly (and we also retry automatically when AppState becomes active)
         setTimeout(() => {
           tryAutoplay();
         }, 600);
@@ -130,7 +137,6 @@ export default function WeeklyMessageCard({
   useEffect(() => {
     if (!open || !videoReady || !videoUrl) return;
 
-    // Give the modal time to fully present before requesting audio focus
     const t = setTimeout(() => {
       tryAutoplay();
     }, 350);
@@ -163,13 +169,28 @@ export default function WeeklyMessageCard({
           marginBottom: 12,
         }}
       >
-        {/* Header */}
-        <View style={{ paddingHorizontal: 14, paddingTop: 14, paddingBottom: 10 }}>
-          <Text style={{ color: theme.colors.text, fontWeight: "900", fontSize: 16 }}>
-            Weekly Message
-          </Text>
+       {/* Header */}
+<View style={{ paddingHorizontal: 14, paddingTop: 14, paddingBottom: 10 }}>
+  <Text style={{ color: theme.colors.text, fontWeight: "900", fontSize: 16 }}>
+    Weekly Message
+  </Text>
 
-          <Text style={{ color: theme.colors.muted, marginTop: 4, fontWeight: "700" }}>
+          {messageTitle ? (
+            <Text
+              style={{
+                color: theme.colors.text,
+                marginTop: 6,
+                fontWeight: "900",
+                fontSize: 18,
+                lineHeight: 23,
+              }}
+              numberOfLines={2}
+            >
+              {messageTitle}
+            </Text>
+          ) : null}
+
+          <Text style={{ color: theme.colors.muted, marginTop: 5, fontWeight: "700" }}>
             {subtitle}
           </Text>
 
@@ -195,8 +216,31 @@ export default function WeeklyMessageCard({
             alignItems: "center",
             justifyContent: "center",
             opacity: pressed ? 0.92 : 1,
+            overflow: "hidden",
           })}
         >
+          {!!videoUrl ? (
+            <Video
+              source={{ uri: videoUrl }}
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                width: "100%",
+                height: "100%",
+              }}
+              resizeMode="cover"
+              shouldPlay={false}
+              isMuted
+              useNativeControls={false}
+              onError={(e) => {
+                console.log("WeeklyMessageCard preview video error:", e);
+              }}
+            />
+          ) : null}
+
           <View
             style={{
               position: "absolute",
@@ -204,7 +248,7 @@ export default function WeeklyMessageCard({
               left: 0,
               right: 0,
               bottom: 0,
-              backgroundColor: "rgba(0,0,0,0.22)",
+              backgroundColor: "rgba(0,0,0,0.28)",
             }}
           />
 
@@ -213,9 +257,9 @@ export default function WeeklyMessageCard({
               width: 56,
               height: 56,
               borderRadius: 28,
-              backgroundColor: "rgba(255,255,255,0.12)",
+              backgroundColor: "rgba(255,255,255,0.16)",
               borderWidth: 1,
-              borderColor: "rgba(255,255,255,0.18)",
+              borderColor: "rgba(255,255,255,0.22)",
               alignItems: "center",
               justifyContent: "center",
             }}
@@ -223,13 +267,9 @@ export default function WeeklyMessageCard({
             <Ionicons name="play" size={26} color="#fff" />
           </View>
 
-          <Text style={{ color: "#fff", fontWeight: "900", marginTop: 10 }}>Tap to watch</Text>
-
-          {!videoUrl ? (
-            <Text style={{ color: "rgba(255,255,255,0.75)", marginTop: 6, fontWeight: "700" }}>
-              No video set yet (placeholder)
-            </Text>
-          ) : null}
+          <Text style={{ color: "#fff", fontWeight: "900", marginTop: 10 }}>
+            {videoUrl ? "Tap to watch" : "No video set yet"}
+          </Text>
         </Pressable>
 
         {/* Actions */}
@@ -261,7 +301,37 @@ export default function WeeklyMessageCard({
                 borderColor: theme.colors.divider,
               })}
             >
-              <Text style={{ color: theme.colors.text2, fontWeight: "900" }}>Noticeboard</Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <Text style={{ color: theme.colors.text2, fontWeight: "900" }}>
+                  Noticeboard
+                </Text>
+
+                {Number(noticeboardUnreadCount || 0) > 0 ? (
+                  <View
+                    style={{
+                      minWidth: 20,
+                      height: 20,
+                      borderRadius: 10,
+                      paddingHorizontal: 6,
+                      backgroundColor: theme.colors.gold,
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: theme.colors.text,
+                        fontWeight: "900",
+                        fontSize: 11,
+                      }}
+                    >
+                      {Number(noticeboardUnreadCount) > 9
+                        ? "9+"
+                        : Number(noticeboardUnreadCount)}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
             </Pressable>
 
             <Pressable
@@ -276,7 +346,9 @@ export default function WeeklyMessageCard({
                 borderColor: theme.colors.divider,
               })}
             >
-              <Text style={{ color: theme.colors.text2, fontWeight: "900" }}>Church Profile</Text>
+              <Text style={{ color: theme.colors.text2, fontWeight: "900" }}>
+                Church Profile
+              </Text>
             </Pressable>
           </View>
         </View>
@@ -296,11 +368,33 @@ export default function WeeklyMessageCard({
               justifyContent: "space-between",
             }}
           >
-            <View>
+            <View style={{ flex: 1, paddingRight: 12 }}>
               <Text style={{ color: "#fff", fontWeight: "900", fontSize: 16 }}>
                 Weekly Message
               </Text>
-              <Text style={{ color: "rgba(255,255,255,0.75)", marginTop: 4, fontWeight: "700" }}>
+
+              {messageTitle ? (
+                <Text
+                  style={{
+                    color: "#fff",
+                    marginTop: 4,
+                    fontWeight: "900",
+                    fontSize: 18,
+                  }}
+                  numberOfLines={2}
+                >
+                  {messageTitle}
+                </Text>
+              ) : null}
+
+              <Text
+                style={{
+                  color: "rgba(255,255,255,0.75)",
+                  marginTop: 4,
+                  fontWeight: "700",
+                }}
+                numberOfLines={1}
+              >
                 {subtitle}
               </Text>
             </View>
@@ -342,10 +436,9 @@ export default function WeeklyMessageCard({
                   style={{ width: "100%", height: "100%" }}
                   resizeMode="contain"
                   useNativeControls
-                  shouldPlay={false} // we control autoplay ourselves for reliability
+                  shouldPlay={open}
                   onLoad={() => {
                     setVideoReady(true);
-                    // Attempt autoplay the moment it loads (guarded by AppState)
                     setTimeout(() => tryAutoplay(), 250);
                   }}
                   onError={(e) => {

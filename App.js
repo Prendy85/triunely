@@ -3,20 +3,28 @@ import "react-native-gesture-handler";
 
 import { Ionicons } from "@expo/vector-icons";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
-import { NavigationContainer } from "@react-navigation/native";
+import {
+  NavigationContainer,
+  createNavigationContainerRef,
+} from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import * as Linking from "expo-linking";
-import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  Animated,
+  Pressable,
+  Text,
+  View,
+} from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
+import { FellowshipRequestsModalProvider } from "./src/context/FellowshipRequestsModalProvider";
 import { PointsProvider } from "./src/context/PointsContext";
-import { supabase } from "./src/lib/supabase";
-
-// ✅ NEW: central realtime wrapper (Step 7 onwards)
 import { RealtimeProvider } from "./src/context/RealtimeProvider";
+import { supabase } from "./src/lib/supabase";
 
 // Theme
 import { theme } from "./src/theme/theme";
@@ -28,6 +36,8 @@ import CoachChats from "./src/screens/CoachChats";
 import Community from "./src/screens/Community";
 import Daily from "./src/screens/Daily";
 import MessagesInbox from "./src/screens/MessagesInbox";
+import NetworkDetail from "./src/screens/NetworkDetail";
+import Networks from "./src/screens/Networks";
 import NotificationsScreen from "./src/screens/NotificationsScreen";
 import Prayer from "./src/screens/Prayer";
 import Profile from "./src/screens/Profile";
@@ -41,6 +51,7 @@ import CompleteProfileOnboarding from "./src/screens/CompleteProfileOnboarding";
 
 // impact modal
 import ImpactModal from "./src/components/ImpactModal";
+import InAppNotificationBanner from "./src/components/InAppNotificationBanner";
 
 // full-page courtroom screens
 import ApologeticsArena from "./src/screens/ApologeticsArena";
@@ -71,6 +82,13 @@ import Chat from "./src/screens/Chat";
 import ChurchCreateChurch from "./src/screens/ChurchCreateChurch";
 import DirectMessageUserSearch from "./src/screens/DirectMessageUserSearch";
 
+// events screens
+// events screens
+import CreateEventScreen from "./src/features/events/screens/CreateEventScreen";
+import EventDetailsScreen from "./src/features/events/screens/EventDetailsScreen";
+import EventInvitePeopleScreen from "./src/features/events/screens/EventInvitePeopleScreen";
+import EventsScreen from "./src/features/events/screens/EventsScreen";
+
 const Tab = createBottomTabNavigator();
 const CoachStack = createNativeStackNavigator();
 const CommunityStack = createNativeStackNavigator();
@@ -78,6 +96,9 @@ const PrayerStack = createNativeStackNavigator();
 const ProfileStack = createNativeStackNavigator();
 const ChurchStack = createNativeStackNavigator();
 const RootStack = createNativeStackNavigator();
+
+// ✅ Nav ref kept (useful for later)
+const navigationRef = createNavigationContainerRef();
 
 // Hard-coded for now – you can change this number any time.
 const CURRENT_SUBSCRIBERS = 0;
@@ -96,7 +117,11 @@ function NotificationsBell({ navigation }) {
       style={{ paddingHorizontal: 12, paddingVertical: 8 }}
       hitSlop={10}
     >
-      <Ionicons name="notifications-outline" size={22} color={theme.colors.gold} />
+      <Ionicons
+        name="notifications-outline"
+        size={22}
+        color={theme.colors.gold}
+      />
     </Pressable>
   );
 }
@@ -124,7 +149,8 @@ function ChurchEntry({ navigation }) {
         setLoading(true);
         setErrorText("");
 
-        const { data: sessData, error: sessErr } = await supabase.auth.getSession();
+        const { data: sessData, error: sessErr } =
+          await supabase.auth.getSession();
         if (sessErr) throw sessErr;
 
         const uid = sessData?.session?.user?.id;
@@ -141,12 +167,10 @@ function ChurchEntry({ navigation }) {
         // Order:
         // 1) APPROVED church_memberships
         // 2) church_admins (admin but not a membership row)
-        //
-        // IMPORTANT: NO default/fallback church.
         let approvedMemberChurchId = null;
         let adminChurchId = null;
 
-        // 1) Approved membership (user_id, church_id, status)
+        // 1) Approved membership
         try {
           const { data, error } = await supabase
             .from("church_memberships")
@@ -165,7 +189,7 @@ function ChurchEntry({ navigation }) {
           console.log("church_memberships lookup exception:", e);
         }
 
-        // 2) church_admins (user_id, church_id) — admin routing support
+        // 2) church_admins
         try {
           const { data, error } = await supabase
             .from("church_admins")
@@ -178,7 +202,7 @@ function ChurchEntry({ navigation }) {
             adminChurchId = data?.[0]?.church_id ?? null;
           }
         } catch (e) {
-          // Ignore: table may not exist yet
+          // Ignore
         }
 
         const finalId = approvedMemberChurchId || adminChurchId || null;
@@ -186,12 +210,8 @@ function ChurchEntry({ navigation }) {
         if (!alive) return;
         setResolvedChurchId(finalId);
 
-        // If we have a church id, route to it.
-        // Otherwise, go to Find your church.
         if (finalId) {
-          navigation.replace("ChurchProfilePublic", {
-            churchId: finalId,
-          });
+          navigation.replace("ChurchProfilePublic", { churchId: finalId });
         } else {
           navigation.replace("ChurchFind");
         }
@@ -222,12 +242,13 @@ function ChurchEntry({ navigation }) {
         }}
       >
         <ActivityIndicator size="large" color={theme.colors.gold} />
-        <Text style={{ color: theme.colors.muted, marginTop: 8 }}>Loading church…</Text>
+        <Text style={{ color: theme.colors.muted, marginTop: 8 }}>
+          Loading church…
+        </Text>
       </View>
     );
   }
 
-  // We should almost always have navigated away. If not, show a safe fallback UI.
   if (!resolvedChurchId) {
     return (
       <View
@@ -250,7 +271,13 @@ function ChurchEntry({ navigation }) {
           Find your church
         </Text>
 
-        <Text style={{ color: theme.colors.muted, textAlign: "center", marginBottom: 16 }}>
+        <Text
+          style={{
+            color: theme.colors.muted,
+            textAlign: "center",
+            marginBottom: 16,
+          }}
+        >
           You’re not linked to a church yet.
         </Text>
 
@@ -280,7 +307,6 @@ function ChurchEntry({ navigation }) {
     );
   }
 
-  // If we have a resolved id but navigation.replace hasn't fired for some reason
   return (
     <View
       style={{
@@ -291,7 +317,9 @@ function ChurchEntry({ navigation }) {
       }}
     >
       <ActivityIndicator size="small" color={theme.colors.gold} />
-      <Text style={{ color: theme.colors.muted, marginTop: 8 }}>Opening church…</Text>
+      <Text style={{ color: theme.colors.muted, marginTop: 8 }}>
+        Opening church…
+      </Text>
     </View>
   );
 }
@@ -309,10 +337,21 @@ function CommunityStackNavigator() {
   return (
     <CommunityStack.Navigator screenOptions={{ headerShown: false }}>
       <CommunityStack.Screen name="CommunityMain" component={Community} />
+
+      <CommunityStack.Screen
+        name="Networks"
+        component={Networks}
+        options={{ animation: "slide_from_right" }}
+      />
+
+      <CommunityStack.Screen
+        name="NetworkDetail"
+        component={NetworkDetail}
+        options={{ animation: "slide_from_right" }}
+      />
     </CommunityStack.Navigator>
   );
 }
-
 function PrayerStackNavigator() {
   return (
     <PrayerStack.Navigator screenOptions={{ headerShown: false }}>
@@ -329,41 +368,29 @@ function ProfileStackNavigator() {
   );
 }
 
-/**
- * Church stack inside tabs
- * This is what keeps the bottom tab bar visible on:
- * - Church profile
- * - Church inbox
- * - Church admin inbox/thread
- */
 function ChurchStackNavigator() {
   return (
     <ChurchStack.Navigator screenOptions={{ headerShown: false }}>
-      {/* Entry point for Church tab */}
       <ChurchStack.Screen name="ChurchEntry" component={ChurchEntry} />
-
-      <ChurchStack.Screen name="ChurchProfilePublic" component={ChurchProfilePublic} />
-
-      {/* ✅ ChurchCreateChurch inside Church tab stack */}
+      <ChurchStack.Screen
+        name="ChurchProfilePublic"
+        component={ChurchProfilePublic}
+      />
       <ChurchStack.Screen
         name="ChurchCreateChurch"
         component={ChurchCreateChurch}
         options={{ animation: "slide_from_right" }}
       />
-
-      {/* ✅ ChurchEdit inside Church tab stack */}
       <ChurchStack.Screen
         name="ChurchEdit"
         component={ChurchEdit}
         options={{ animation: "slide_from_right" }}
       />
-
       <ChurchStack.Screen
         name="ChurchFind"
         component={ChurchFind}
         options={{ animation: "slide_from_right" }}
       />
-
       <ChurchStack.Screen
         name="ChurchInbox"
         component={ChurchInbox}
@@ -384,19 +411,16 @@ function ChurchStackNavigator() {
         component={ChurchAdminHub}
         options={{ animation: "slide_from_right" }}
       />
-
       <ChurchStack.Screen
         name="ChurchAdminAdmins"
         component={ChurchAdminAdmins}
         options={{ animation: "slide_from_right" }}
       />
-
       <ChurchStack.Screen
         name="ChurchFeed"
         component={ChurchFeed}
         options={{ animation: "slide_from_right" }}
       />
-
       <ChurchStack.Screen
         name="ChurchAdminHome"
         component={ChurchAdminHome}
@@ -442,12 +466,18 @@ function MainTabs() {
         tabBarIcon: ({ color, size, focused }) => {
           let iconName = "ellipse-outline";
 
-          if (route.name === "Daily") iconName = focused ? "calendar" : "calendar-outline";
-          if (route.name === "Coach") iconName = focused ? "chatbubbles" : "chatbubbles-outline";
-          if (route.name === "Prayer") iconName = focused ? "hand-left" : "hand-left-outline";
-          if (route.name === "Community") iconName = focused ? "people" : "people-outline";
-          if (route.name === "Church") iconName = focused ? "business" : "business-outline";
-          if (route.name === "Profile") iconName = focused ? "person" : "person-outline";
+          if (route.name === "Daily")
+            iconName = focused ? "calendar" : "calendar-outline";
+          if (route.name === "Coach")
+            iconName = focused ? "chatbubbles" : "chatbubbles-outline";
+          if (route.name === "Prayer")
+            iconName = focused ? "hand-left" : "hand-left-outline";
+          if (route.name === "Community")
+            iconName = focused ? "people" : "people-outline";
+          if (route.name === "Church")
+            iconName = focused ? "business" : "business-outline";
+          if (route.name === "Profile")
+            iconName = focused ? "person" : "person-outline";
 
           return <Ionicons name={iconName} size={size ?? 22} color={color} />;
         },
@@ -467,31 +497,47 @@ function RootNavigator() {
   return (
     <RootStack.Navigator screenOptions={{ headerShown: false }}>
       <RootStack.Screen name="MainTabs" component={MainTabs} />
-
       <RootStack.Screen
         name="MessagesInbox"
         component={MessagesInbox}
         options={{ animation: "slide_from_right" }}
       />
-
       <RootStack.Screen
         name="DirectMessageUserSearch"
         component={DirectMessageUserSearch}
         options={{ animation: "slide_from_right" }}
       />
-
       <RootStack.Screen
         name="Notifications"
         component={NotificationsScreen}
         options={{ animation: "slide_from_right", headerShown: false }}
       />
-
       <RootStack.Screen
         name="GlobalSearch"
         component={GlobalSearch}
         options={{ animation: "slide_from_right" }}
       />
 
+            <RootStack.Screen
+        name="Events"
+        component={EventsScreen}
+        options={{ animation: "slide_from_right" }}
+      />
+      <RootStack.Screen
+        name="CreateEvent"
+        component={CreateEventScreen}
+        options={{ animation: "slide_from_right" }}
+      />
+      <RootStack.Screen
+        name="EventDetails"
+        component={EventDetailsScreen}
+        options={{ animation: "slide_from_right" }}
+      />
+            <RootStack.Screen
+        name="EventInvitePeople"
+        component={EventInvitePeopleScreen}
+        options={{ animation: "slide_from_right" }}
+      />
       <RootStack.Screen
         name="ApologeticsArena"
         component={ApologeticsArena}
@@ -502,40 +548,31 @@ function RootNavigator() {
         component={ExhibitBrief}
         options={{ animation: "slide_from_right" }}
       />
-
       <RootStack.Screen
         name="UserProfile"
         component={UserProfile}
         options={{ animation: "slide_from_right" }}
       />
-
       <RootStack.Screen
         name="ChurchFind"
         component={ChurchFind}
         options={{ animation: "slide_from_right" }}
       />
-
-      {/* Keep these RootStack church routes as fallback for now */}
       <RootStack.Screen
         name="ChurchProfilePublic"
         component={ChurchProfilePublic}
         options={{ animation: "slide_from_right" }}
       />
-
-      {/* ✅ ChurchCreateChurch fallback route */}
       <RootStack.Screen
         name="ChurchCreateChurch"
         component={ChurchCreateChurch}
         options={{ animation: "slide_from_right" }}
       />
-
-      {/* ChurchEdit fallback route */}
       <RootStack.Screen
         name="ChurchEdit"
         component={ChurchEdit}
         options={{ animation: "slide_from_right" }}
       />
-
       <RootStack.Screen
         name="ChurchInbox"
         component={ChurchInbox}
@@ -556,13 +593,11 @@ function RootNavigator() {
         component={ChurchAdminHub}
         options={{ animation: "slide_from_right" }}
       />
-
       <RootStack.Screen
         name="ChurchAdminAdmins"
         component={ChurchAdminAdmins}
         options={{ animation: "slide_from_right" }}
       />
-
       <RootStack.Screen
         name="ChurchFeed"
         component={ChurchFeed}
@@ -588,13 +623,11 @@ function RootNavigator() {
         component={ChurchNoticeboard}
         options={{ animation: "slide_from_right" }}
       />
-
       <RootStack.Screen
         name="Chat"
         component={Chat}
         options={{ animation: "slide_from_right" }}
       />
-
       <RootStack.Screen
         name="ChurchCreateGroup"
         component={ChurchCreateGroup}
@@ -606,18 +639,38 @@ function RootNavigator() {
 
 export default function App() {
   const [session, setSession] = useState(null);
+
   const [showImpact, setShowImpact] = useState(false);
+  const [pendingImpact, setPendingImpact] = useState(false);
 
   const [profile, setProfile] = useState(null);
   const [profileLoading, setProfileLoading] = useState(false);
 
-  // ✅ React Navigation linking config (more reliable deep links)
+  // ✅ Auth overlay: only used during the Auth exit animation
+  const [showAuthOverlay, setShowAuthOverlay] = useState(false);
+
+  // ✅ Auth exit finished flag: we only fade overlay once session exists AND exit finished
+  const [authExitFinished, setAuthExitFinished] = useState(false);
+
+  // ✅ Fade overlay opacity
+  const authOverlayOpacity = useRef(new Animated.Value(1)).current;
+  const impactTimerRef = useRef(null);
+
+  function fadeOutAuthOverlay(onDone) {
+    Animated.timing(authOverlayOpacity, {
+      toValue: 0,
+      duration: 260,
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (finished && typeof onDone === "function") onDone();
+    });
+  }
+
   const linking = useMemo(
     () => ({
       prefixes: [Linking.createURL("/")],
       config: {
         screens: {
-          // You can expand this later; for now, keep it simple/stable.
           MainTabs: {
             screens: {
               Daily: "daily",
@@ -643,7 +696,7 @@ export default function App() {
     return () => sub.subscription.unsubscribe();
   }, []);
 
-  // Handle deep links like: triunelyapp://auth?code=...  (PKCE)
+  // Handle deep links (PKCE)
   useEffect(() => {
     const handleUrl = async (url) => {
       try {
@@ -662,15 +715,28 @@ export default function App() {
     return () => sub.remove();
   }, []);
 
-  // When user becomes logged in, show the impact popup once
+  // When session appears, queue Impact (but never show it while auth overlay is up)
   useEffect(() => {
     if (session) {
-      setShowImpact(true);
-    } else {
       setShowImpact(false);
-      setProfile(null);
-    }
-  }, [session]);
+      setPendingImpact(true);
+    } else {
+  setShowImpact(false);
+  setPendingImpact(false);
+  setProfile(null);
+
+  // ✅ clear delayed impact timer on logout
+  if (impactTimerRef.current) {
+    clearTimeout(impactTimerRef.current);
+    impactTimerRef.current = null;
+  }
+
+  // reset auth overlay state on logout
+  setShowAuthOverlay(false);
+  setAuthExitFinished(false);
+  authOverlayOpacity.setValue(1);
+}
+  }, [session, authOverlayOpacity]);
 
   // Load the current user's profile when we have a session
   useEffect(() => {
@@ -706,57 +772,139 @@ export default function App() {
     loadProfile();
   }, [session]);
 
+  // ✅ If Auth exit finished AND session exists, fade the overlay away (no hard cut)
+  useEffect(() => {
+    if (!session) return;
+    if (!showAuthOverlay) return;
+    if (!authExitFinished) return;
+
+    fadeOutAuthOverlay(() => {
+      setShowAuthOverlay(false);
+      setAuthExitFinished(false);
+      authOverlayOpacity.setValue(1); // reset for next time
+    });
+  }, [session, showAuthOverlay, authExitFinished, authOverlayOpacity]);
+
+  // ✅ Show impact ONLY once we're fully inside the app and NOT showing auth overlay
+ useEffect(() => {
+  if (!session) return;
+  if (showAuthOverlay) return;
+  if (profileLoading) return;
+  if (!profile) return;
+
+  const onboardingIncomplete = profile.has_completed_onboarding === false;
+  if (onboardingIncomplete) return;
+
+  if (!pendingImpact) return;
+
+  // ✅ clear any previous timer (safety)
+  if (impactTimerRef.current) {
+    clearTimeout(impactTimerRef.current);
+    impactTimerRef.current = null;
+  }
+
+  // ✅ delay ImpactModal by 2 seconds
+  impactTimerRef.current = setTimeout(() => {
+    setShowImpact(true);
+    setPendingImpact(false);
+    impactTimerRef.current = null;
+  }, 2000);
+
+  // ✅ cleanup if conditions change before timer fires
+  return () => {
+    if (impactTimerRef.current) {
+      clearTimeout(impactTimerRef.current);
+      impactTimerRef.current = null;
+    }
+  };
+}, [session, showAuthOverlay, profileLoading, profile, pendingImpact]);
+
+  const shouldShowAuth = !session || showAuthOverlay;
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <KeyboardProvider>
-          {!session ? (
-            <AuthScreen />
-          ) : profileLoading ? (
-            <View
+          {/* App underlay mounts as soon as session exists */}
+          {session ? (
+            profileLoading ? (
+              <View
+                style={{
+                  flex: 1,
+                  backgroundColor: theme.colors.bg,
+                  justifyContent: "center",
+                  alignItems: "center",
+                }}
+              >
+                <ActivityIndicator size="large" color={theme.colors.gold} />
+                <Text style={{ color: theme.colors.muted, marginTop: 8 }}>
+                  Loading your profile…
+                </Text>
+              </View>
+            ) : (
+              <PointsProvider>
+                {profile && profile.has_completed_onboarding === false ? (
+                  <CompleteProfileOnboarding
+                    profile={profile}
+                    onFinished={(updatedProfile) => {
+                      setProfile(updatedProfile);
+                      setShowImpact(false);
+                      setPendingImpact(true);
+                    }}
+                  />
+                ) : (
+                  <>
+                    <FellowshipRequestsModalProvider>
+                      <RealtimeProvider session={session} profile={profile}>
+                      <NavigationContainer ref={navigationRef} linking={linking}>
+  <RootNavigator />
+  <InAppNotificationBanner navigation={navigationRef} />
+</NavigationContainer>
+                      </RealtimeProvider>
+                    </FellowshipRequestsModalProvider>
+
+                    <ImpactModal
+                      visible={showImpact}
+                      onClose={() => setShowImpact(false)}
+                      subscribers={CURRENT_SUBSCRIBERS}
+                      pricePerMonth={SUBSCRIPTION_PRICE}
+                      charityPerSubscriber={CHARITY_PER_SUBSCRIBER}
+                      goalSubscribers={GOAL_SUBSCRIBERS}
+                    />
+                  </>
+                )}
+              </PointsProvider>
+            )
+          ) : null}
+
+          {/* Auth (full-screen when logged out, or overlay during transition) */}
+          {shouldShowAuth ? (
+            <Animated.View
+              pointerEvents="auto"
               style={{
-                flex: 1,
-                backgroundColor: theme.colors.bg,
-                justifyContent: "center",
-                alignItems: "center",
+                position: "absolute",
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundColor: "#FFFFFF",
+                opacity: authOverlayOpacity,
               }}
             >
-              <ActivityIndicator size="large" color={theme.colors.gold} />
-              <Text style={{ color: theme.colors.muted, marginTop: 8 }}>
-                Loading your profile…
-              </Text>
-            </View>
-          ) : (
-            <PointsProvider>
-              {profile && profile.has_completed_onboarding === false ? (
-                <CompleteProfileOnboarding
-                  profile={profile}
-                  onFinished={(updatedProfile) => {
-                    setProfile(updatedProfile);
-                    setShowImpact(true);
-                  }}
-                />
-              ) : (
-                <>
-                  {/* ✅ RealtimeProvider wraps nav so all screens can share a single live wiring source */}
-                  <RealtimeProvider session={session} profile={profile}>
-                    <NavigationContainer linking={linking}>
-                      <RootNavigator />
-                    </NavigationContainer>
-                  </RealtimeProvider>
-
-                  <ImpactModal
-                    visible={showImpact}
-                    onClose={() => setShowImpact(false)}
-                    subscribers={CURRENT_SUBSCRIBERS}
-                    pricePerMonth={SUBSCRIPTION_PRICE}
-                    charityPerSubscriber={CHARITY_PER_SUBSCRIBER}
-                    goalSubscribers={GOAL_SUBSCRIBERS}
-                  />
-                </>
-              )}
-            </PointsProvider>
-          )}
+              <AuthScreen
+                onAuthSuccessStart={() => {
+                  // Keep auth visible even if session flips mid-animation
+                  setShowAuthOverlay(true);
+                  setAuthExitFinished(false);
+                  authOverlayOpacity.setValue(1);
+                }}
+                onAuthSuccessEnd={() => {
+                  // Mark exit finished; the effect will fade once session exists
+                  setAuthExitFinished(true);
+                }}
+              />
+            </Animated.View>
+          ) : null}
         </KeyboardProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

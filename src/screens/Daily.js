@@ -7,7 +7,6 @@ import {
   Alert,
   Animated,
   Easing,
-  Image,
   Keyboard,
   KeyboardAvoidingView,
   Modal,
@@ -16,7 +15,7 @@ import {
   ScrollView,
   Text,
   TextInput,
-  View,
+  View
 } from "react-native";
 
 import Screen from "../components/Screen";
@@ -42,6 +41,10 @@ import GlowButton from "../components/GlowButton";
 import GlowCard from "../components/GlowCard";
 import WeeklyChallengeSpotlight from "../components/WeeklyChallengeSpotlight";
 import WeeklyMessageCard from "../components/WeeklyMessageCard";
+import {
+  fetchUpcomingEvents,
+  formatEventDateTime,
+} from "../features/events/services/eventsService";
 import { HOME_COMMUNITY_ID } from "../lib/constants";
 import { theme } from "../theme/theme";
 
@@ -250,20 +253,84 @@ function buildStudyPack(drill) {
 // Monday-start week bounds (Mon–Sun) in local time, returned as YYYY-MM-DD strings
 function getCurrentWeekBoundsISO() {
   const now = new Date();
+
+  // Build the date using LOCAL calendar values first.
+  // This avoids toISOString() shifting the date backwards/forwards.
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const date = now.getDate();
   const day = now.getDay(); // 0 Sun .. 6 Sat
-  const diffToMonday = (day + 6) % 7; // Mon=0, Tue=1 ... Sun=6
 
-  const monday = new Date(now);
-  monday.setHours(0, 0, 0, 0);
-  monday.setDate(now.getDate() - diffToMonday);
+  // Monday = start of week
+  const diffToMonday = (day + 6) % 7;
 
-  const sunday = new Date(monday);
-  sunday.setDate(monday.getDate() + 6);
+  const monday = new Date(year, month, date - diffToMonday);
+  const sunday = new Date(year, month, date - diffToMonday + 6);
 
-  const toISODate = (d) => d.toISOString().slice(0, 10);
-  return { week_start: toISODate(monday), week_end: toISODate(sunday) };
+  const toLocalISODate = (d) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${dd}`;
+  };
+
+  return {
+    week_start: toLocalISODate(monday),
+    week_end: toLocalISODate(sunday),
+  };
 }
 
+async function getUserChurchForDaily(userId) {
+  if (!userId) return null;
+
+  // 1) First try normal approved church membership
+  const { data: memberships, error: memErr } = await supabase
+    .from("church_memberships")
+    .select("church_id, status, created_at")
+    .eq("user_id", userId)
+    .eq("status", "approved")
+    .order("created_at", { ascending: true })
+    .limit(1);
+
+  if (memErr) {
+    console.log("Daily church lookup: membership load error:", memErr);
+  }
+
+  const membership = memberships?.[0];
+
+  if (membership?.church_id) {
+    return {
+      church_id: membership.church_id,
+      source: "membership",
+    };
+  }
+
+  // 2) Then try church admin/owner/editor access
+  const { data: adminRows, error: adminErr } = await supabase
+    .from("church_admins")
+    .select("church_id, role, created_at")
+    .eq("user_id", userId)
+    .in("role", ["owner", "admin", "editor"])
+    .order("created_at", { ascending: true })
+    .limit(1);
+
+  if (adminErr) {
+    console.log("Daily church lookup: admin load error:", adminErr);
+    return null;
+  }
+
+  const adminRow = adminRows?.[0];
+
+  if (adminRow?.church_id) {
+    return {
+      church_id: adminRow.church_id,
+      source: "admin",
+      role: adminRow.role,
+    };
+  }
+
+  return null;
+}
 
 export default function Daily({ navigation }) {
   // ✅ Show monthly LP total if your PointsContext provides it; otherwise fall back to total.
@@ -280,7 +347,9 @@ export default function Daily({ navigation }) {
 const [weeklyMsg, setWeeklyMsg] = useState(null);
 const [weeklyChallengeLoading, setWeeklyChallengeLoading] = useState(false);
 const [weeklyChallenge, setWeeklyChallenge] = useState(null);
-
+const [dailyEventsLoading, setDailyEventsLoading] = useState(false);
+const [dailyEvents, setDailyEvents] = useState([]);
+const [noticeboardUnreadCount, setNoticeboardUnreadCount] = useState(0);
 
   // DEV day switcher
   const [dayOverride, setDayOverride] = useState(null);
@@ -344,6 +413,7 @@ const [weeklyChallenge, setWeeklyChallenge] = useState(null);
 
   const scrollX = useRef(new Animated.Value(0)).current;
   const scrollRef = useRef(null);
+const [scriptureY, setScriptureY] = useState(0);
 const [formationY, setFormationY] = useState(0);
 
   const listRef = useRef(null);
@@ -556,6 +626,11 @@ const pointsCtx = (() => {
   }
 })();
 
+const scrollToScripture = useCallback(() => {
+  const y = Math.max((scriptureY || 0) - 12, 0);
+  scrollRef.current?.scrollTo({ y, animated: true });
+}, [scriptureY]);
+
 const scrollToFormation = useCallback(() => {
   const y = Math.max((formationY || 0) - 12, 0); // small offset so the title isn't flush to the top
   scrollRef.current?.scrollTo({ y, animated: true });
@@ -610,103 +685,7 @@ const streakGlowOpacity = streakPulse.interpolate({
   outputRange: [0.18, 0.38],
 });
 
-function TriunelyDailyHeader() {
-  return (
-    <View style={{ paddingHorizontal: 16, paddingTop: 10, paddingBottom: 6 }}>
-      {/* Brand row */}
-      <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 12 }}>
-        <Image
-          source={require("../assets/brand/triunely-logo.png")}
-          style={{ width: 42, height: 42, marginRight: 10 }}
-          resizeMode="contain"
-        />
-        <View style={{ flex: 1 }}>
-          <Text style={[theme?.text?.h1, { color: theme?.colors?.text }]} numberOfLines={1}>
-            Triunely
-          </Text>
-          <Text style={{ color: theme?.colors?.muted, fontWeight: "700", marginTop: 2 }}>
-            Your daily formation
-          </Text>
-        </View>
-      </View>
 
-      {/* Stats row */}
-      <View style={{ flexDirection: "row", gap: 10 }}>
-        {/* Streak */}
-        <View
-          style={{
-            flex: 1,
-            borderRadius: 18,
-            borderWidth: 1,
-            borderColor: theme?.colors?.divider,
-            backgroundColor: theme?.colors?.surface,
-            overflow: "hidden",
-            padding: 12,
-          }}
-        >
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-            <Text style={{ color: theme?.colors?.muted, fontWeight: "900" }}>Streak</Text>
-
-            <View style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }}>
-              <Animated.View
-                pointerEvents="none"
-                style={{
-                  position: "absolute",
-                  width: 44,
-                  height: 44,
-                  borderRadius: 22,
-                  backgroundColor: theme?.colors?.gold || "rgba(255,215,0,0.35)",
-                  opacity: streakGlowOpacity,
-                  transform: [{ scale: streakScale }],
-                }}
-              />
-              <View
-                style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 18,
-                  backgroundColor: theme?.colors?.goldHalo || "rgba(255,215,0,0.16)",
-                  borderWidth: 1,
-                  borderColor: theme?.colors?.goldOutline || "rgba(255,215,0,0.35)",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Text style={{ color: theme?.colors?.text, fontWeight: "900" }}>
-                  {Number(streakValue) || 0}
-                </Text>
-              </View>
-            </View>
-          </View>
-
-          <Text style={{ color: theme?.colors?.text2, marginTop: 6, fontWeight: "800" }}>
-            Keep it going today
-          </Text>
-        </View>
-
-        {/* Light Points */}
-        <View
-          style={{
-            flex: 1,
-            borderRadius: 18,
-            borderWidth: 1,
-            borderColor: theme?.colors?.divider,
-            backgroundColor: theme?.colors?.surface,
-            padding: 12,
-          }}
-        >
-          <Text style={{ color: theme?.colors?.muted, fontWeight: "900" }}>Light Points</Text>
-          <Text style={{ color: theme?.colors?.text, fontWeight: "900", fontSize: 28, marginTop: 6 }}>
-            {Number(lightPointsValue) || 0}
-          </Text>
-          <Text style={{ color: theme?.colors?.text2, marginTop: 2, fontWeight: "800" }}>
-            Earned so far
-          </Text>
-        </View>
-      </View>
-    </View>
-  );
-}
 
   const missionsByDiscipline = useMemo(() => groupMissions(board?.missions || []), [board]);
 
@@ -829,52 +808,51 @@ const loadWeeklyMessage = useCallback(async () => {
 
     const { week_start } = getCurrentWeekBoundsISO();
 
-    // 1) Get user's first approved church membership (MVP)
-    const { data: memberships, error: memErr } = await supabase
-      .from("church_memberships")
-      .select("church_id, status, created_at")
-      .eq("user_id", user.id)
-      .eq("status", "approved")
-      .order("created_at", { ascending: true })
-      .limit(1);
+    console.log("WM DEBUG 1 week_start:", week_start);
 
-    if (memErr) {
-      console.log("WeeklyMessage: membership load error:", memErr);
-      setWeeklyMsg(null);
-      return;
-    }
+    // 1) Get user's church access for Daily
+// Normal approved members come from church_memberships.
+// Church admins/owners/editors may only exist in church_admins.
+const userChurch = await getUserChurchForDaily(user.id);
 
-    const membership = memberships?.[0];
-    if (!membership?.church_id) {
-      setWeeklyMsg(null);
-      return;
-    }
+if (!userChurch?.church_id) {
+  setWeeklyMsg(null);
+  return;
+}
+
+const churchId = userChurch.church_id;
 
     // 2) Fetch church name
     let churchName = "Church";
     const { data: churchRow, error: churchErr } = await supabase
       .from("churches")
-      .select("name")
-      .eq("id", membership.church_id)
+      .select("name, display_name")
+      .eq("id", churchId)
       .maybeSingle();
 
-    if (!churchErr && churchRow?.name) churchName = churchRow.name;
+    if (!churchErr && (churchRow?.display_name || churchRow?.name)) {
+  churchName = churchRow.display_name || churchRow.name;
+}
 
     // 3) Fetch this week's weekly message (published or not)
     // NOTE: We fetch the row for the week; if none exists, we still keep church context.
     const { data: msg, error: msgErr } = await supabase
       .from("church_weekly_messages")
       .select("id, church_id, week_start, video_url, speaker_label, title, status, source_label")
-      .eq("church_id", membership.church_id)
+      .eq("church_id", churchId)
       .eq("week_start", week_start)
       .maybeSingle();
+
+      console.log("Daily WeeklyMessage churchId:", churchId);
+console.log("Daily WeeklyMessage msg:", msg);
+console.log("Daily WeeklyMessage msgErr:", msgErr);
 
     if (msgErr) {
       console.log("WeeklyMessage: message load error:", msgErr);
       // Still keep church context even if message fetch fails
       setWeeklyMsg({
         id: null,
-        church_id: membership.church_id,
+        church_id: churchId,
         church_name: churchName,
         week_start,
         video_url: null,
@@ -890,7 +868,7 @@ const loadWeeklyMessage = useCallback(async () => {
     if (!msg) {
       setWeeklyMsg({
         id: null,
-        church_id: membership.church_id,
+        church_id: churchId,
         church_name: churchName,
         week_start,
         video_url: null,
@@ -905,7 +883,7 @@ const loadWeeklyMessage = useCallback(async () => {
     // Explicit mapping (NO spread)
     setWeeklyMsg({
       id: msg.id ?? null,
-      church_id: msg.church_id ?? membership.church_id,
+      church_id: msg.church_id ?? churchId,
       church_name: churchName,
       week_start: msg.week_start ?? week_start,
       video_url: msg.video_url ?? null,
@@ -938,32 +916,24 @@ const loadWeeklyChallenge = useCallback(async () => {
 
     const { week_start } = getCurrentWeekBoundsISO();
 
-    // 1) Get user's first approved church membership (MVP)
-    const { data: memberships, error: memErr } = await supabase
-      .from("church_memberships")
-      .select("church_id, status, created_at")
-      .eq("user_id", user.id)
-      .eq("status", "approved")
-      .order("created_at", { ascending: true })
-      .limit(1);
+  
+    // 1) Get user's church access for Daily
+// Normal approved members come from church_memberships.
+// Church admins/owners/editors may only exist in church_admins.
+const userChurch = await getUserChurchForDaily(user.id);
 
-    if (memErr) {
-      console.log("WeeklyChallenge: membership load error:", memErr);
-      setWeeklyChallenge(null);
-      return;
-    }
+if (!userChurch?.church_id) {
+  setWeeklyChallenge(null);
+  return;
+}
 
-    const membership = memberships?.[0];
-    if (!membership?.church_id) {
-      setWeeklyChallenge(null);
-      return;
-    }
+const churchId = userChurch.church_id;
 
     // 2) Fetch this week's published weekly challenge
     const { data: ch, error: chErr } = await supabase
       .from("church_weekly_challenges")
       .select("id, church_id, week_start, title, description, why_it_matters, scripture_refs, action_label, action_url, lp_bonus, status, discipline")
-      .eq("church_id", membership.church_id)
+      .eq("church_id", churchId)
       .eq("week_start", week_start)
       .eq("status", "published")
       .maybeSingle();
@@ -980,6 +950,80 @@ const loadWeeklyChallenge = useCallback(async () => {
     setWeeklyChallenge(null);
   } finally {
     setWeeklyChallengeLoading(false);
+  }
+}, []);
+
+const loadDailyEvents = useCallback(async () => {
+  try {
+    setDailyEventsLoading(true);
+
+    const res = await fetchUpcomingEvents({ limit: 3 });
+
+    if (!res?.ok) {
+      console.log("Daily upcoming events load error:", res?.error);
+      setDailyEvents([]);
+      return;
+    }
+
+    setDailyEvents(Array.isArray(res.events) ? res.events.slice(0, 3) : []);
+  } catch (e) {
+    console.log("Daily upcoming events unexpected error:", e);
+    setDailyEvents([]);
+  } finally {
+    setDailyEventsLoading(false);
+  }
+}, []);
+
+const loadNoticeboardUnreadCount = useCallback(async () => {
+  try {
+    const {
+      data: { user },
+      error: userErr,
+    } = await supabase.auth.getUser();
+
+    if (userErr || !user) {
+      setNoticeboardUnreadCount(0);
+      return;
+    }
+
+    const userChurch = await getUserChurchForDaily(user.id);
+
+    if (!userChurch?.church_id) {
+      setNoticeboardUnreadCount(0);
+      return;
+    }
+
+    const churchId = userChurch.church_id;
+
+    const { data: readRow, error: readErr } = await supabase
+      .from("church_noticeboard_reads")
+      .select("last_seen_at")
+      .eq("user_id", user.id)
+      .eq("church_id", churchId)
+      .maybeSingle();
+
+    if (readErr) {
+      console.log("Daily noticeboard read row error:", readErr);
+    }
+
+    const lastSeenAt = readRow?.last_seen_at || "1970-01-01T00:00:00.000Z";
+
+    const { count, error: countErr } = await supabase
+      .from("church_noticeboard_posts")
+      .select("id", { count: "exact", head: true })
+      .eq("church_id", churchId)
+      .gt("created_at", lastSeenAt);
+
+    if (countErr) {
+      console.log("Daily noticeboard unread count error:", countErr);
+      setNoticeboardUnreadCount(0);
+      return;
+    }
+
+    setNoticeboardUnreadCount(Number(count || 0));
+  } catch (e) {
+    console.log("Daily noticeboard unread count unexpected error:", e);
+    setNoticeboardUnreadCount(0);
   }
 }, []);
 
@@ -1066,11 +1110,18 @@ const saveWeeklyCommitment = useCallback(async ({ church_id, week_start, challen
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dayOverride]);
 
- useFocusEffect(
+useFocusEffect(
   useCallback(() => {
     loadWeeklyMessage();
     loadWeeklyChallenge();
-  }, [loadWeeklyMessage, loadWeeklyChallenge])
+    loadDailyEvents();
+    loadNoticeboardUnreadCount();
+  }, [
+    loadWeeklyMessage,
+    loadWeeklyChallenge,
+    loadDailyEvents,
+    loadNoticeboardUnreadCount,
+  ])
 );
 
 useEffect(() => {
@@ -1767,6 +1818,236 @@ useEffect(() => {
     );
   };
 
+    function DailyStatTile({ icon, label, value, subtext }) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: theme.colors.surface,
+          borderRadius: 18,
+          padding: 12,
+          borderWidth: 1,
+          borderColor: NEUTRAL_BORDER,
+          shadowColor: NEUTRAL_SHADOW,
+          shadowOpacity: 0.12,
+          shadowRadius: 12,
+          shadowOffset: { width: 0, height: 6 },
+          elevation: 2,
+        }}
+      >
+        <Text style={{ fontSize: 20 }}>{icon}</Text>
+        <Text
+          style={{
+            color: theme.colors.muted,
+            fontWeight: "900",
+            fontSize: 11,
+            marginTop: 8,
+            textTransform: "uppercase",
+            letterSpacing: 0.4,
+          }}
+          numberOfLines={1}
+        >
+          {label}
+        </Text>
+        <Text
+          style={{
+            color: theme.colors.text,
+            fontWeight: "900",
+            fontSize: 20,
+            marginTop: 4,
+          }}
+          numberOfLines={1}
+        >
+          {value}
+        </Text>
+        {!!subtext && (
+          <Text
+            style={{
+              color: theme.colors.text2,
+              fontWeight: "700",
+              fontSize: 11,
+              marginTop: 2,
+            }}
+            numberOfLines={1}
+          >
+            {subtext}
+          </Text>
+        )}
+      </View>
+    );
+  }
+
+  function SectionTitle({ title, subtitle }) {
+    return (
+      <View style={{ marginBottom: 10 }}>
+        <Text style={[theme.text.h2, { fontSize: 18 }]}>{title}</Text>
+        {!!subtitle && (
+          <Text style={{ color: theme.colors.text2, marginTop: 4, lineHeight: 20 }}>
+            {subtitle}
+          </Text>
+        )}
+      </View>
+    );
+  }
+
+  function TodayPathTile({ icon, title, description, onPress }) {
+    return (
+      <Pressable
+        onPress={onPress}
+        style={({ pressed }) => ({
+          backgroundColor: pressed ? theme.colors.surfaceAlt : theme.colors.surface,
+          borderRadius: 18,
+          padding: 14,
+          borderWidth: 1,
+          borderColor: NEUTRAL_BORDER,
+          shadowColor: NEUTRAL_SHADOW,
+          shadowOpacity: 0.1,
+          shadowRadius: 10,
+          shadowOffset: { width: 0, height: 5 },
+          elevation: 2,
+          marginBottom: 10,
+        })}
+      >
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
+          <View
+            style={{
+              width: 42,
+              height: 42,
+              borderRadius: 21,
+              backgroundColor: theme.colors.goldHalo,
+              borderWidth: 1,
+              borderColor: theme.colors.goldOutline,
+              alignItems: "center",
+              justifyContent: "center",
+              marginRight: 12,
+            }}
+          >
+            <Text style={{ fontSize: 20 }}>{icon}</Text>
+          </View>
+
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: theme.colors.text, fontWeight: "900", fontSize: 15 }}>
+              {title}
+            </Text>
+            <Text style={{ color: theme.colors.text2, marginTop: 3, lineHeight: 18 }}>
+              {description}
+            </Text>
+          </View>
+
+          <Text style={{ color: theme.colors.sage, fontWeight: "900", fontSize: 18 }}>
+            ›
+          </Text>
+        </View>
+      </Pressable>
+    );
+  }
+
+ function UpcomingEventsMiniCard() {
+  return (
+    <GlowCard innerStyle={{ padding: 14 }}>
+      <View style={{ flexDirection: "row", alignItems: "center" }}>
+        <View
+          style={{
+            width: 42,
+            height: 42,
+            borderRadius: 21,
+            backgroundColor: theme.colors.sageTint || "rgba(125, 160, 120, 0.12)",
+            borderWidth: 1,
+            borderColor: theme.colors.sageOutline || "rgba(125, 160, 120, 0.28)",
+            alignItems: "center",
+            justifyContent: "center",
+            marginRight: 12,
+          }}
+        >
+          <Text style={{ fontSize: 20 }}>📅</Text>
+        </View>
+
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: theme.colors.text, fontWeight: "900", fontSize: 15 }}>
+            Upcoming Events
+          </Text>
+          <Text style={{ color: theme.colors.text2, marginTop: 4, lineHeight: 18 }}>
+            Bible studies, worship nights, prayer walks and church gatherings.
+          </Text>
+        </View>
+      </View>
+
+      <View style={{ marginTop: 12 }}>
+        {dailyEventsLoading ? (
+          <View style={{ paddingVertical: 10, alignItems: "center" }}>
+            <ActivityIndicator color={theme.colors.gold} />
+            <Text style={{ color: theme.colors.muted, marginTop: 6, fontWeight: "700" }}>
+              Loading events…
+            </Text>
+          </View>
+        ) : dailyEvents.length > 0 ? (
+          dailyEvents.map((event) => (
+            <Pressable
+              key={event.id}
+              onPress={() => navigation.navigate("EventDetails", { eventId: event.id })}
+              style={({ pressed }) => ({
+                paddingVertical: 10,
+                paddingHorizontal: 10,
+                borderRadius: 14,
+                backgroundColor: pressed ? theme.colors.surfaceAlt : theme.colors.surface,
+                borderWidth: 1,
+                borderColor: NEUTRAL_BORDER,
+                marginBottom: 8,
+              })}
+            >
+              <Text
+                style={{ color: theme.colors.text, fontWeight: "900" }}
+                numberOfLines={1}
+              >
+                {event.title || "Untitled event"}
+              </Text>
+
+              <Text
+                style={{
+                  color: theme.colors.text2,
+                  marginTop: 4,
+                  fontWeight: "700",
+                  fontSize: 12,
+                }}
+                numberOfLines={1}
+              >
+                {formatEventDateTime(event.start_at, event.end_at)}
+              </Text>
+
+              {!!(event.location_name || event.location_address || event.online_url) && (
+                <Text
+                  style={{
+                    color: theme.colors.muted,
+                    marginTop: 3,
+                    fontWeight: "700",
+                    fontSize: 12,
+                  }}
+                  numberOfLines={1}
+                >
+                  {event.location_name ||
+                    event.location_address ||
+                    (event.online_url ? "Online" : "")}
+                </Text>
+              )}
+            </Pressable>
+          ))
+        ) : (
+          <Text style={{ color: theme.colors.muted, lineHeight: 20 }}>
+            No upcoming events yet.
+          </Text>
+        )}
+      </View>
+
+      <View style={{ marginTop: 10 }}>
+        <GlowButton
+          title="View Events"
+          variant="outline"
+          onPress={() => navigation.navigate("Events")}
+        />
+      </View>
+    </GlowCard>
+  );
+}
   const renderDisciplineCard = ({ item: d, index }) => {
     const meta = DISCIPLINE_META[d];
     const completed = !!completedByDisciplineLocal?.[d];
@@ -1985,170 +2266,183 @@ useEffect(() => {
   contentContainerStyle={{ paddingBottom: (bottomPad || 0) + 18 }}
 >
 
-            {/* Header (Prayer-style) */}
-            <View style={{ marginBottom: 12 }}>
-              <View
-                style={{
-                  flexDirection: "row",
-                  justifyContent: "space-between",
-                  alignItems: "flex-start",
-                }}
-              >
-                <View style={{ flex: 1, paddingRight: 12 }}>
-                  <Text style={[theme.text.h1, { fontSize: 22 }]}>Daily</Text>
-                  <Text style={[theme.text.sub, { marginTop: 2 }]}>
-                    Verse, missions, streak, and progress.
-                  </Text>
-                </View>
+            {/* Daily Dashboard Header */}
+<View style={{ marginBottom: 16 }}>
+  <View style={{ marginBottom: 12 }}>
+    <Text style={[theme.text.h1, { fontSize: 24 }]}>Daily</Text>
+    <Text style={[theme.text.sub, { marginTop: 4 }]}>
+      Your walk today — Scripture, formation, and progress.
+    </Text>
+  </View>
 
-                {/* ✅ Light Points pill shows MONTH total */}
-                <View
-                  style={{
-                    backgroundColor: theme.colors.surface,
-                    borderRadius: 999,
-                    paddingHorizontal: 12,
-                    paddingVertical: 8,
-                    borderWidth: 1,
-                    // ✅ neutral structure border
-                    borderColor: NEUTRAL_BORDER,
-                    shadowColor: NEUTRAL_SHADOW,
-                    shadowOpacity: 0.16,
-                    shadowRadius: 12,
-                    shadowOffset: { width: 0, height: 6 },
-                    elevation: 3,
-                    alignItems: "flex-end",
-                  }}
-                >
-                  <Text style={{ color: theme.colors.text, fontSize: 12, fontWeight: "900" }}>
-                    Light Points 
-                  </Text>
-                  <Text
-                    style={{
-                      color: theme.colors.goldPressed,
-                      fontSize: 14,
-                      fontWeight: "900",
-                      marginTop: 2,
-                    }}
-                  >
-                    {monthLP}
-                  </Text>
-                </View>
-              </View>
-
-              <View style={{ marginTop: 10 }}>
-                <GlowCard innerStyle={{ paddingVertical: 10, paddingHorizontal: 14 }}>
-                  <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                    <Text style={{ color: theme.colors.text2, fontSize: 12, fontWeight: "700" }}>
-                      Streak: {streak} day(s)
-                    </Text>
-                    <Text style={{ color: theme.colors.text2, fontSize: 12, fontWeight: "700" }}>
-                      Light Points (Month): {monthLP}
-                    </Text>
-                  </View>
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      justifyContent: "space-between",
-                      marginTop: 6,
-                    }}
-                  >
-                    <Text style={{ color: theme.colors.text2, fontSize: 12, fontWeight: "700" }}>
-                      Progress: {completedCount}/5
-                    </Text>
-                    <Text style={{ color: theme.colors.text2, fontSize: 12, fontWeight: "700" }}>
-                      Earned today: +{earnedPointsToday}
-                    </Text>
-                  </View>
-                  <Text style={{ color: theme.colors.muted, marginTop: 6, fontSize: 12 }}>
-                    Streak bonus: +{streakBonusPerMission}/mission (cap {STREAK_BONUS_CAP})
-                  </Text>
-                </GlowCard>
-              </View>
-            </View>
-
-{/* Weekly Message (Mon–Sun encouragement) */}
-<View style={{ marginTop: 6 }}>
-  {weeklyMsgLoading ? (
-    <GlowCard innerStyle={{ padding: 14, alignItems: "center" }}>
-      <ActivityIndicator color={theme.colors.gold} />
-      <Text style={{ color: theme.colors.muted, marginTop: 8, fontWeight: "700" }}>
-        Loading weekly encouragement…
-      </Text>
-    </GlowCard>
-  ) : weeklyMsg ? (
-    <WeeklyMessageCard
-      theme={theme}
-      sourceLabel={weeklyMsg.source_label || weeklyMsg.church_name || "Church"}
-      speakerLabel={weeklyMsg.speaker_label || ""}
-      videoUrl={weeklyMsg.video_url || null}
-      onPressChallenges={scrollToFormation}
-      onPressNoticeboard={() => console.log("Go to Noticeboard")}
-      onPressChurchProfile={() => console.log("Go to Church Profile")}
+  <View style={{ flexDirection: "row", gap: 10 }}>
+    <DailyStatTile
+      icon="🔥"
+      label="Streak"
+      value={`${streak}`}
+      subtext="days"
     />
-  ) : (
-    <GlowCard innerStyle={{ padding: 14 }}>
-      <Text style={{ color: theme.colors.text, fontWeight: "900" }}>
-        Weekly Encouragement
-      </Text>
-      <Text style={{ color: theme.colors.text2, marginTop: 8, lineHeight: 20 }}>
-        You’re not currently linked to a church yet.
-      </Text>
-    </GlowCard>
-  )}
+
+    <DailyStatTile
+      icon="✨"
+      label="Light Points"
+      value={`${monthLP}`}
+      subtext="this month"
+    />
+
+    <DailyStatTile
+      icon="✅"
+      label="Today"
+      value={`${completedCount}/5`}
+      subtext={`+${earnedPointsToday} earned`}
+    />
+  </View>
+
+  <Text
+    style={{
+      color: theme.colors.muted,
+      marginTop: 10,
+      fontSize: 12,
+      fontWeight: "700",
+      lineHeight: 18,
+    }}
+  >
+    Streak bonus: +{streakBonusPerMission}/mission, capped at {STREAK_BONUS_CAP}.
+  </Text>
 </View>
 
-{/* Weekly Challenge Spotlight (church-set) */}
-<View style={{ marginTop: 0 }}>
-  {weeklyChallengeLoading ? (
-    <GlowCard innerStyle={{ padding: 14, alignItems: "center" }}>
-      <ActivityIndicator color={theme.colors.gold} />
-      <Text style={{ color: theme.colors.muted, marginTop: 8, fontWeight: "700" }}>
-        Loading weekly challenge…
-      </Text>
-    </GlowCard>
-  ) : weeklyChallenge ? (
-   <WeeklyChallengeSpotlight
+{/* This Week */}
+<View style={{ marginBottom: 16 }}>
+  <SectionTitle
+    title="This Week"
+    subtitle="Encouragement, challenge, and gatherings connected to your walk."
+  />
+
+  {/* Weekly Message (Mon–Sun encouragement) */}
+  <View style={{ marginTop: 6 }}>
+    {weeklyMsgLoading ? (
+      <GlowCard innerStyle={{ padding: 14, alignItems: "center" }}>
+        <ActivityIndicator color={theme.colors.gold} />
+        <Text style={{ color: theme.colors.muted, marginTop: 8, fontWeight: "700" }}>
+          Loading weekly encouragement…
+        </Text>
+      </GlowCard>
+    ) : weeklyMsg ? (
+     <WeeklyMessageCard
   theme={theme}
-  challenge={weeklyChallenge}
-  onPressGoToChallenges={scrollToFormation}
-  onOpenScripture={openScripture}
- onStart={async () => {
-  const churchId = weeklyChallenge?.church_id || null;
-  const wk = weeklyChallenge?.week_start || null;
-  const chId = weeklyChallenge?.id || null;
-
-  if (churchId && wk && chId) {
-    await loadWeeklyCommitment({ church_id: churchId, week_start: wk, challenge_id: chId });
-  }
-
-  setCommitmentModalOpen(true);
-}}
-
-
-  onShare={handleShareWeeklyChallenge}
-  shareEnabled={weeklyShareEnabled}
-commitmentText={weeklyCommitmentText}
-hasStarted={weeklyCommitmentSaved && weeklyCommitmentText.trim().length > 0}
-
+messageTitle={weeklyMsg.title || null}
+  sourceLabel={weeklyMsg.source_label || weeklyMsg.church_name || "Church"}
+  speakerLabel={weeklyMsg.speaker_label || ""}
+  videoUrl={weeklyMsg.video_url || null}
+  noticeboardUnreadCount={noticeboardUnreadCount}
+  onPressChallenges={scrollToFormation}
+  onPressNoticeboard={() => {
+    if (!weeklyMsg?.church_id) return;
+    navigation.navigate("ChurchNoticeboard", {
+      churchId: weeklyMsg.church_id,
+    });
+  }}
+  onPressChurchProfile={() => {
+    if (!weeklyMsg?.church_id) return;
+    navigation.navigate("ChurchProfilePublic", {
+      churchId: weeklyMsg.church_id,
+    });
+  }}
 />
+    ) : (
+      <GlowCard innerStyle={{ padding: 14 }}>
+        <Text style={{ color: theme.colors.text, fontWeight: "900" }}>
+          Weekly Encouragement
+        </Text>
+        <Text style={{ color: theme.colors.text2, marginTop: 8, lineHeight: 20 }}>
+          You’re not currently linked to a church yet.
+        </Text>
+      </GlowCard>
+    )}
+  </View>
 
+  {/* Weekly Challenge Spotlight (church-set) */}
+  <View style={{ marginTop: 10 }}>
+    {weeklyChallengeLoading ? (
+      <GlowCard innerStyle={{ padding: 14, alignItems: "center" }}>
+        <ActivityIndicator color={theme.colors.gold} />
+        <Text style={{ color: theme.colors.muted, marginTop: 8, fontWeight: "700" }}>
+          Loading weekly challenge…
+        </Text>
+      </GlowCard>
+    ) : weeklyChallenge ? (
+      <WeeklyChallengeSpotlight
+        theme={theme}
+        challenge={weeklyChallenge}
+        onPressGoToChallenges={scrollToFormation}
+        onOpenScripture={openScripture}
+        onStart={async () => {
+          const churchId = weeklyChallenge?.church_id || null;
+          const wk = weeklyChallenge?.week_start || null;
+          const chId = weeklyChallenge?.id || null;
 
-  ) : (
-    <GlowCard innerStyle={{ padding: 14 }}>
-      <Text style={{ color: theme.colors.text, fontWeight: "900" }}>
-        Weekly Challenge
-      </Text>
-      <Text style={{ color: theme.colors.text2, marginTop: 8, lineHeight: 20 }}>
-        No weekly challenge has been published for your church yet.
-      </Text>
-    </GlowCard>
-  )}
+          if (churchId && wk && chId) {
+            await loadWeeklyCommitment({
+              church_id: churchId,
+              week_start: wk,
+              challenge_id: chId,
+            });
+          }
+
+          setCommitmentModalOpen(true);
+        }}
+        onShare={handleShareWeeklyChallenge}
+        shareEnabled={weeklyShareEnabled}
+        commitmentText={weeklyCommitmentText}
+        hasStarted={weeklyCommitmentSaved && weeklyCommitmentText.trim().length > 0}
+      />
+    ) : (
+      <GlowCard innerStyle={{ padding: 14 }}>
+        <Text style={{ color: theme.colors.text, fontWeight: "900" }}>
+          Weekly Challenge
+        </Text>
+        <Text style={{ color: theme.colors.text2, marginTop: 8, lineHeight: 20 }}>
+          No weekly challenge has been published for your church yet.
+        </Text>
+      </GlowCard>
+    )}
+  </View>
+
+  <View style={{ marginTop: 10 }}>
+    <UpcomingEventsMiniCard />
+  </View>
 </View>
 
+{/* Today’s Path */}
+<View style={{ marginBottom: 16 }}>
+  <SectionTitle
+    title="Today’s Path"
+    subtitle="Choose what you want to focus on next."
+  />
+
+  <TodayPathTile
+    icon="📖"
+    title="Daily Bible Verse"
+    description="Read today’s verse, open the full passage, and ask Faith Coach."
+    onPress={scrollToScripture}
+  />
+
+  <TodayPathTile
+    icon="🛡️"
+    title="Today’s Formation"
+    description="Complete today’s disciplines and claim your progress."
+    onPress={scrollToFormation}
+  />
+</View>
             {/* ========================= */}
             {/* Scripture “Hero” Section  */}
             {/* ========================= */}
-            <View style={{ marginTop: 14 }}>
+            <View
+  onLayout={(e) => {
+    setScriptureY(e.nativeEvent.layout.y);
+  }}
+  style={{ marginTop: 14 }}
+>
               <View
                 style={{
                   marginHorizontal: -16,
@@ -2343,244 +2637,7 @@ hasStarted={weeklyCommitmentSaved && weeklyCommitmentText.trim().length > 0}
               </View>
             </View>
 
-            {/* ===================================== */}
-            {/* Apologetics Section (clear chapter)   */}
-            {/* ===================================== */}
-            <View style={{ marginTop: SECTION_GAP }}>
-              <View
-                style={{
-                  marginHorizontal: -16,
-                  backgroundColor: theme.colors.surface,
-                  borderTopWidth: 1,
-                  borderBottomWidth: 1,
-                  borderColor: NEUTRAL_BORDER,
-                }}
-              >
-                <View style={{ paddingHorizontal: 16, paddingVertical: 16 }}>
-                  <Text style={[theme.text.h2, { fontSize: 18 }]}>Apologetics Arena</Text>
-                  <Text style={{ color: theme.colors.text2, marginTop: 6, lineHeight: 20 }}>
-                    Train calm, confident answers. Start a drill and practice your defence.
-                  </Text>
-
-                  {apoLoading ? (
-                    <View style={{ marginTop: 12 }}>
-                      <GlowCard innerStyle={{ padding: 14 }}>
-                        <ActivityIndicator color={theme.colors.gold} />
-                      </GlowCard>
-                    </View>
-                  ) : apo?.ok === false ? (
-                    <View style={{ marginTop: 12 }}>
-                      <GlowCard innerStyle={{ padding: 14 }}>
-                        <Text style={{ color: theme.colors.text, fontWeight: "900" }}>
-                          Couldn’t load Apologetics
-                        </Text>
-                        <Text style={{ color: theme.colors.text2, marginTop: 8 }}>
-                          {apo?.error || "Unknown error"}
-                        </Text>
-                      </GlowCard>
-                    </View>
-                  ) : (
-                    <>
-                      {/* DRILLS CARD */}
-                      <Pressable
-                        onPress={() => goToApologeticsArena(nextDrill?.id)}
-                        style={{ marginTop: 12 }}
-                      >
-                        <GlowCard innerStyle={{ padding: 14 }}>
-                          <View
-                            style={{
-                              flexDirection: "row",
-                              justifyContent: "space-between",
-                              alignItems: "center",
-                            }}
-                          >
-                            <Text
-                              style={{ color: theme.colors.text, fontWeight: "900", fontSize: 16 }}
-                            >
-                              Today’s Drills
-                            </Text>
-
-                            {apoDrills.length ? (
-                              <Text style={{ color: theme.colors.goldPressed, fontWeight: "900" }}>
-                                {completedDrillsCount}/{apoDrills.length}
-                              </Text>
-                            ) : (
-                              <Text style={{ color: theme.colors.muted, fontWeight: "900" }}>
-                                NOT SEEDED
-                              </Text>
-                            )}
-                          </View>
-
-                          {nextDrill ? (
-                            <>
-                              <Text
-                                style={{
-                                  color: theme.colors.text,
-                                  marginTop: 10,
-                                  fontWeight: "900",
-                                }}
-                              >
-                                Next: {nextDrill.title}
-                              </Text>
-
-                              <View style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 10 }}>
-                                {[
-                                  { text: `Opponent: ${nextDrill.opponent_type}`, kind: "sage" },
-                                  { text: `+${safeNum(nextDrill.xp_reward)} XP`, kind: "gold" },
-                                  { text: `+${safeNum(nextDrill.light_points_bonus)} LP bonus`, kind: "sage" },
-                                ].map((chip) => (
-                                  <View
-                                    key={chip.text}
-                                    style={{
-                                      paddingHorizontal: 10,
-                                      paddingVertical: 6,
-                                      borderRadius: 999,
-                                      backgroundColor:
-                                        chip.kind === "gold"
-                                          ? theme.colors.goldHalo
-                                          : theme.colors.sageTint,
-                                      borderWidth: 1,
-                                      borderColor:
-                                        chip.kind === "gold"
-                                          ? theme.colors.goldOutline
-                                          : theme.colors.sageOutline,
-                                      marginRight: 8,
-                                      marginBottom: 8,
-                                    }}
-                                  >
-                                    <Text
-                                      style={{
-                                        color:
-                                          chip.kind === "gold"
-                                            ? theme.colors.goldPressed
-                                            : theme.colors.sage,
-                                        fontWeight: "900",
-                                      }}
-                                    >
-                                      {chip.text}
-                                    </Text>
-                                  </View>
-                                ))}
-                              </View>
-
-                              {apoDrills.length > 1 ? (
-                                <View style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 6 }}>
-                                  {apoDrills.map((d, idx) => {
-                                    const done = !!attemptsByDrillId?.[d.id]?.completed;
-                                    const isNext = d.id === nextDrill.id;
-                                    return (
-                                      <Pressable
-                                        key={d.id}
-                                        onPress={() => goToApologeticsArena(d.id)}
-                                        style={{
-                                          paddingHorizontal: 10,
-                                          paddingVertical: 8,
-                                          borderRadius: 999,
-                                          backgroundColor: done
-                                            ? theme.colors.goldHalo
-                                            : theme.colors.surface,
-                                          borderWidth: 1,
-                                          borderColor: done
-                                            ? theme.colors.goldOutline
-                                            : isNext
-                                            ? theme.colors.gold
-                                            : NEUTRAL_BORDER,
-                                          marginRight: 8,
-                                          marginBottom: 8,
-                                        }}
-                                      >
-                                        <Text style={{ color: theme.colors.text, fontWeight: "900" }}>
-                                          {idx + 1} {done ? "✓" : ""}
-                                        </Text>
-                                      </Pressable>
-                                    );
-                                  })}
-                                </View>
-                              ) : null}
-
-                              <View style={{ marginTop: 10 }}>
-                                <GlowButton
-                                  title="Start next drill"
-                                  onPress={() => goToApologeticsArena(nextDrill?.id)}
-                                />
-                              </View>
-                            </>
-                          ) : (
-                            <Text style={{ color: theme.colors.muted, marginTop: 10 }}>
-                              No drills seeded for today yet.
-                            </Text>
-                          )}
-                        </GlowCard>
-                      </Pressable>
-
-                      {/* WEEKLY BOSS CARD */}
-                      <Pressable onPress={openBoss} style={{ marginTop: 12 }}>
-                        <GlowCard innerStyle={{ padding: 14 }}>
-                          <View
-                            style={{
-                              flexDirection: "row",
-                              justifyContent: "space-between",
-                              alignItems: "center",
-                            }}
-                          >
-                            <Text
-                              style={{ color: theme.colors.text, fontWeight: "900", fontSize: 16 }}
-                            >
-                              Weekly Boss Battle
-                            </Text>
-
-                            {apoBossAttempt ? (
-                              <Text style={{ color: theme.colors.goldPressed, fontWeight: "900" }}>
-                                {apoBossAttempt.completed ? "COMPLETED ✅" : "IN PROGRESS"}
-                              </Text>
-                            ) : (
-                              <Text style={{ color: theme.colors.muted, fontWeight: "900" }}>
-                                {apoBoss ? "AVAILABLE" : "NOT SEEDED"}
-                              </Text>
-                            )}
-                          </View>
-
-                          {apoBoss ? (
-                            <>
-                              <Text
-                                style={{
-                                  color: theme.colors.text,
-                                  marginTop: 10,
-                                  fontWeight: "900",
-                                }}
-                              >
-                                {apoBoss.title}
-                              </Text>
-
-                              {!!apoBoss.description ? (
-                                <Text style={{ color: theme.colors.text2, marginTop: 8, lineHeight: 20 }}>
-                                  {apoBoss.description}
-                                </Text>
-                              ) : null}
-
-                              <Text style={{ color: theme.colors.text2, marginTop: 10 }}>
-                                Rewards: +{safeNum(apoBoss.xp_reward_total)} XP • +{safeNum(
-                                  apoBoss.light_points_bonus_total
-                                )}{" "}
-                                LP bonus
-                              </Text>
-
-                              <View style={{ marginTop: 10 }}>
-                                <GlowButton title="Enter Arena" onPress={openBoss} />
-                              </View>
-                            </>
-                          ) : (
-                            <Text style={{ color: theme.colors.muted, marginTop: 10 }}>
-                              No boss battle seeded for this week yet.
-                            </Text>
-                          )}
-                        </GlowCard>
-                      </Pressable>
-                    </>
-                  )}
-                </View>
-              </View>
-            </View>
+            {/* Apologetics Arena hidden from Daily for now. Logic kept above for safe rollback. */}
 
             {/* Victory Modal (themed) */}
             <Modal

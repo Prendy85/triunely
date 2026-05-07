@@ -89,17 +89,32 @@ export default function MessagesInbox({ navigation }) {
 
   // ✅ Optimistic UI clear so badge never “sticks”
   const openConversation = useCallback(
-    (conversationId) => {
-      setRows((prev) =>
-        (prev || []).map((r) =>
-          r.conversation_id === conversationId ? { ...r, unread_count: 0 } : r
-        )
-      );
+  (row) => {
+    setRows((prev) =>
+      (prev || []).map((r) =>
+        r.conversation_id === row.conversation_id ? { ...r, unread_count: 0 } : r
+      )
+    );
 
-      navigation.navigate("Chat", { conversationId });
-    },
-    [navigation]
-  );
+    const isDM = row.type === "dm";
+
+    navigation.navigate("Chat", {
+      conversationId: row.conversation_id,
+
+      // ✅ Pass header data directly so Chat header can render real person info immediately
+      type: row.type ?? "dm",
+      title: isDM
+        ? (row.other_display_name || "Direct Message")
+        : (row.church_name || "Church Messages"),
+      avatarUrl: isDM ? (row.other_avatar_url || null) : null,
+      otherUserId: isDM ? (row.other_user_id || null) : null,
+
+      // Handle/username fallback support
+      handle: isDM ? (row.other_handle || row.other_username || null) : null,
+    });
+  },
+  [navigation]
+);
 
   // ---------- New Message (user search) ----------
 
@@ -422,7 +437,7 @@ export default function MessagesInbox({ navigation }) {
 
             return (
               <Pressable
-                onPress={() => openConversation(item.conversation_id)}
+                onPress={() => openConversation(item)}
                 style={{
                   padding: 14,
                   borderRadius: 16,

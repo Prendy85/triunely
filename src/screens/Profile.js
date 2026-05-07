@@ -19,9 +19,14 @@ import {
 import PostCard from "../components/PostCard";
 import PostCommentsModal from "../components/PostCommentsModal";
 import Screen from "../components/Screen";
+import UnifiedInboxHeaderButton from "../components/UnifiedInboxHeaderButton";
 import VerifiedBadge from "../components/VerifiedBadge";
+import { useFellowshipRequestsModal } from "../context/FellowshipRequestsModalProvider";
+import { useRealtime } from "../context/RealtimeProvider";
+import { fetchMyEvents } from "../features/events/services/eventsService";
 import { supabase } from "../lib/supabase";
 import { theme } from "../theme/theme";
+
 
 const RELATIONSHIP_OPTIONS = [
   "Single",
@@ -108,6 +113,23 @@ function normalizePostRow(row) {
 }
 
 export default function Profile({ navigation, route }) {
+    const rt = useRealtime();
+    const { openFellowshipRequests } = useFellowshipRequestsModal();
+    console.log("PROFILE SCREEN RENDERED");
+
+  const unreadMessageCount =
+    rt?.unreadMessageCount ??
+    rt?.unreadInboxCount ??
+    rt?.messageUnreadCount ??
+    0;
+
+    console.log("PROFILE HEADER MESSAGE COUNT:", {
+  unreadMessageCount,
+  unreadMessageCount_key: rt?.unreadMessageCount,
+  unreadInboxCount_key: rt?.unreadInboxCount,
+  messageUnreadCount_key: rt?.messageUnreadCount,
+  rtKeys: rt ? Object.keys(rt) : null,
+});
 
 
   const [loading, setLoading] = useState(true);
@@ -124,8 +146,12 @@ export default function Profile({ navigation, route }) {
   const [user, setUser] = useState(null);
   const [displayName, setDisplayName] = useState(null);
 
-  // Tabs
-  const [activeTab, setActiveTab] = useState("about"); // 'about' | 'posts'
+  const [isEditingDisplayName, setIsEditingDisplayName] = useState(false);
+  const [editedDisplayName, setEditedDisplayName] = useState("");
+  const [savingDisplayName, setSavingDisplayName] = useState(false);
+
+ // Tabs
+const [activeTab, setActiveTab] = useState("about"); // 'about' | 'posts' | 'events'
 
   // About info state
   const [relationshipStatus, setRelationshipStatus] = useState("");
@@ -169,6 +195,12 @@ export default function Profile({ navigation, route }) {
   // Posts tab
   const [userPosts, setUserPosts] = useState([]);
   const [loadingPosts, setLoadingPosts] = useState(false);
+  // Events tab
+// Events tab
+const [userEvents, setUserEvents] = useState([]);
+const [loadingEvents, setLoadingEvents] = useState(false);
+const [eventTickerIndex, setEventTickerIndex] = useState(0);
+
 
   // PostCard wiring
   const [reactionPickerForPost, setReactionPickerForPost] = useState(null);
@@ -266,20 +298,47 @@ const refreshChurchAdminStatus = useCallback(
     }
   }
 
-  // If we arrived from Community with a request to open fellowship modal
+  async function loadMyEvents(userId) {
+  if (!userId) return;
+
+  try {
+    setLoadingEvents(true);
+
+    const res = await fetchMyEvents({ userId, limit: 50 });
+
+    if (!res.ok) {
+      console.log("Profile events load error:", res.error);
+      setUserEvents([]);
+      return;
+    }
+
+    setUserEvents(res.events || []);
+  } catch (e) {
+    console.log("Error loading profile events", e);
+    setUserEvents([]);
+  } finally {
+    setLoadingEvents(false);
+  }
+}
+
+ // If we arrived from Community with a request to open fellowship modal
 useEffect(() => {
-  if (route?.params?.openFellowshipRequests) {
+  const wantsOpen = route?.params?.openFellowshipRequests === true;
+  const nonce = route?.params?.openFellowshipRequestsNonce;
+
+  if (wantsOpen) {
     setRequestsModalVisible(true);
 
-    // clear param so it doesn't re-open every time you return
+    // Clear the flag (leave nonce alone — it can stay)
     navigation.setParams({ openFellowshipRequests: false });
   }
-}, [route?.params?.openFellowshipRequests, navigation]);
+}, [route?.params?.openFellowshipRequests, route?.params?.openFellowshipRequestsNonce, navigation]);
 
 
   useFocusEffect(
   useCallback(() => {
     if (!user?.id) return;
+        rt?.refreshCounts?.();
 
     let alive = true;
 
@@ -297,7 +356,9 @@ useEffect(() => {
 
       if (!alive) return;
 
-      setDisplayName(data?.display_name ?? null);
+           const nextDisplayName = data?.display_name ?? null;
+      setDisplayName(nextDisplayName);
+      setEditedDisplayName(nextDisplayName ?? "");
       setAvatarUrl(data?.avatar_url ?? null);
       setCoverImageUrl(data?.cover_image_url ?? null);
 
@@ -309,9 +370,8 @@ useEffect(() => {
     return () => {
       alive = false;
     };
-  }, [user?.id])
+   }, [user?.id, rt])
 );
-
 useFocusEffect(
   useCallback(() => {
     if (!user?.id) return;
@@ -372,7 +432,9 @@ await refreshChurchAdminStatus(userId);
 
         setAvatarUrl(profile?.avatar_url ?? null);
         setCoverImageUrl(profile?.cover_image_url ?? null);
-        setDisplayName(profile?.display_name ?? null);
+                const nextDisplayName = profile?.display_name ?? null;
+        setDisplayName(nextDisplayName);
+        setEditedDisplayName(nextDisplayName ?? "");
         setIsVerified(Boolean(profile?.is_verified) || isAlwaysVerified);
 
         setRelationshipStatus(profile?.relationship_status ?? "");
@@ -478,9 +540,10 @@ await refreshChurchAdminStatus(userId);
           console.log("Error loading pending fellowship requests", e);
         }
 
-        // 5) Load this user's posts (normalized for PostCard)
-        console.log("Profile userId is:", userId);
-        await loadMyPosts(userId);
+        // 5) Load this user's posts and events
+console.log("Profile userId is:", userId);
+await loadMyPosts(userId);
+await loadMyEvents(userId);
 
         // 6) Load notifications for this user
         try {
@@ -878,6 +941,50 @@ await refreshChurchAdminStatus(userId);
       );
     } finally {
       setSavingCover(false);
+    }
+  }
+
+    function handleCancelDisplayNameEdit() {
+    setEditedDisplayName(displayName ?? "");
+    setIsEditingDisplayName(false);
+  }
+
+  async function handleSaveDisplayName() {
+    if (!user?.id) return;
+
+    const trimmedName = editedDisplayName.trim();
+
+    if (!trimmedName) {
+      Alert.alert("Name required", "Please enter a profile name.");
+      return;
+    }
+
+    try {
+      setSavingDisplayName(true);
+
+      const { error } = await supabase
+        .from("profiles")
+        .update({ display_name: trimmedName })
+        .eq("id", user.id);
+
+      if (error) {
+        console.log("Save display name error:", error);
+        throw error;
+      }
+
+      setDisplayName(trimmedName);
+      setEditedDisplayName(trimmedName);
+      setIsEditingDisplayName(false);
+
+      Alert.alert("Profile updated", "Your profile name has been saved.");
+    } catch (e) {
+      console.log("Error saving display name", e);
+      Alert.alert(
+        "Save error",
+        "We couldn't save your profile name. Please try again."
+      );
+    } finally {
+      setSavingDisplayName(false);
     }
   }
 
@@ -1604,6 +1711,211 @@ await refreshChurchAdminStatus(userId);
     );
   }
 
+ function renderEventsTab() {
+  if (loadingEvents) {
+    return (
+      <View
+        style={{
+          paddingVertical: 16,
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <ActivityIndicator size="small" color={theme.colors.gold} />
+        <Text style={{ color: theme.colors.muted, marginTop: 8 }}>
+          Loading your events…
+        </Text>
+      </View>
+    );
+  }
+
+  if (!userEvents || userEvents.length === 0) {
+    return (
+      <View style={{ paddingVertical: 16 }}>
+        <Text style={{ color: theme.colors.muted }}>
+          You don&apos;t have any events yet.
+        </Text>
+      </View>
+    );
+  }
+
+  const previewEvents = userEvents.slice(0, 3);
+
+  function formatSmallEventDate(startAt) {
+    if (!startAt) return "Date to be confirmed";
+
+    try {
+      const d = new Date(startAt);
+
+      return d.toLocaleDateString(undefined, {
+        weekday: "short",
+        day: "numeric",
+        month: "short",
+      });
+    } catch {
+      return "Date to be confirmed";
+    }
+  }
+
+  function formatSmallEventTime(startAt) {
+  if (!startAt) return "";
+
+  try {
+    const d = new Date(startAt);
+
+    return d.toLocaleTimeString(undefined, {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return "";
+  }
+}
+
+  return (
+    <View style={{ marginTop: 4 }}>
+      <Pressable
+        onPress={() => navigation.navigate("Events")}
+        style={({ pressed }) => ({
+          opacity: pressed ? 0.85 : 1,
+        })}
+      >
+    <View style={{ gap: 10 }}>
+          {previewEvents.map((event) => {
+            const location =
+              event.location_name ||
+              event.location_address ||
+              (event.online_url ? "Online" : "Location to be confirmed");
+
+            return (
+              <View
+                key={event.id}
+               style={{
+  width: "100%",
+  minHeight: 38,
+  borderRadius: 14,
+  paddingVertical: 4,
+  paddingHorizontal: 10,
+  backgroundColor: theme.colors.surfaceAlt,
+  borderWidth: 1,
+  borderColor: theme.colors.divider,
+  flexDirection: "row",
+  alignItems: "center",
+}}
+              >
+                <View
+                 style={{
+  width: 24,
+  height: 24,
+  borderRadius: 12,
+  backgroundColor: theme.colors.goldHalo,
+  borderWidth: 1,
+  borderColor: theme.colors.goldOutline,
+  alignItems: "center",
+  justifyContent: "center",
+  marginRight: 8,
+}}
+                >
+                  <Ionicons
+                    name="calendar-outline"
+                    size={14}
+                    color={theme.colors.goldPressed}
+                  />
+                </View>
+
+                <View
+  style={{
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    minWidth: 0,
+  }}
+>
+  <Text
+    style={{
+      color: theme.colors.text,
+      fontWeight: "900",
+      fontSize: 13,
+      flexShrink: 1,
+    }}
+    numberOfLines={1}
+  >
+    {event.title || "Untitled event"}
+  </Text>
+
+  <Text
+    style={{
+      color: theme.colors.muted,
+      fontWeight: "900",
+      fontSize: 12,
+      marginHorizontal: 5,
+    }}
+  >
+    ·
+  </Text>
+
+  <Text
+    style={{
+      color: theme.colors.goldPressed,
+      fontWeight: "900",
+      fontSize: 12,
+      flexShrink: 0,
+    }}
+    numberOfLines={1}
+  >
+    {formatSmallEventDate(event.start_at)}
+  </Text>
+
+  <Text
+    style={{
+      color: theme.colors.muted,
+      fontWeight: "900",
+      fontSize: 12,
+      marginHorizontal: 5,
+    }}
+  >
+    ·
+  </Text>
+
+  <Text
+    style={{
+      color: theme.colors.muted,
+      fontWeight: "800",
+      fontSize: 12,
+      flexShrink: 0,
+    }}
+    numberOfLines={1}
+  >
+    {formatSmallEventTime(event.start_at)}
+  </Text>
+</View>
+
+                <Ionicons
+                  name="chevron-forward"
+                  size={18}
+                  color={theme.colors.muted}
+                  style={{ marginLeft: 8 }}
+                />
+              </View>
+            );
+          })}
+        </View>
+
+        <Text
+          style={{
+            color: theme.colors.goldPressed,
+            fontWeight: "900",
+            marginTop: 12,
+            textAlign: "center",
+          }}
+        >
+          View all events
+        </Text>
+      </Pressable>
+    </View>
+  );
+}
+
   return (
     <Screen backgroundColor={theme.colors.bg} padded={false} style={{ flex: 1 }}>
       {({ bottomPad }) => (
@@ -1613,30 +1925,27 @@ await refreshChurchAdminStatus(userId);
             contentContainerStyle={{ paddingBottom: bottomPad }}
           >
             {/* Header row with title + icons */}
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "space-between",
-                marginBottom: 16,
-              }}
-            >
+           <View
+  style={{
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 16,
+    paddingHorizontal: 16,
+    paddingTop: 8, // optional, keeps spacing similar to other screens
+  }}
+>
               <Text style={theme.text.h1}>Profile</Text>
 
               <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
 
-                {/* Messages (Unified Inbox) */}
-<Pressable
-  onPress={() => navigation.navigate("MessagesInbox")}
-  style={iconButtonStyle}
-  hitSlop={8}
->
-  <Ionicons
-    name="chatbubble-ellipses-outline"
-    size={22}
-    color={theme.colors.text2}
-  />
-</Pressable>
+
+{/* Messages (Unified Inbox) */}
+<UnifiedInboxHeaderButton
+  navigation={navigation}
+  iconButtonStyle={iconButtonStyle}
+  iconSize={22}
+/>
 
 
            
@@ -1668,7 +1977,7 @@ await refreshChurchAdminStatus(userId);
 
                 {/* Fellowship requests */}
                 <Pressable
-                  onPress={() => setRequestsModalVisible(true)}
+                  onPress={() => openFellowshipRequests()}
                   style={iconButtonStyle}
                   hitSlop={8}
                 >
@@ -1833,32 +2142,133 @@ await refreshChurchAdminStatus(userId);
               </View>
 
               {/* Display name under header */}
-              <View
+                                     <View
                 style={{
                   marginTop: 10,
                   paddingHorizontal: 4,
-                  flexDirection: "row",
-                  alignItems: "baseline",
                 }}
               >
-                <Text
-                  style={{
-                    color: theme.colors.text,
-                    fontSize: 22,
-                    fontWeight: "900",
-                  }}
-                  numberOfLines={1}
-                >
-                  {displayName || "Triunely user"}
-                </Text>
+                {!isEditingDisplayName ? (
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "baseline",
+                        flex: 1,
+                        marginRight: 12,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color: theme.colors.text,
+                          fontSize: 22,
+                          fontWeight: "900",
+                          flexShrink: 1,
+                        }}
+                        numberOfLines={1}
+                      >
+                        {displayName || "Triunely user"}
+                      </Text>
 
-                {isVerified ? (
-                  <View style={{ marginLeft: 6, marginTop: 1 }}>
-                    <VerifiedBadge size={15} />
+                      {isVerified ? (
+                        <View style={{ marginLeft: 6, marginTop: 1 }}>
+                          <VerifiedBadge size={15} />
+                        </View>
+                      ) : null}
+                    </View>
+
+                    <Pressable
+                      onPress={() => {
+                        setEditedDisplayName(displayName ?? "");
+                        setIsEditingDisplayName(true);
+                      }}
+                      style={[
+                        theme.button.outline,
+                        {
+                          paddingHorizontal: 12,
+                          paddingVertical: 8,
+                          borderRadius: 999,
+                        },
+                      ]}
+                    >
+                      <Text style={theme.button.outlineText}>Edit</Text>
+                    </Pressable>
                   </View>
-                ) : null}
-              </View>
+                ) : (
+                  <View>
+                    <Text
+                      style={{
+                        color: theme.colors.muted,
+                        marginBottom: 6,
+                        fontWeight: "700",
+                      }}
+                    >
+                      Edit profile name
+                    </Text>
 
+                    <TextInput
+                      value={editedDisplayName}
+                      onChangeText={setEditedDisplayName}
+                      placeholder="Enter your profile name"
+                      placeholderTextColor={theme.input.placeholder}
+                      style={theme.input.box}
+                      editable={!savingDisplayName}
+                      maxLength={40}
+                      autoCapitalize="words"
+                      autoCorrect={false}
+                    />
+
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        justifyContent: "flex-start",
+                        marginTop: 10,
+                      }}
+                    >
+                      <Pressable
+                        onPress={handleCancelDisplayNameEdit}
+                        disabled={savingDisplayName}
+                        style={[
+                          theme.button.outline,
+                          {
+                            paddingHorizontal: 12,
+                            paddingVertical: 8,
+                            borderRadius: 999,
+                            marginRight: 8,
+                          },
+                        ]}
+                      >
+                        <Text style={theme.button.outlineText}>Cancel</Text>
+                      </Pressable>
+
+                      <Pressable
+                        onPress={handleSaveDisplayName}
+                        disabled={savingDisplayName}
+                        style={[
+                          theme.button.primary,
+                          {
+                            paddingHorizontal: 12,
+                            paddingVertical: 8,
+                            borderRadius: 999,
+                            opacity: savingDisplayName ? 0.7 : 1,
+                          },
+                        ]}
+                      >
+                        <Text style={theme.button.primaryText}>
+                          {savingDisplayName ? "Saving…" : "Save"}
+                        </Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                )}
+              </View>
+              
               {/* Pending avatar preview */}
               {pendingAvatar && (
                 <View
@@ -2011,62 +2421,49 @@ await refreshChurchAdminStatus(userId);
               </View>
             </View>
 
-            {/* Tabs */}
-            <View
-              style={{
-                flexDirection: "row",
-                backgroundColor: theme.colors.surfaceAlt,
-                borderRadius: 999,
-                padding: 4,
-                marginBottom: 12,
-                borderWidth: 1,
-                borderColor: theme.colors.divider,
-              }}
-            >
-              <Pressable
-                onPress={() => setActiveTab("posts")}
-                style={{
-                  flex: 1,
-                  paddingVertical: 8,
-                  borderRadius: 999,
-                  alignItems: "center",
-                  backgroundColor:
-                    activeTab === "posts" ? theme.colors.gold : "transparent",
-                }}
-              >
-                <Text
-                  style={{
-                    color:
-                      activeTab === "posts" ? theme.colors.text : theme.colors.text2,
-                    fontWeight: "900",
-                  }}
-                >
-                  Posts
-                </Text>
-              </Pressable>
+           {/* Tabs */}
+<View
+  style={{
+    flexDirection: "row",
+    backgroundColor: theme.colors.surfaceAlt,
+    borderRadius: 999,
+    padding: 4,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: theme.colors.divider,
+  }}
+>
+  {[
+    { key: "posts", label: "Posts" },
+    { key: "about", label: "About" },
+    { key: "events", label: "Events" },
+  ].map((tab) => {
+    const active = activeTab === tab.key;
 
-              <Pressable
-                onPress={() => setActiveTab("about")}
-                style={{
-                  flex: 1,
-                  paddingVertical: 8,
-                  borderRadius: 999,
-                  alignItems: "center",
-                  backgroundColor:
-                    activeTab === "about" ? theme.colors.gold : "transparent",
-                }}
-              >
-                <Text
-                  style={{
-                    color:
-                      activeTab === "about" ? theme.colors.text : theme.colors.text2,
-                    fontWeight: "900",
-                  }}
-                >
-                  About
-                </Text>
-              </Pressable>
-            </View>
+    return (
+      <Pressable
+        key={tab.key}
+        onPress={() => setActiveTab(tab.key)}
+        style={{
+          flex: 1,
+          paddingVertical: 8,
+          borderRadius: 999,
+          alignItems: "center",
+          backgroundColor: active ? theme.colors.gold : "transparent",
+        }}
+      >
+        <Text
+          style={{
+            color: active ? theme.colors.text : theme.colors.text2,
+            fontWeight: "900",
+          }}
+        >
+          {tab.label}
+        </Text>
+      </Pressable>
+    );
+  })}
+</View>
 
             {/* Tab content */}
             <View
@@ -2104,7 +2501,11 @@ await refreshChurchAdminStatus(userId);
                 </View>
               )}
 
-              {activeTab === "about" ? renderAboutView() : renderPostsTab()}
+              {activeTab === "about"
+  ? renderAboutView()
+  : activeTab === "events"
+  ? renderEventsTab()
+  : renderPostsTab()}
             </View>
             {/* Church Admin (MVP) */}
             <View

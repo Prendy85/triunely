@@ -32,9 +32,15 @@ export default function DirectMessageUserSearch({ navigation }) {
   const runSearch = useCallback(async () => {
     try {
       setErrorText("");
+
+      if (!q) {
+        setRows([]);
+        return;
+      }
+
       setLoading(true);
       const data = await searchUsersForDM(q, 20);
-      setRows(data);
+      setRows(data ?? []);
     } catch (e) {
       console.log("DM user search error", e);
       setRows([]);
@@ -44,7 +50,6 @@ export default function DirectMessageUserSearch({ navigation }) {
     }
   }, [q]);
 
-  // Lightweight debounce (no extra deps)
   useEffect(() => {
     const t = setTimeout(() => {
       runSearch();
@@ -52,11 +57,21 @@ export default function DirectMessageUserSearch({ navigation }) {
     return () => clearTimeout(t);
   }, [runSearch]);
 
-  async function openChatWith(userId) {
+  async function openChatWith(userRow) {
     try {
       setLoading(true);
-      const conversationId = await getOrCreateDirectConversation(userId);
-      navigation.navigate("Chat", { conversationId });
+
+      const conversationId = await getOrCreateDirectConversation(userRow.id);
+
+      // ✅ Pass header identity directly so Chat can render real header immediately
+      navigation.navigate("Chat", {
+        conversationId,
+        type: "dm",
+        otherUserId: userRow.id,
+        title: userRow.display_name || "User",
+        avatarUrl: userRow.avatar_url || null,
+        handle: userRow.username || userRow.handle || null,
+      });
     } catch (e) {
       console.log("openChatWith error", e);
       setErrorText("Could not start chat. Please try again.");
@@ -66,7 +81,12 @@ export default function DirectMessageUserSearch({ navigation }) {
   }
 
   return (
-    <Screen backgroundColor={theme.colors.bg} padded={false} style={{ flex: 1 }} contentStyle={{ flex: 1 }}>
+    <Screen
+      backgroundColor={theme.colors.bg}
+      padded={false}
+      style={{ flex: 1 }}
+      contentStyle={{ flex: 1 }}
+    >
       {/* Header */}
       <View
         style={{
@@ -112,6 +132,7 @@ export default function DirectMessageUserSearch({ navigation }) {
           }}
         >
           <Ionicons name="search" size={18} color={theme.colors.muted} />
+
           <TextInput
             value={query}
             onChangeText={setQuery}
@@ -126,7 +147,10 @@ export default function DirectMessageUserSearch({ navigation }) {
               fontWeight: "700",
             }}
           />
-          {loading ? <ActivityIndicator size="small" color={theme.colors.gold} /> : null}
+
+          {loading ? (
+            <ActivityIndicator size="small" color={theme.colors.gold} />
+          ) : null}
         </View>
 
         {errorText ? (
@@ -139,8 +163,9 @@ export default function DirectMessageUserSearch({ navigation }) {
       {/* Results */}
       <FlatList
         data={rows}
-        keyExtractor={(r) => r.id}
+        keyExtractor={(r) => String(r.id)}
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 16 }}
+        keyboardShouldPersistTaps="handled"
         ListEmptyComponent={
           loading ? null : (
             <View style={{ paddingTop: 24 }}>
@@ -156,11 +181,12 @@ export default function DirectMessageUserSearch({ navigation }) {
         renderItem={({ item }) => {
           const name = item.display_name || "User";
           const initials = safeInitials(name);
-          const handle = item.handle ? `@${item.handle}` : null;
+          const handle =
+            item.username ? `@${item.username}` : item.handle ? `@${item.handle}` : null;
 
           return (
             <Pressable
-              onPress={() => openChatWith(item.id)}
+              onPress={() => openChatWith(item)}
               style={{
                 padding: 12,
                 borderRadius: 16,
@@ -184,12 +210,14 @@ export default function DirectMessageUserSearch({ navigation }) {
                     height: 44,
                     borderRadius: 22,
                     marginRight: 12,
-                    backgroundColor: theme.colors.blue,
+                    backgroundColor: theme.colors.surfaceAlt,
+                    borderWidth: 1,
+                    borderColor: theme.colors.divider,
                     alignItems: "center",
                     justifyContent: "center",
                   }}
                 >
-                  <Text style={{ color: "#fff", fontWeight: "900" }}>{initials}</Text>
+                  <Text style={{ color: theme.colors.text, fontWeight: "900" }}>{initials}</Text>
                 </View>
               )}
 
@@ -197,12 +225,20 @@ export default function DirectMessageUserSearch({ navigation }) {
                 <Text style={{ color: theme.colors.text, fontWeight: "900" }} numberOfLines={1}>
                   {name}
                 </Text>
-                <Text style={{ color: theme.colors.muted, fontWeight: "700", marginTop: 2 }} numberOfLines={1}>
+
+                <Text
+                  style={{ color: theme.colors.muted, fontWeight: "700", marginTop: 2 }}
+                  numberOfLines={1}
+                >
                   {handle || "No @handle yet"}
                 </Text>
               </View>
 
-              <Ionicons name="chatbubble-ellipses-outline" size={20} color={theme.colors.muted} />
+              <Ionicons
+                name="chatbubble-ellipses-outline"
+                size={20}
+                color={theme.colors.muted}
+              />
             </Pressable>
           );
         }}
