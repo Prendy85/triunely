@@ -228,6 +228,7 @@ const pendingFellowshipCount = rt?.pendingFellowshipCount ?? 0;
   // admin permission
   const [isAdmin, setIsAdmin] = useState(false);
   const [checkingAdmin, setCheckingAdmin] = useState(false);
+  const [pendingGroupRequestCount, setPendingGroupRequestCount] = useState(0);
 
   // ✅ membership (join workflow)
   const [membershipLoading, setMembershipLoading] = useState(false);
@@ -290,6 +291,12 @@ const pendingFellowshipCount = rt?.pendingFellowshipCount ?? 0;
 if (uid) admin = await checkIsAdmin(uid, churchId);
 else setIsAdmin(false);
 
+if (admin) {
+  await loadPendingGroupRequestCount(churchId);
+} else {
+  setPendingGroupRequestCount(0);
+}
+
 // 3b) membership status (skip for admins)
 if (uid && !admin) await loadMembership(uid, churchId);
 else {
@@ -328,6 +335,29 @@ else {
     setWebsite(data?.website ?? "");
     setLocation(data?.location ?? "");
   }
+
+  async function loadPendingGroupRequestCount(id) {
+  try {
+    if (!id) return;
+
+    const { count, error } = await supabase
+      .from("church_group_members")
+      .select("id", { count: "exact", head: true })
+      .eq("church_id", id)
+      .eq("status", "pending");
+
+    if (error) {
+      console.log("loadPendingGroupRequestCount error:", error);
+      setPendingGroupRequestCount(0);
+      return;
+    }
+
+    setPendingGroupRequestCount(count || 0);
+  } catch (e) {
+    console.log("loadPendingGroupRequestCount exception:", e);
+    setPendingGroupRequestCount(0);
+  }
+}
 
   async function checkIsAdmin(_uid, id) {
   try {
@@ -641,14 +671,20 @@ async function handleLeaveChurch() {
 
       // Re-check admin + refresh posts too (keeps it consistent)
     (async () => {
-  const admin = viewerId ? await checkIsAdmin(viewerId, churchId) : false;
+ const admin = viewerId ? await checkIsAdmin(viewerId, churchId) : false;
 
-  if (viewerId && !admin) {
-    await loadMembership(viewerId, churchId);
-  } else {
-    setMembershipRow(null);
-    setMembershipStatus(admin ? "approved" : "none");
-  }
+if (admin) {
+  await loadPendingGroupRequestCount(churchId);
+} else {
+  setPendingGroupRequestCount(0);
+}
+
+if (viewerId && !admin) {
+  await loadMembership(viewerId, churchId);
+} else {
+  setMembershipRow(null);
+  setMembershipStatus(admin ? "approved" : "none");
+}
 })();
 
 
@@ -1584,7 +1620,13 @@ async function handleLeaveChurch() {
 <ChurchActionCard
   icon="people-outline"
   title="Groups"
-  subtitle="Tables, Bible studies, prayer groups and smaller discipleship spaces."
+  subtitle={
+    isAdmin && pendingGroupRequestCount > 0
+      ? `${pendingGroupRequestCount} group request${
+          pendingGroupRequestCount === 1 ? "" : "s"
+        } need review.`
+      : "Tables, Bible studies, prayer groups and smaller discipleship spaces."
+  }
   onPress={() =>
     navigation.navigate("ChurchGroupsMember", {
       churchId,
