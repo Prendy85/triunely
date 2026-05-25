@@ -34,6 +34,11 @@ import { theme } from "../theme/theme";
 
 const POSTS_ENABLED = true;
 const PAGE_LIMIT = 50;
+const HEAVENLY_GOLD = "#D99400";
+const DEEP_OLIVE = "#4F633B";
+const SOFT_GOLD_BG = "rgba(217, 148, 0, 0.10)";
+const SOFT_OLIVE_BG = "rgba(79, 99, 59, 0.10)";
+const CARD_BORDER = "rgba(217, 148, 0, 0.18)";
 const iconBadgeStyle = {
   
   position: "absolute",
@@ -58,11 +63,133 @@ const iconButtonStyle = {
   backgroundColor: "transparent",
 };
 
+function getImageContentType(asset) {
+  const explicitMime =
+    asset?.mimeType ||
+    asset?.mime_type ||
+    asset?.file?.type ||
+    null;
+
+  if (typeof explicitMime === "string" && explicitMime.startsWith("image/")) {
+    return explicitMime;
+  }
+
+  const cleanUri = String(asset?.uri || "").toLowerCase().split("?")[0];
+
+  if (cleanUri.endsWith(".png")) return "image/png";
+  if (cleanUri.endsWith(".webp")) return "image/webp";
+  if (cleanUri.endsWith(".heic")) return "image/heic";
+  if (cleanUri.endsWith(".heif")) return "image/heif";
+
+  return "image/jpeg";
+}
+
+function getImageFileExtension(contentType) {
+  const type = String(contentType || "").toLowerCase();
+
+  if (type.includes("png")) return "png";
+  if (type.includes("webp")) return "webp";
+  if (type.includes("heic")) return "heic";
+  if (type.includes("heif")) return "heif";
+
+  return "jpg";
+}
+
 function safeInitials(name) {
   if (!name) return "?";
   const parts = String(name).trim().split(" ").filter(Boolean);
   if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
   return String(name).trim()[0]?.toUpperCase() || "?";
+}
+
+function ChurchActionCard({
+  icon,
+  title,
+  subtitle,
+  tint = "gold",
+  onPress,
+  disabled = false,
+}) {
+  const isOlive = tint === "olive";
+  const accent = isOlive ? DEEP_OLIVE : HEAVENLY_GOLD;
+
+  return (
+    <Pressable
+      onPress={disabled ? undefined : onPress}
+      style={({ pressed }) => ({
+        width: "48%",
+        minHeight: 126,
+        borderRadius: 18,
+        padding: 12,
+        backgroundColor: theme.colors.surface,
+        borderWidth: 1,
+        borderColor: CARD_BORDER,
+        shadowColor: HEAVENLY_GOLD,
+        shadowOpacity: pressed ? 0.03 : 0.08,
+        shadowRadius: 8,
+        shadowOffset: { width: 0, height: 3 },
+        elevation: pressed ? 1 : 2,
+        opacity: disabled ? 0.55 : 1,
+        transform: [{ scale: pressed && !disabled ? 0.985 : 1 }],
+      })}
+    >
+      <View
+        style={{
+          width: 40,
+          height: 40,
+          borderRadius: 20,
+          backgroundColor: isOlive ? SOFT_OLIVE_BG : SOFT_GOLD_BG,
+          borderWidth: 1,
+          borderColor: CARD_BORDER,
+          alignItems: "center",
+          justifyContent: "center",
+          marginBottom: 9,
+        }}
+      >
+        <Ionicons name={icon} size={20} color={accent} />
+      </View>
+
+      <Text
+        style={{
+          color: theme.colors.text,
+          fontSize: 13.5,
+          fontWeight: "900",
+        }}
+      >
+        {title}
+      </Text>
+
+      <Text
+        style={{
+          color: theme.colors.muted,
+          fontSize: 11,
+          fontWeight: "700",
+          lineHeight: 15,
+          marginTop: 5,
+          flex: 1,
+        }}
+        numberOfLines={3}
+      >
+        {subtitle}
+      </Text>
+
+      <View
+        style={{
+          marginTop: 8,
+          width: 22,
+          height: 22,
+          borderRadius: 11,
+          borderWidth: 1,
+          borderColor: HEAVENLY_GOLD,
+          alignItems: "center",
+          justifyContent: "center",
+          alignSelf: "flex-end",
+        }}
+      >
+        <Ionicons name="chevron-forward" size={12} color={HEAVENLY_GOLD} />
+      </View>
+    </Pressable>
+  );
 }
 
 export default function ChurchProfilePublic({ navigation, route }) {
@@ -267,6 +394,18 @@ else {
       setMembershipLoading(false);
     }
   }
+
+  async function handleMessageChurch() {
+  try {
+    if (!churchId) return;
+
+    const conversationId = await getOrCreateChurchConversation(churchId);
+    navigation.navigate("Chat", { conversationId });
+  } catch (e) {
+    console.log("Message Church error", e);
+    Alert.alert("Messages", e?.message || "Could not open messages right now.");
+  }
+}
 
 async function handleJoinChurch() {
   if (!viewerId) {
@@ -520,33 +659,54 @@ async function handleLeaveChurch() {
 
 
   async function uploadImageToChurch(pathPrefix, asset) {
-    const fileExtFromUri =
-      asset.uri.split(".").pop()?.toLowerCase().split("?")[0] || "jpg";
-    const fileExt = fileExtFromUri === "" ? "jpg" : fileExtFromUri;
-
-    const fileName = `${pathPrefix}-${Date.now()}.${fileExt}`;
-    const contentType = asset.type || "image/jpeg";
-
-    const { data: fnData, error: fnError } = await supabase.functions.invoke(
-      "upload-post-image",
-      {
-        body: {
-          base64: asset.base64,
-          fileName,
-          contentType,
-          pathPrefix: `churches/${church.id}/${pathPrefix}`,
-        },
-      }
-    );
-
-    if (fnError) {
-      console.log("upload edge function error:", fnError);
-      throw fnError;
-    }
-
-    if (!fnData?.publicUrl) throw new Error("No publicUrl returned");
-    return fnData.publicUrl;
+  if (!church?.id) {
+    throw new Error("Missing church id for image upload.");
   }
+
+  if (!asset?.base64) {
+    throw new Error("No base64 image data found.");
+  }
+
+  const contentType = getImageContentType(asset);
+  const fileExt = getImageFileExtension(contentType);
+  const fileName = `${pathPrefix}-${Date.now()}.${fileExt}`;
+
+  console.log("Church image upload starting:", {
+    churchId: church.id,
+    pathPrefix,
+    fileName,
+    contentType,
+    hasBase64: Boolean(asset.base64),
+    uri: asset?.uri,
+    mimeType: asset?.mimeType,
+    type: asset?.type,
+  });
+
+  const { data: fnData, error: fnError } = await supabase.functions.invoke(
+    "upload-post-image",
+    {
+      body: {
+        base64: asset.base64,
+        fileName,
+        contentType,
+        pathPrefix: `churches/${church.id}/${pathPrefix}`,
+      },
+    }
+  );
+
+  if (fnError) {
+    console.log("upload edge function error:", fnError);
+    throw fnError;
+  }
+
+  console.log("Church image upload function response:", fnData);
+
+  if (!fnData?.publicUrl) {
+    throw new Error("No publicUrl returned from upload function.");
+  }
+
+  return fnData.publicUrl;
+}
 
   async function handlePickAvatar() {
     if (!isAdmin || !church?.id) return;
@@ -559,7 +719,7 @@ async function handleLeaveChurch() {
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ["images"],
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.8,
@@ -587,9 +747,12 @@ async function handleLeaveChurch() {
 
       setChurch((prev) => ({ ...(prev || {}), avatar_url: publicUrl }));
     } catch (e) {
-      console.log("handlePickAvatar error:", e);
-      Alert.alert("Error", "We couldn't update the church avatar right now.");
-    } finally {
+  console.log("handlePickAvatar error:", e);
+  Alert.alert(
+    "Avatar upload failed",
+    e?.message || "We couldn't update the church avatar right now."
+  );
+} finally {
       setSavingAvatar(false);
     }
   }
@@ -605,7 +768,7 @@ async function handleLeaveChurch() {
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ["images"],
         allowsEditing: true,
         aspect: [3, 1],
         quality: 0.8,
@@ -633,9 +796,12 @@ async function handleLeaveChurch() {
 
       setChurch((prev) => ({ ...(prev || {}), cover_image_url: publicUrl }));
     } catch (e) {
-      console.log("handlePickCover error:", e);
-      Alert.alert("Error", "We couldn't update the cover image right now.");
-    } finally {
+  console.log("handlePickCover error:", e);
+  Alert.alert(
+    "Cover upload failed",
+    e?.message || "We couldn't update the cover image right now."
+  );
+} finally {
       setSavingCover(false);
     }
   }
@@ -867,13 +1033,91 @@ async function handleLeaveChurch() {
     return (
       <View style={{ marginTop: 10 }}>
         {isAdmin ? (
-          <Pressable
-            onPress={() => setShowNewModal(true)}
-            style={[theme.button.primary, { borderRadius: 14, paddingVertical: 12, marginBottom: 12 }]}
-          >
-            <Text style={theme.button.primaryText}>Create a church post</Text>
-          </Pressable>
-        ) : null}
+  <View
+    style={{
+      backgroundColor: theme.colors.surface,
+      borderRadius: 18,
+      padding: 12,
+      marginBottom: 12,
+      borderWidth: 1,
+      borderColor: CARD_BORDER,
+      shadowColor: HEAVENLY_GOLD,
+      shadowOpacity: 0.06,
+      shadowRadius: 8,
+      shadowOffset: { width: 0, height: 3 },
+      elevation: 2,
+    }}
+  >
+    <View style={{ flexDirection: "row", alignItems: "center" }}>
+      {church?.avatar_url ? (
+        <Image
+          source={{ uri: church.avatar_url }}
+          style={{
+            width: 38,
+            height: 38,
+            borderRadius: 19,
+            marginRight: 10,
+            borderWidth: 1,
+            borderColor: CARD_BORDER,
+          }}
+        />
+      ) : (
+        <View
+          style={{
+            width: 38,
+            height: 38,
+            borderRadius: 19,
+            backgroundColor: SOFT_OLIVE_BG,
+            alignItems: "center",
+            justifyContent: "center",
+            marginRight: 10,
+            borderWidth: 1,
+            borderColor: CARD_BORDER,
+          }}
+        >
+          <Text style={{ color: DEEP_OLIVE, fontWeight: "900" }}>
+            {initials}
+          </Text>
+        </View>
+      )}
+
+      <Pressable
+        onPress={() => setShowNewModal(true)}
+        style={{
+          flex: 1,
+          backgroundColor: theme.colors.surfaceAlt,
+          borderRadius: 999,
+          paddingVertical: 10,
+          paddingHorizontal: 12,
+          borderWidth: 1,
+          borderColor: CARD_BORDER,
+        }}
+      >
+        <Text style={{ color: theme.colors.muted, fontSize: 14, fontWeight: "700" }}>
+          Share an update with your church…
+        </Text>
+      </Pressable>
+
+      <Pressable
+        onPress={() => setShowNewModal(true)}
+        hitSlop={8}
+        style={{
+          marginLeft: 10,
+          width: 34,
+          height: 34,
+          borderRadius: 17,
+          backgroundColor: SOFT_GOLD_BG,
+          borderWidth: 1,
+          borderColor: CARD_BORDER,
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <Ionicons name="camera-outline" size={18} color={HEAVENLY_GOLD} />
+      </Pressable>
+    </View>
+  </View>
+) : null}
         
 
         {postsLoading ? (
@@ -1273,104 +1517,161 @@ async function handleLeaveChurch() {
               </View>
             </View>
 
-            {/* Message Church (non-admin only) */}
-            {!isAdmin ? (
-              <Pressable
-                onPress={async () => {
-  try {
-    if (!churchId) return;
+            {/* Church Life action grid */}
+{isAdmin || membershipStatus === "approved" ? (
+  <View
+    style={{
+      marginTop: 14,
+      marginHorizontal: 4,
+      marginBottom: 14,
+    }}
+  >
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "flex-end",
+        justifyContent: "space-between",
+        marginBottom: 10,
+      }}
+    >
+      <View style={{ flex: 1 }}>
+        <Text
+          style={{
+            color: theme.colors.text,
+            fontSize: 22,
+            fontWeight: "900",
+            letterSpacing: -0.4,
+          }}
+        >
+          Church Life
+        </Text>
 
-    const conversationId = await getOrCreateChurchConversation(churchId);
-    navigation.navigate("Chat", { conversationId });
-  } catch (e) {
-    console.log("Message Church error", e);
-    Alert.alert("Messages", e?.message || "Could not open messages right now.");
+        <Text
+          style={{
+            color: theme.colors.muted,
+            fontSize: 13,
+            fontWeight: "700",
+            lineHeight: 18,
+            marginTop: 4,
+          }}
+        >
+          Groups, updates, giving and ways to connect with your church.
+        </Text>
+      </View>
+    </View>
+
+    <View
+      style={{
+        flexDirection: "row",
+        flexWrap: "wrap",
+        justifyContent: "space-between",
+        rowGap: 12,
+      }}
+    >
+      <ChurchActionCard
+  icon="megaphone-outline"
+  title="Noticeboard"
+  subtitle="Church updates, announcements, serving needs and practical notices."
+  tint="olive"
+  onPress={() =>
+    navigation.navigate("ChurchNoticeboard", {
+      churchId,
+      churchName,
+    })
   }
-}}
+/>
 
-                disabled={!churchId}
-                style={[
-                  theme.button.primary,
-                  {
-                    marginTop: 12,
-                    borderRadius: 14,
-                    paddingVertical: 12,
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 8,
-                    opacity: churchId ? 1 : 0.5,
-                  },
-                ]}
-              >
-                <Ionicons name="mail-outline" size={18} color={theme.colors.text} />
-                <Text style={theme.button.primaryText}>Message Church</Text>
-              </Pressable>
-            ) : null}
+<ChurchActionCard
+  icon="people-outline"
+  title="Groups"
+  subtitle="Tables, Bible studies, prayer groups and smaller discipleship spaces."
+  onPress={() =>
+    navigation.navigate("ChurchGroupsMember", {
+      churchId,
+      churchName,
+    })
+  }
+/>
 
-            {/* Tabs: Posts / Noticeboard */}
-            <View
-              style={{
-                flexDirection: "row",
-                backgroundColor: theme.colors.surfaceAlt,
-                borderRadius: 999,
-                padding: 4,
-                marginBottom: 12,
-                borderWidth: 1,
-                borderColor: theme.colors.divider,
-              }}
-            >
-              <Pressable
-                onPress={() => setActiveTab("posts")}
-                style={{
-                  flex: 1,
-                  paddingVertical: 8,
-                  borderRadius: 999,
-                  alignItems: "center",
-                  backgroundColor: activeTab === "posts" ? theme.colors.gold : "transparent",
-                }}
-              >
-                <Text style={{ color: activeTab === "posts" ? theme.colors.text : theme.colors.text2, fontWeight: "900" }}>
-                  Posts
-                </Text>
-              </Pressable>
+<ChurchActionCard
+  icon="heart-outline"
+  title="Giving"
+  subtitle="Support mission, outreach, community needs and church life."
+  onPress={() =>
+    navigation.navigate("ChurchGiving", {
+      churchId,
+      churchName,
+    })
+  }
+/>
 
-              <Pressable
-                onPress={() => setActiveTab("noticeboard")}
-                style={{
-                  flex: 1,
-                  paddingVertical: 8,
-                  borderRadius: 999,
-                  alignItems: "center",
-                  backgroundColor: activeTab === "noticeboard" ? theme.colors.gold : "transparent",
-                }}
-              >
-                <Text style={{ color: activeTab === "noticeboard" ? theme.colors.text : theme.colors.text2, fontWeight: "900" }}>
-                  Noticeboard
-                </Text>
-              </Pressable>
-            </View>
+<ChurchActionCard
+  icon="mail-outline"
+  title="Message"
+  subtitle="Contact your church leadership or admin team directly."
+  tint="olive"
+  onPress={handleMessageChurch}
+/>
+    </View>
+  </View>
+) : null}
 
-            {/* Tab content card */}
-            <View
-              style={{
-                backgroundColor: theme.colors.surface,
-                borderRadius: 16,
-                padding: 16,
-                marginBottom: 24,
-                borderWidth: 1,
-                borderColor: theme.colors.divider,
-              }}
-            >
-              {activeTab === "posts" ? (
-                <View>
-                  <Text style={theme.text.h2}>Posts</Text>
-                  {renderPostsTab()}
-                </View>
-              ) : (
-                <View>{renderNoticeboardTab()}</View>
-              )}
-            </View>
+{/* Latest from the church */}
+<View
+  style={{
+    marginTop: 6,
+    marginBottom: 10,
+    paddingHorizontal: 4,
+  }}
+>
+  <Text
+    style={{
+      color: theme.colors.text,
+      fontSize: 22,
+      fontWeight: "900",
+      letterSpacing: -0.4,
+    }}
+  >
+    Latest from the church
+  </Text>
+
+  <Text
+    style={{
+      color: theme.colors.muted,
+      fontSize: 13,
+      fontWeight: "700",
+      lineHeight: 18,
+      marginTop: 4,
+    }}
+  >
+    The latest encouragement, updates and media from the church.
+  </Text>
+</View>
+
+
+          {/* Latest posts card */}
+<View
+  style={{
+    backgroundColor: theme.colors.surface,
+    borderRadius: 18,
+    padding: 16,
+    marginHorizontal: 4,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
+    shadowColor: HEAVENLY_GOLD,
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  }}
+>
+  <Text style={{ color: theme.colors.text, fontSize: 18, fontWeight: "900" }}>
+  Church posts
+</Text>
+
+  {renderPostsTab()}
+</View>
           </ScrollView>
 
           <NewPostModal

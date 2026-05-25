@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
+import { useEffect, useState } from "react";
 import {
     Alert,
     Image,
@@ -11,6 +12,7 @@ import {
 } from "react-native";
 
 import Screen from "../components/Screen";
+import { supabase } from "../lib/supabase";
 import { theme } from "../theme/theme";
 
 const HEAVENLY_GOLD = "#D99400";
@@ -23,7 +25,8 @@ const demoNetworks = [
   {
     id: "mens-prayer",
     title: "Men’s Prayer Network",
-    subtitle: "Brothers strengthening faith together through prayer and encouragement.",
+    subtitle:
+      "Brothers strengthening faith together through prayer and encouragement.",
     members: "1.2K members",
     category: "Prayer",
     scope: "National",
@@ -105,9 +108,18 @@ function CategoryChip({ label }) {
   );
 }
 
-function NetworkListCard({ network }) {
+function NetworkListCard({ network, membershipStatus }) {
   const navigation = useNavigation();
+
+  const isJoined = membershipStatus === "joined";
+  const isPending = membershipStatus === "pending";
   const isJoin = network.action === "Join";
+
+  const buttonLabel = isJoined
+    ? "Joined"
+    : isPending
+    ? "Request Sent"
+    : network.action;
 
   return (
     <Pressable
@@ -245,6 +257,7 @@ function NetworkListCard({ network }) {
         >
           <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
             <Ionicons name="people-outline" size={14} color={DEEP_OLIVE} />
+
             <Text
               style={{
                 color: theme.colors.muted,
@@ -259,27 +272,47 @@ function NetworkListCard({ network }) {
           </View>
 
           <Pressable
-            onPress={() => navigation.push("NetworkDetail", { networkId: network.id })}
+            onPress={() =>
+              navigation.push("NetworkDetail", { networkId: network.id })
+            }
             style={({ pressed }) => ({
               minWidth: 70,
               paddingVertical: 7,
               paddingHorizontal: 10,
               borderRadius: 999,
               alignItems: "center",
-              backgroundColor: isJoin ? "transparent" : theme.colors.surface,
+              backgroundColor: isJoined
+                ? DEEP_OLIVE
+                : isPending
+                ? SOFT_OLIVE_BG
+                : isJoin
+                ? "transparent"
+                : theme.colors.surface,
               borderWidth: 1,
-              borderColor: isJoin ? HEAVENLY_GOLD : DEEP_OLIVE,
+              borderColor: isJoined
+                ? DEEP_OLIVE
+                : isPending
+                ? DEEP_OLIVE
+                : isJoin
+                ? HEAVENLY_GOLD
+                : DEEP_OLIVE,
               opacity: pressed ? 0.75 : 1,
             })}
           >
             <Text
               style={{
-                color: isJoin ? HEAVENLY_GOLD : DEEP_OLIVE,
+                color: isJoined
+                  ? "#fff"
+                  : isPending
+                  ? DEEP_OLIVE
+                  : isJoin
+                  ? HEAVENLY_GOLD
+                  : DEEP_OLIVE,
                 fontSize: 12,
                 fontWeight: "900",
               }}
             >
-              {network.action}
+              {buttonLabel}
             </Text>
           </Pressable>
         </View>
@@ -290,6 +323,74 @@ function NetworkListCard({ network }) {
 
 export default function Networks() {
   const navigation = useNavigation();
+
+  const [activeTab, setActiveTab] = useState("Suggested");
+  const [membershipByNetworkId, setMembershipByNetworkId] = useState({});
+  const [membershipsLoading, setMembershipsLoading] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+
+    async function loadMemberships() {
+      try {
+        setMembershipsLoading(true);
+
+        const { data: sessionData, error: sessionError } =
+          await supabase.auth.getSession();
+
+        if (sessionError) {
+          console.log("Networks session error:", sessionError);
+          return;
+        }
+
+        const userId = sessionData?.session?.user?.id ?? null;
+
+        if (!userId) {
+          if (alive) setMembershipByNetworkId({});
+          return;
+        }
+
+        const { data, error } = await supabase
+          .from("network_memberships")
+          .select("network_id, status")
+          .eq("user_id", userId);
+
+        if (error) {
+          console.log("Networks memberships load error:", error);
+          return;
+        }
+
+        const nextMap = {};
+
+        (data || []).forEach((row) => {
+          nextMap[row.network_id] = row.status;
+        });
+
+        if (alive) setMembershipByNetworkId(nextMap);
+      } catch (e) {
+        console.log("Unexpected networks memberships load error:", e);
+      } finally {
+        if (alive) setMembershipsLoading(false);
+      }
+    }
+
+    loadMemberships();
+
+    const unsubscribe = navigation.addListener("focus", loadMemberships);
+
+    return () => {
+      alive = false;
+      unsubscribe();
+    };
+  }, [navigation]);
+
+  const displayedNetworks =
+    activeTab === "My Networks"
+      ? demoNetworks.filter((network) => membershipByNetworkId[network.id])
+      : demoNetworks;
+
+  const listTitle =
+    activeTab === "My Networks" ? "My Networks" : `${activeTab} Networks`;
 
   return (
     <Screen backgroundColor={theme.colors.bg} padded={false} style={{ flex: 1 }}>
@@ -329,7 +430,9 @@ export default function Networks() {
             </Pressable>
 
             <Pressable
-              onPress={() => Alert.alert("Create Network", "Network creation is coming later.")}
+              onPress={() =>
+                Alert.alert("Create Network", "Network creation is coming later.")
+              }
               style={({ pressed }) => ({
                 flexDirection: "row",
                 alignItems: "center",
@@ -342,6 +445,7 @@ export default function Networks() {
               })}
             >
               <Ionicons name="add" size={17} color={HEAVENLY_GOLD} />
+
               <Text
                 style={{
                   color: HEAVENLY_GOLD,
@@ -433,13 +537,13 @@ export default function Networks() {
             contentContainerStyle={{ gap: 8, paddingRight: 16 }}
             style={{ marginBottom: 18 }}
           >
-            {["Suggested", "Popular", "Local", "My Networks"].map((label, index) => {
-              const active = index === 0;
+            {["Suggested", "Popular", "Local", "My Networks"].map((label) => {
+              const active = activeTab === label;
 
               return (
                 <Pressable
                   key={label}
-                  onPress={() => Alert.alert(label, `${label} tab is coming next.`)}
+                  onPress={() => setActiveTab(label)}
                   style={({ pressed }) => ({
                     paddingVertical: 8,
                     paddingHorizontal: 14,
@@ -501,17 +605,81 @@ export default function Networks() {
                   fontWeight: "900",
                 }}
               >
-                Suggested Networks
+                {listTitle}
               </Text>
 
-              <Text style={{ color: HEAVENLY_GOLD, fontSize: 13, fontWeight: "900" }}>
+              <Text
+                style={{
+                  color: HEAVENLY_GOLD,
+                  fontSize: 13,
+                  fontWeight: "900",
+                }}
+              >
                 View all
               </Text>
             </View>
 
-            {demoNetworks.map((network) => (
-              <NetworkListCard key={network.id} network={network} />
-            ))}
+            {membershipsLoading && activeTab === "My Networks" ? (
+              <View
+                style={{
+                  backgroundColor: theme.colors.surface,
+                  borderRadius: 18,
+                  borderWidth: 1,
+                  borderColor: theme.colors.divider,
+                  padding: 16,
+                }}
+              >
+                <Text
+                  style={{
+                    color: theme.colors.muted,
+                    fontSize: 13,
+                    fontWeight: "800",
+                  }}
+                >
+                  Loading your networks...
+                </Text>
+              </View>
+            ) : displayedNetworks.length === 0 ? (
+              <View
+                style={{
+                  backgroundColor: theme.colors.surface,
+                  borderRadius: 18,
+                  borderWidth: 1,
+                  borderColor: theme.colors.divider,
+                  padding: 16,
+                }}
+              >
+                <Text
+                  style={{
+                    color: theme.colors.text,
+                    fontSize: 15,
+                    fontWeight: "900",
+                    marginBottom: 4,
+                  }}
+                >
+                  No networks yet
+                </Text>
+
+                <Text
+                  style={{
+                    color: theme.colors.muted,
+                    fontSize: 13,
+                    fontWeight: "700",
+                    lineHeight: 19,
+                  }}
+                >
+                  Join or request to join a network, and it will appear here.
+                </Text>
+              </View>
+            ) : (
+              displayedNetworks.map((network) => (
+                <NetworkListCard
+                  key={network.id}
+                  network={network}
+                  membershipStatus={membershipByNetworkId[network.id]}
+                />
+              ))
+            )}
           </View>
         </ScrollView>
       )}

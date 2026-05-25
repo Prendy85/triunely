@@ -33,7 +33,7 @@ export async function loadDailyBundle() {
     // 2) Fetch all intensity options for the same concept
     const { data: options, error: optError } = await supabase
       .from("formation_challenges")
-      .select("id,intensity,min_stage,title,prompt,time_minutes_min,time_minutes_max,allows_unseen_act")
+      .select("id,intensity,min_stage,title,prompt,scripture_refs,time_minutes_min,time_minutes_max,allows_unseen_act")
       .eq("concept_id", daily.concept_id)
       .eq("challenge_kind", "daily");
 

@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation, useRoute } from "@react-navigation/native";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
     Alert,
     Image,
@@ -11,6 +11,7 @@ import {
 } from "react-native";
 
 import Screen from "../components/Screen";
+import { supabase } from "../lib/supabase";
 import { theme } from "../theme/theme";
 
 const HEAVENLY_GOLD = "#D99400";
@@ -395,9 +396,126 @@ export default function NetworkDetail() {
   const networkId = route.params?.networkId || "mens-prayer";
   const network = NETWORKS_BY_ID[networkId] || fallbackNetwork;
 
-  const [activeTab, setActiveTab] = useState("Posts");
+const [activeTab, setActiveTab] = useState("Posts");
+const [membershipStatus, setMembershipStatus] = useState("none");
+const [membershipLoading, setMembershipLoading] = useState(false);
+const [currentUserId, setCurrentUserId] = useState(null);
 
-  const isRequest = network.action === "Request";
+const isRequest = network.action === "Request";
+const isJoined = membershipStatus === "joined";
+const isPending = membershipStatus === "pending";
+
+useEffect(() => {
+  let alive = true;
+
+  async function loadMembershipStatus() {
+    try {
+      setMembershipLoading(true);
+      setMembershipStatus("none");
+
+      const { data: sessionData, error: sessionError } =
+        await supabase.auth.getSession();
+
+      if (sessionError) {
+        console.log("Network membership session error:", sessionError);
+        return;
+      }
+
+      const userId = sessionData?.session?.user?.id ?? null;
+
+      if (!alive) return;
+
+      setCurrentUserId(userId);
+
+      if (!userId) return;
+
+      const { data, error } = await supabase
+        .from("network_memberships")
+        .select("status")
+        .eq("network_id", network.id)
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      if (error) {
+        console.log("Network membership load error:", error);
+        return;
+      }
+
+      if (!alive) return;
+
+      setMembershipStatus(data?.status ?? "none");
+    } catch (e) {
+      console.log("Unexpected network membership load error:", e);
+    } finally {
+      if (alive) setMembershipLoading(false);
+    }
+  }
+
+  loadMembershipStatus();
+
+  return () => {
+    alive = false;
+  };
+}, [network.id]);
+
+async function handleMembershipPress() {
+  if (membershipLoading) return;
+
+  if (!currentUserId) {
+    Alert.alert("Not signed in", "Please sign in again before joining a network.");
+    return;
+  }
+
+  if (isJoined) {
+    Alert.alert("Already joined", `You are already a member of ${network.title}.`);
+    return;
+  }
+
+  if (isPending) {
+    Alert.alert(
+      "Request pending",
+      `Your request to join ${network.title} has already been sent.`
+    );
+    return;
+  }
+
+  const nextStatus = isRequest ? "pending" : "joined";
+
+  try {
+    setMembershipLoading(true);
+
+    const { error } = await supabase.from("network_memberships").upsert(
+      {
+        network_id: network.id,
+        user_id: currentUserId,
+        status: nextStatus,
+        role: "member",
+      },
+      {
+        onConflict: "network_id,user_id",
+      }
+    );
+
+    if (error) throw error;
+
+    setMembershipStatus(nextStatus);
+
+    Alert.alert(
+      nextStatus === "pending" ? "Request sent" : "Joined",
+      nextStatus === "pending"
+        ? `Your request to join ${network.title} has been sent.`
+        : `You have joined ${network.title}.`
+    );
+  } catch (e) {
+    console.log("Network membership save error:", e);
+    Alert.alert(
+      "Could not update network",
+      "We could not update your network membership right now. Please try again."
+    );
+  } finally {
+    setMembershipLoading(false);
+  }
+}
 
   return (
     <Screen backgroundColor={theme.colors.bg} padded={false} style={{ flex: 1 }}>
@@ -565,36 +683,54 @@ export default function NetworkDetail() {
 
               <View style={{ flexDirection: "row", gap: 10, marginTop: 14 }}>
                 <Pressable
-                  onPress={() =>
-                    Alert.alert(
-                      isRequest ? "Request sent soon" : "Join Network",
-                      isRequest
-                        ? "Request-to-join flow is coming next."
-                        : "Join network flow is coming next."
-                    )
-                  }
-                  style={({ pressed }) => ({
+  onPress={handleMembershipPress}
+  disabled={membershipLoading}
+  style={({ pressed }) => ({
                     flex: 1,
                     borderRadius: 999,
                     paddingVertical: 12,
                     alignItems: "center",
-                    backgroundColor: isRequest
-                      ? theme.colors.surface
-                      : HEAVENLY_GOLD,
-                    borderWidth: 1,
-                    borderColor: isRequest ? DEEP_OLIVE : HEAVENLY_GOLD,
-                    opacity: pressed ? 0.8 : 1,
+                    backgroundColor: isJoined
+  ? DEEP_OLIVE
+  : isPending
+  ? SOFT_OLIVE_BG
+  : isRequest
+  ? theme.colors.surface
+  : HEAVENLY_GOLD,
+borderWidth: 1,
+borderColor: isJoined
+  ? DEEP_OLIVE
+  : isPending
+  ? DEEP_OLIVE
+  : isRequest
+  ? DEEP_OLIVE
+  : HEAVENLY_GOLD,
+                    opacity: membershipLoading ? 0.65 : pressed ? 0.8 : 1,
                   })}
                 >
-                  <Text
-                    style={{
-                      color: isRequest ? DEEP_OLIVE : "#fff",
-                      fontSize: 14,
-                      fontWeight: "900",
-                    }}
-                  >
-                    {isRequest ? "Request to Join" : "Join Network"}
-                  </Text>
+                 <Text
+  style={{
+    color: isJoined
+      ? "#fff"
+      : isPending
+      ? DEEP_OLIVE
+      : isRequest
+      ? DEEP_OLIVE
+      : "#fff",
+    fontSize: 14,
+    fontWeight: "900",
+  }}
+>
+  {membershipLoading
+  ? "Checking..."
+  : isJoined
+  ? "Joined"
+  : isPending
+  ? "Request Sent"
+  : isRequest
+  ? "Request to Join"
+  : "Join Network"}
+</Text>
                 </Pressable>
 
                 <Pressable

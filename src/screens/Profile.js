@@ -2428,6 +2428,7 @@ await loadMyEvents(userId);
     backgroundColor: theme.colors.surfaceAlt,
     borderRadius: 999,
     padding: 4,
+    marginHorizontal: 4,
     marginBottom: 12,
     borderWidth: 1,
     borderColor: theme.colors.divider,
