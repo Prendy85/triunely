@@ -12,7 +12,7 @@ import { supabase } from "../lib/supabase";
  * - unreadMessageCount
  * - latestBannerNotification
  * - clearLatestBannerNotification()
- * - refreshCounts()  // manual refresh when needed
+ * - refreshCounts()
  */
 const RealtimeContext = createContext(null);
 
@@ -23,7 +23,6 @@ export function RealtimeProvider({ session, profile, children }) {
   const [pendingFellowshipCount, setPendingFellowshipCount] = useState(0);
   const [unreadMessageCount, setUnreadMessageCount] = useState(0);
 
-  // Global in-app banner notification state
   const [latestBannerNotification, setLatestBannerNotification] = useState(null);
 
   useEffect(() => {
@@ -67,7 +66,6 @@ export function RealtimeProvider({ session, profile, children }) {
 
     async function refreshUnreadMessages() {
       try {
-        // Unified inbox unread count = sum of conversation_members.unread_count for this user
         const { data, error } = await supabase
           .from("conversation_members")
           .select("unread_count")
@@ -97,12 +95,45 @@ export function RealtimeProvider({ session, profile, children }) {
       ]);
     }
 
-    // 1) initial count load
+    async function showGroupApprovedBanner(memberRow) {
+      try {
+        if (!memberRow?.id || !alive) return;
+
+        let groupName = "your church group";
+
+        if (memberRow?.group_id) {
+          const { data, error } = await supabase
+            .from("church_groups")
+            .select("name")
+            .eq("id", memberRow.group_id)
+            .maybeSingle();
+
+          if (!error && data?.name) {
+            groupName = data.name;
+          }
+        }
+
+        if (!alive) return;
+
+        setLatestBannerNotification({
+          id: `church_group_request_approved-${memberRow.id}-${Date.now()}`,
+          type: "church_group_request_approved",
+          title: "Group request approved",
+          body: `Your request to join ${groupName} has been approved.`,
+          user_id: userId,
+          church_id: memberRow.church_id || null,
+          church_group_id: memberRow.group_id || null,
+          church_group_member_id: memberRow.id,
+          is_read: false,
+          created_at: new Date().toISOString(),
+        });
+      } catch (e) {
+        console.log("showGroupApprovedBanner exception:", e);
+      }
+    }
+
     refreshCounts();
 
-    // 2) realtime: notifications
-    // Any change refreshes the bell count.
-    // INSERT also triggers the global in-app banner.
     const notifChannel = supabase
       .channel(`rt-notifications-${userId}`)
       .on(
@@ -113,17 +144,16 @@ export function RealtimeProvider({ session, profile, children }) {
           table: "notifications",
           filter: `user_id=eq.${userId}`,
         },
-   (payload) => {
-  refreshUnreadNotifications();
+        (payload) => {
+          refreshUnreadNotifications();
 
-  if (payload?.eventType === "INSERT" && payload?.new) {
-    setLatestBannerNotification(payload.new);
-  }
-}
+          if (payload?.eventType === "INSERT" && payload?.new) {
+            setLatestBannerNotification(payload.new);
+          }
+        }
       )
       .subscribe();
 
-    // 3) realtime: fellowship requests
     const followsChannel = supabase
       .channel(`rt-follows-${userId}`)
       .on(
@@ -140,8 +170,6 @@ export function RealtimeProvider({ session, profile, children }) {
       )
       .subscribe();
 
-    // 4) realtime: message unread counts
-    // Recount message badge whenever membership rows change (unread_count changes live here)
     const messagesChannel = supabase
       .channel(`rt-conversation-members-${userId}`)
       .on(
@@ -158,7 +186,32 @@ export function RealtimeProvider({ session, profile, children }) {
       )
       .subscribe();
 
-    // 5) hardening: when app comes back to foreground -> recount
+    // Extra reliability for church group approvals:
+    // if the member is sitting on Groups and their membership row changes
+    // from pending -> approved, show the approval banner directly.
+    const churchGroupMembersChannel = supabase
+      .channel(`rt-church-group-members-${userId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "church_group_members",
+          filter: `user_id=eq.${userId}`,
+        },
+        (payload) => {
+          const oldStatus = String(payload?.old?.status || "").toLowerCase();
+          const newStatus = String(payload?.new?.status || "").toLowerCase();
+
+          refreshUnreadNotifications();
+
+          if (oldStatus === "pending" && newStatus === "approved") {
+            showGroupApprovedBanner(payload.new);
+          }
+        }
+      )
+      .subscribe();
+
     const sub = AppState.addEventListener("change", (state) => {
       if (state === "active") refreshCounts();
     });
@@ -168,6 +221,7 @@ export function RealtimeProvider({ session, profile, children }) {
       supabase.removeChannel(notifChannel);
       supabase.removeChannel(followsChannel);
       supabase.removeChannel(messagesChannel);
+      supabase.removeChannel(churchGroupMembersChannel);
       sub?.remove?.();
     };
   }, [userId]);
@@ -183,7 +237,6 @@ export function RealtimeProvider({ session, profile, children }) {
       latestBannerNotification,
       clearLatestBannerNotification: () => setLatestBannerNotification(null),
 
-      // Manual refresh hook (optional use from screens)
       async refreshCounts() {
         if (!userId) return;
 

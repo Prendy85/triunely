@@ -37,6 +37,26 @@ function safeInitials(nameOrEmail) {
   return String(nameOrEmail).trim()[0]?.toUpperCase() || "?";
 }
 
+function getNotificationChurchId(item) {
+  return (
+    item?.church_id ||
+    item?.payload?.church_id ||
+    item?.data?.church_id ||
+    item?.metadata?.church_id ||
+    null
+  );
+}
+
+function getNotificationChurchName(item) {
+  return (
+    item?.church_name ||
+    item?.payload?.church_name ||
+    item?.data?.church_name ||
+    item?.metadata?.church_name ||
+    "Church"
+  );
+}
+
 export default function NotificationsScreen() {
   const navigation = useNavigation();
 
@@ -45,7 +65,7 @@ export default function NotificationsScreen() {
   const [errorText, setErrorText] = useState("");
   const [unreadCount, setUnreadCount] = useState(0);
   const [profilesById, setProfilesById] = useState({});
-  const [decisionLoadingByNotifId, setDecisionLoadingByNotifId] = useState({}); // { [notifId]: true }
+  const [decisionLoadingByNotifId, setDecisionLoadingByNotifId] = useState({});
 
   const hasUnread = unreadCount > 0;
 
@@ -62,11 +82,15 @@ export default function NotificationsScreen() {
       setItems(list || []);
       setUnreadCount(count || 0);
 
-      // Pull profiles for church join request notifications
       const requesterIds = Array.from(
         new Set(
           (list || [])
-            .filter((n) => n.type === "church_join_request" && n.related_user_id)
+            .filter(
+              (n) =>
+                (n.type === "church_join_request" ||
+                  n.type === "church_group_join_request") &&
+                n.related_user_id
+            )
             .map((n) => n.related_user_id)
         )
       );
@@ -101,40 +125,78 @@ export default function NotificationsScreen() {
   );
 
   const handleOpenEventInvite = useCallback(
-  async (item) => {
-    try {
-      if (!item?.id) return;
+    async (item) => {
+      try {
+        if (!item?.id) return;
 
-      console.log("EVENT INVITE NOTIFICATION PRESSED:", {
-        notificationId: item.id,
-        payload: item?.payload,
-        eventId: item?.payload?.event_id,
-      });
+        console.log("EVENT INVITE NOTIFICATION PRESSED:", {
+          notificationId: item.id,
+          payload: item?.payload,
+          eventId: item?.payload?.event_id,
+        });
 
-      if (item.is_read === false) {
-        await markNotificationRead(item.id);
-      }
+        if (item.is_read === false) {
+          await markNotificationRead(item.id);
+        }
 
-      const eventId = item?.payload?.event_id;
+        const eventId = item?.payload?.event_id;
 
-      if (!eventId) {
-        setErrorText("This event invitation is missing its event link.");
+        if (!eventId) {
+          setErrorText("This event invitation is missing its event link.");
+          await load();
+          return;
+        }
+
+        navigation.navigate("EventDetails", {
+          eventId,
+        });
+
         await load();
-        return;
+      } catch (e) {
+        console.log("handleOpenEventInvite error:", e);
+        setErrorText(e?.message || "Failed to open event invitation");
       }
+    },
+    [navigation, load]
+  );
 
-     navigation.navigate("EventDetails", {
-  eventId,
-});
+  const handleOpenChurchGroupRequest = useCallback(
+    async (item) => {
+      try {
+        if (!item?.id) return;
 
-      await load();
-    } catch (e) {
-      console.log("handleOpenEventInvite error:", e);
-      setErrorText(e?.message || "Failed to open event invitation");
-    }
-  },
-  [navigation, load]
-);
+        if (item.is_read === false) {
+          await markNotificationRead(item.id);
+        }
+
+        const churchId = getNotificationChurchId(item);
+        const churchName = getNotificationChurchName(item);
+
+        if (!churchId) {
+          setErrorText("This group request notification is missing its church link.");
+          await load();
+          return;
+        }
+
+        navigation.navigate("ChurchGroupsAdmin", {
+          churchId,
+          churchName,
+          openRequests: true,
+          fromNotification: true,
+          notificationId: item.id,
+          churchGroupId: item?.church_group_id || item?.payload?.church_group_id || null,
+          churchGroupMemberId:
+            item?.church_group_member_id || item?.payload?.church_group_member_id || null,
+        });
+
+        await load();
+      } catch (e) {
+        console.log("handleOpenChurchGroupRequest error:", e);
+        setErrorText(e?.message || "Failed to open group request");
+      }
+    },
+    [navigation, load]
+  );
 
   const handleAcceptJoin = useCallback(
     async (item) => {
@@ -145,23 +207,16 @@ export default function NotificationsScreen() {
         setErrorText("");
         setDecisionLoadingByNotifId((prev) => ({ ...prev, [notifId]: true }));
 
-       // 0) mark read immediately so badge clears even if delete fails
-await markNotificationRead(notifId);
+        await markNotificationRead(notifId);
+        await respondToChurchJoinRequest({ item, decision: "accepted" });
 
-// 1) approve membership via RPC
-await respondToChurchJoinRequest({ item, decision: "accepted" });
+        try {
+          await deleteNotification(notifId);
+        } catch (e) {
+          console.log("deleteNotification blocked/failed (ok):", e?.message || e);
+        }
 
-// 2) OPTIONAL: try delete so it disappears from list
-// If delete is blocked by RLS, it will throw — we ignore that.
-try {
-  await deleteNotification(notifId);
-} catch (e) {
-  console.log("deleteNotification blocked/failed (ok):", e?.message || e);
-}
-
-// 3) reload list
-await load();
-
+        await load();
       } catch (e) {
         setErrorText(e?.message || "Failed to accept join request");
       } finally {
@@ -184,22 +239,16 @@ await load();
         setErrorText("");
         setDecisionLoadingByNotifId((prev) => ({ ...prev, [notifId]: true }));
 
-       // 0) mark read immediately so badge clears even if delete fails
-await markNotificationRead(notifId);
+        await markNotificationRead(notifId);
+        await respondToChurchJoinRequest({ item, decision: "declined" });
 
-// 1) reject membership via RPC
-await respondToChurchJoinRequest({ item, decision: "declined" });
+        try {
+          await deleteNotification(notifId);
+        } catch (e) {
+          console.log("deleteNotification blocked/failed (ok):", e?.message || e);
+        }
 
-// 2) OPTIONAL: try delete so it disappears from list
-try {
-  await deleteNotification(notifId);
-} catch (e) {
-  console.log("deleteNotification blocked/failed (ok):", e?.message || e);
-}
-
-// 3) reload list
-await load();
-
+        await load();
       } catch (e) {
         setErrorText(e?.message || "Failed to decline join request");
       } finally {
@@ -237,9 +286,10 @@ await load();
     const time = formatTime(item.created_at);
     const isUnread = item.is_read === false;
 
-    // church join request requester profile (if available)
     const requester =
-      item.type === "church_join_request" && item.related_user_id
+      (item.type === "church_join_request" ||
+        item.type === "church_group_join_request") &&
+      item.related_user_id
         ? profilesById[item.related_user_id]
         : null;
 
@@ -247,7 +297,6 @@ await load();
     const requesterAvatar = requester?.avatar_url || null;
     const requesterInitials = safeInitials(requesterName);
 
-    // Special UI for church join requests
     if (item.type === "church_join_request") {
       const busy = Boolean(decisionLoadingByNotifId[item.id]);
 
@@ -268,7 +317,6 @@ await load();
               color={isUnread ? theme.colors.gold : theme.colors.muted}
             />
 
-            {/* Clickable requester (avatar + name) */}
             <Pressable
               onPress={async () => {
                 try {
@@ -346,7 +394,6 @@ await load();
               </View>
             </Pressable>
 
-            {/* Accept / Decline buttons */}
             <View
               style={{
                 flexDirection: "row",
@@ -406,77 +453,139 @@ await load();
       );
     }
 
-    // Special UI for event invitations
-if (item.type === "event_invite") {
-  const eventTitle = item?.payload?.event_title || "event";
+    if (item.type === "church_group_join_request") {
+      return (
+        <Pressable
+          onPress={() => handleOpenChurchGroupRequest(item)}
+          style={({ pressed }) => ({
+            paddingHorizontal: 14,
+            paddingVertical: 12,
+            borderBottomWidth: 1,
+            borderBottomColor: theme.colors.divider,
+            backgroundColor: theme.colors.bg,
+            opacity: pressed ? 0.75 : 1,
+          })}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <Ionicons
+              name="people-circle-outline"
+              size={23}
+              color={isUnread ? theme.colors.gold : theme.colors.muted}
+            />
 
-  return (
-    <Pressable
-      onPress={() => handleOpenEventInvite(item)}
-      style={({ pressed }) => ({
-        paddingHorizontal: 14,
-        paddingVertical: 12,
-        borderBottomWidth: 1,
-        borderBottomColor: theme.colors.divider,
-        backgroundColor: theme.colors.bg,
-        opacity: pressed ? 0.75 : 1,
-      })}
-    >
-      <View style={{ flexDirection: "row", alignItems: "center" }}>
-        <Ionicons
-          name="calendar-outline"
-          size={22}
-          color={isUnread ? theme.colors.gold : theme.colors.muted}
-        />
+            <View style={{ marginLeft: 10, flex: 1 }}>
+              <Text
+                style={{
+                  color: theme.colors.text,
+                  fontWeight: isUnread ? "900" : "800",
+                }}
+                numberOfLines={1}
+              >
+                {item.title || "New group request"}
+              </Text>
 
-        <View style={{ marginLeft: 10, flex: 1 }}>
-          <Text
-            style={{
-              color: theme.colors.text,
-              fontWeight: isUnread ? "900" : "800",
-            }}
-            numberOfLines={1}
-          >
-            {item.title || "New event invitation"}
-          </Text>
+              <Text
+                style={{ color: theme.colors.muted, marginTop: 3 }}
+                numberOfLines={2}
+              >
+                {item.body || "Someone requested to join a church group."}
+              </Text>
 
-          <Text
-            style={{ color: theme.colors.muted, marginTop: 3 }}
-            numberOfLines={2}
-          >
-            {item.body || `You have been invited to ${eventTitle}.`}
-          </Text>
+              <Text
+                style={{
+                  color: theme.colors.goldPressed,
+                  fontSize: 12,
+                  fontWeight: "900",
+                  marginTop: 6,
+                }}
+              >
+                Tap to review group requests
+              </Text>
+            </View>
 
-          <Text
-            style={{
-              color: theme.colors.goldPressed,
-              fontSize: 12,
-              fontWeight: "900",
-              marginTop: 6,
-            }}
-          >
-            Tap to view and respond
-          </Text>
-        </View>
+            <View style={{ alignItems: "flex-end", marginLeft: 10 }}>
+              <Text style={{ color: theme.colors.muted, fontSize: 12 }}>
+                {time}
+              </Text>
+              <Ionicons
+                name="chevron-forward"
+                size={18}
+                color={theme.colors.muted}
+                style={{ marginTop: 6 }}
+              />
+            </View>
+          </View>
+        </Pressable>
+      );
+    }
 
-        <View style={{ alignItems: "flex-end", marginLeft: 10 }}>
-          <Text style={{ color: theme.colors.muted, fontSize: 12 }}>
-            {time}
-          </Text>
-          <Ionicons
-            name="chevron-forward"
-            size={18}
-            color={theme.colors.muted}
-            style={{ marginTop: 6 }}
-          />
-        </View>
-      </View>
-    </Pressable>
-  );
-}
+    if (item.type === "event_invite") {
+      const eventTitle = item?.payload?.event_title || "event";
 
-    // Default UI for all other notifications
-    const icon = "notifications-outline";
+      return (
+        <Pressable
+          onPress={() => handleOpenEventInvite(item)}
+          style={({ pressed }) => ({
+            paddingHorizontal: 14,
+            paddingVertical: 12,
+            borderBottomWidth: 1,
+            borderBottomColor: theme.colors.divider,
+            backgroundColor: theme.colors.bg,
+            opacity: pressed ? 0.75 : 1,
+          })}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <Ionicons
+              name="calendar-outline"
+              size={22}
+              color={isUnread ? theme.colors.gold : theme.colors.muted}
+            />
+
+            <View style={{ marginLeft: 10, flex: 1 }}>
+              <Text
+                style={{
+                  color: theme.colors.text,
+                  fontWeight: isUnread ? "900" : "800",
+                }}
+                numberOfLines={1}
+              >
+                {item.title || "New event invitation"}
+              </Text>
+
+              <Text
+                style={{ color: theme.colors.muted, marginTop: 3 }}
+                numberOfLines={2}
+              >
+                {item.body || `You have been invited to ${eventTitle}.`}
+              </Text>
+
+              <Text
+                style={{
+                  color: theme.colors.goldPressed,
+                  fontSize: 12,
+                  fontWeight: "900",
+                  marginTop: 6,
+                }}
+              >
+                Tap to view and respond
+              </Text>
+            </View>
+
+            <View style={{ alignItems: "flex-end", marginLeft: 10 }}>
+              <Text style={{ color: theme.colors.muted, fontSize: 12 }}>
+                {time}
+              </Text>
+              <Ionicons
+                name="chevron-forward"
+                size={18}
+                color={theme.colors.muted}
+                style={{ marginTop: 6 }}
+              />
+            </View>
+          </View>
+        </Pressable>
+      );
+    }
 
     return (
       <Pressable
@@ -498,7 +607,7 @@ if (item.type === "event_invite") {
       >
         <View style={{ flexDirection: "row", alignItems: "center" }}>
           <Ionicons
-            name={icon}
+            name="notifications-outline"
             size={22}
             color={isUnread ? theme.colors.gold : theme.colors.muted}
           />

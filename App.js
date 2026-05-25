@@ -73,6 +73,7 @@ import ChurchCreateGroup from "./src/screens/ChurchCreateGroup";
 import ChurchFeed from "./src/screens/ChurchFeed";
 import ChurchFind from "./src/screens/ChurchFind";
 import ChurchGiving from "./src/screens/ChurchGiving";
+import ChurchGroupDetail from "./src/screens/ChurchGroupDetail";
 import ChurchGroupManage from "./src/screens/ChurchGroupManage";
 import ChurchGroupsAdmin from "./src/screens/ChurchGroupsAdmin";
 import ChurchGroupsMember from "./src/screens/ChurchGroupsMember";
@@ -457,6 +458,11 @@ function ChurchStackNavigator() {
   options={{ animation: "slide_from_right" }}
 />
 <ChurchStack.Screen
+  name="ChurchGroupDetail"
+  component={ChurchGroupDetail}
+  options={{ animation: "slide_from_right" }}
+/>
+<ChurchStack.Screen
   name="ChurchGroupsAdmin"
   component={ChurchGroupsAdmin}
   options={{ animation: "slide_from_right" }}
@@ -663,9 +669,14 @@ function RootNavigator() {
         component={Chat}
         options={{ animation: "slide_from_right" }}
       />
-      <RootStack.Screen
+     <RootStack.Screen
   name="ChurchGroupsMember"
   component={ChurchGroupsMember}
+  options={{ animation: "slide_from_right" }}
+/>
+<RootStack.Screen
+  name="ChurchGroupDetail"
+  component={ChurchGroupDetail}
   options={{ animation: "slide_from_right" }}
 />
 <RootStack.Screen

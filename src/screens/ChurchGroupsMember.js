@@ -1,14 +1,15 @@
 // src/screens/ChurchGroupsMember.js
 import { Ionicons } from "@expo/vector-icons";
-import { useEffect, useMemo, useState } from "react";
+import { useFocusEffect } from "@react-navigation/native";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Image,
-    Pressable,
-    ScrollView,
-    Text,
-    View,
+  ActivityIndicator,
+  Alert,
+  Image,
+  Pressable,
+  ScrollView,
+  Text,
+  View,
 } from "react-native";
 
 import Screen from "../components/Screen";
@@ -473,6 +474,8 @@ export default function ChurchGroupsMember({ route, navigation }) {
   const [requestingGroupId, setRequestingGroupId] = useState(null);
   const [respondingInviteId, setRespondingInviteId] = useState(null);
   const [activeFilter, setActiveFilter] = useState("suggested");
+  const [isAdmin, setIsAdmin] = useState(false);
+const [pendingAdminRequestCount, setPendingAdminRequestCount] = useState(0);
 
   const churchName = church?.display_name || church?.name || routeChurchName || "Church";
   const initials = useMemo(() => safeInitials(churchName), [churchName]);
@@ -551,12 +554,19 @@ export default function ChurchGroupsMember({ route, navigation }) {
         }
 
         if (churchId) {
-          await Promise.all([
-            loadChurch(churchId, alive),
-            loadGroups(churchId, alive),
-            uid ? loadMemberships(churchId, uid, alive) : Promise.resolve(),
-          ]);
-        }
+  const admin = await checkIsAdmin(churchId);
+
+  await Promise.all([
+    loadChurch(churchId, alive),
+    loadGroups(churchId, alive),
+    uid ? loadMemberships(churchId, uid, alive) : Promise.resolve(),
+    admin ? loadPendingAdminRequestCount(churchId) : Promise.resolve(),
+  ]);
+
+  if (!admin) {
+    setPendingAdminRequestCount(0);
+  }
+}
       } catch (e) {
         console.log("ChurchGroupsMember load error:", e);
         Alert.alert("Groups", "Could not load church groups right now.");
@@ -633,6 +643,59 @@ export default function ChurchGroupsMember({ route, navigation }) {
 
     if (alive) setMembershipsByGroup(map);
   }
+
+  async function checkIsAdmin(id) {
+  try {
+    if (!id) {
+      setIsAdmin(false);
+      return false;
+    }
+
+    const { data, error } = await supabase.rpc("is_church_admin", {
+      target_church_id: id,
+    });
+
+    if (error) {
+      console.log("ChurchGroupsMember admin check error:", error);
+      setIsAdmin(false);
+      return false;
+    }
+
+    const admin = Boolean(data);
+    setIsAdmin(admin);
+    return admin;
+  } catch (e) {
+    console.log("ChurchGroupsMember admin check exception:", e);
+    setIsAdmin(false);
+    return false;
+  }
+}
+
+async function loadPendingAdminRequestCount(id) {
+  try {
+    if (!id) {
+      setPendingAdminRequestCount(0);
+      return;
+    }
+
+    const { count, error } = await supabase
+      .from("church_group_members")
+      .select("id", { count: "exact", head: true })
+      .eq("church_id", id)
+      .eq("status", "pending");
+
+    if (error) {
+      console.log("ChurchGroupsMember pending admin request count error:", error);
+      setPendingAdminRequestCount(0);
+      return;
+    }
+
+    setPendingAdminRequestCount(count || 0);
+  } catch (e) {
+    console.log("ChurchGroupsMember pending admin request count exception:", e);
+    setPendingAdminRequestCount(0);
+  }
+}
 
   async function handleAcceptInvite(group) {
     const membership = membershipsByGroup?.[group?.id];
@@ -784,6 +847,40 @@ export default function ChurchGroupsMember({ route, navigation }) {
     }
   }
 
+  useFocusEffect(
+  useCallback(() => {
+    if (!churchId) return;
+
+    let alive = true;
+
+    async function refreshOnFocus() {
+      try {
+        await loadGroups(churchId, alive);
+
+        if (viewerId) {
+          await loadMemberships(churchId, viewerId, alive);
+        }
+
+        const admin = await checkIsAdmin(churchId);
+
+        if (admin) {
+          await loadPendingAdminRequestCount(churchId);
+        } else {
+          setPendingAdminRequestCount(0);
+        }
+      } catch (e) {
+        console.log("ChurchGroupsMember focus refresh error:", e);
+      }
+    }
+
+    refreshOnFocus();
+
+    return () => {
+      alive = false;
+    };
+  }, [churchId, viewerId])
+);
+
   function renderChurchAvatar(size = 48) {
     const radius = size / 2;
 
@@ -913,8 +1010,16 @@ function renderGroupCard(group) {
   const visualBg = isGoldVisual ? SOFT_GOLD_BG : SOFT_OLIVE_BG;
 
   return (
-    <View
-      key={group.id}
+  <Pressable
+    key={group.id}
+    onPress={() =>
+      navigation.navigate("ChurchGroupDetail", {
+        churchId,
+        churchName,
+        group,
+        membershipStatus,
+      })
+    }
       style={{
         backgroundColor: theme.colors.surface,
         borderRadius: 22,
@@ -1227,7 +1332,7 @@ function renderGroupCard(group) {
           )}
         </View>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -1367,6 +1472,77 @@ function renderGroupCard(group) {
               for approval, and discover suggested groups from your church.
             </Text>
           </View>
+
+          {isAdmin && pendingAdminRequestCount > 0 ? (
+  <View
+    style={{
+      backgroundColor: SOFT_GOLD_BG,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: CARD_BORDER,
+      padding: 14,
+      marginBottom: 14,
+      flexDirection: "row",
+      alignItems: "center",
+    }}
+  >
+    <View
+      style={{
+        width: 42,
+        height: 42,
+        borderRadius: 21,
+        backgroundColor: theme.colors.surface,
+        borderWidth: 1,
+        borderColor: CARD_BORDER,
+        alignItems: "center",
+        justifyContent: "center",
+        marginRight: 12,
+      }}
+    >
+      <Ionicons name="alert-circle-outline" size={22} color={HEAVENLY_GOLD} />
+    </View>
+
+    <View style={{ flex: 1 }}>
+      <Text style={{ color: theme.colors.text, fontSize: 15, fontWeight: "900" }}>
+        {pendingAdminRequestCount} group request
+        {pendingAdminRequestCount === 1 ? "" : "s"} need review
+      </Text>
+
+      <Text
+        style={{
+          color: theme.colors.muted,
+          fontSize: 12.5,
+          fontWeight: "700",
+          lineHeight: 18,
+          marginTop: 3,
+        }}
+      >
+        Review pending requests from your church group admin area.
+      </Text>
+    </View>
+
+    <Pressable
+      onPress={() =>
+        navigation.navigate("ChurchGroupsAdmin", {
+          churchId,
+          churchName,
+        })
+      }
+      style={({ pressed }) => ({
+        marginLeft: 10,
+        paddingVertical: 8,
+        paddingHorizontal: 11,
+        borderRadius: 999,
+        backgroundColor: HEAVENLY_GOLD,
+        opacity: pressed ? 0.75 : 1,
+      })}
+    >
+      <Text style={{ color: "#fff", fontSize: 12, fontWeight: "900" }}>
+        Review
+      </Text>
+    </Pressable>
+  </View>
+) : null}
 
           <View
             style={{

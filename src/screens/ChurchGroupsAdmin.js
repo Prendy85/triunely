@@ -2,7 +2,15 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 
 import Screen from "../components/Screen";
 import { supabase } from "../lib/supabase";
@@ -15,6 +23,32 @@ const SOFT_OLIVE_BG = "rgba(79, 99, 59, 0.10)";
 const CARD_BORDER = "rgba(217, 148, 0, 0.18)";
 const SELECTED_GOLD_BORDER = "rgba(217, 148, 0, 0.42)";
 const SELECTED_OLIVE_BORDER = "rgba(79, 99, 59, 0.42)";
+
+function getInitials(name) {
+  if (!name) return "?";
+  const parts = String(name).trim().split(" ").filter(Boolean);
+
+  if (parts.length >= 2) {
+    return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  }
+
+  return String(name).trim()[0]?.toUpperCase() || "?";
+}
+
+function formatRequestDate(value) {
+  if (!value) return "Requested recently";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "Requested recently";
+  }
+
+  return `Requested ${date.toLocaleDateString()} at ${date.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  })}`;
+}
 
 const mockGroups = [
   {
@@ -241,6 +275,221 @@ function GroupAdminCard({ group, onManage }) {
   );
 }
 
+function PendingRequestCard({ request, acting, onApprove, onDecline, onOpenGroup }) {
+  return (
+    <View
+      style={{
+        backgroundColor: theme.colors.surface,
+        borderWidth: 1,
+        borderColor: CARD_BORDER,
+        borderRadius: 18,
+        padding: 14,
+        marginTop: 10,
+      }}
+    >
+      <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 12 }}>
+        <View
+          style={{
+            width: 44,
+            height: 44,
+            borderRadius: 22,
+            backgroundColor: SOFT_GOLD_BG,
+            borderWidth: 1,
+            borderColor: CARD_BORDER,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Text style={{ color: HEAVENLY_GOLD, fontWeight: "900", fontSize: 14 }}>
+            {request.initials}
+          </Text>
+        </View>
+
+        <View style={{ flex: 1 }}>
+          <Text
+            style={{
+              color: theme.colors.text,
+              fontSize: 15,
+              fontWeight: "900",
+              lineHeight: 20,
+            }}
+          >
+            {request.name} requested to join
+          </Text>
+
+          <Pressable onPress={() => onOpenGroup?.(request)} hitSlop={6}>
+            <Text
+              style={{
+                color: HEAVENLY_GOLD,
+                fontSize: 13,
+                fontWeight: "900",
+                marginTop: 4,
+              }}
+            >
+              {request.groupName}
+            </Text>
+          </Pressable>
+
+          <Text
+            style={{
+              color: theme.colors.muted,
+              fontSize: 12,
+              fontWeight: "700",
+              marginTop: 4,
+            }}
+          >
+            {formatRequestDate(request.createdAt)}
+          </Text>
+
+          <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
+            <Pressable
+              onPress={() => onDecline?.(request)}
+              disabled={acting}
+              style={({ pressed }) => ({
+                flex: 1,
+                borderRadius: 999,
+                paddingVertical: 10,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: theme.colors.surface,
+                borderWidth: 1,
+                borderColor: CARD_BORDER,
+                opacity: pressed || acting ? 0.7 : 1,
+              })}
+            >
+              <Text style={{ color: theme.colors.muted, fontWeight: "900" }}>
+                Decline
+              </Text>
+            </Pressable>
+
+            <Pressable
+              onPress={() => onApprove?.(request)}
+              disabled={acting}
+              style={({ pressed }) => ({
+                flex: 1,
+                borderRadius: 999,
+                paddingVertical: 10,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: HEAVENLY_GOLD,
+                borderWidth: 1,
+                borderColor: HEAVENLY_GOLD,
+                opacity: pressed || acting ? 0.7 : 1,
+                flexDirection: "row",
+                gap: 8,
+              })}
+            >
+              {acting ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Ionicons name="checkmark-circle-outline" size={17} color="#fff" />
+              )}
+
+              <Text style={{ color: "#fff", fontWeight: "900" }}>
+                Approve
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function PendingRequestsPanel({
+  requests,
+  loading,
+  actingRequestId,
+  onApprove,
+  onDecline,
+  onOpenGroup,
+}) {
+  if (loading) {
+    return (
+      <View
+        style={{
+          backgroundColor: theme.colors.surface,
+          borderWidth: 1,
+          borderColor: CARD_BORDER,
+          borderRadius: 20,
+          padding: 14,
+          marginBottom: 16,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 10,
+        }}
+      >
+        <ActivityIndicator size="small" color={HEAVENLY_GOLD} />
+        <Text style={{ color: theme.colors.muted, fontWeight: "800" }}>
+          Checking group requests…
+        </Text>
+      </View>
+    );
+  }
+
+  if (!requests.length) return null;
+
+  return (
+    <View
+      style={{
+        backgroundColor: SOFT_GOLD_BG,
+        borderWidth: 1,
+        borderColor: CARD_BORDER,
+        borderRadius: 22,
+        padding: 14,
+        marginBottom: 16,
+      }}
+    >
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+        <View
+          style={{
+            width: 44,
+            height: 44,
+            borderRadius: 22,
+            backgroundColor: theme.colors.surface,
+            borderWidth: 1,
+            borderColor: CARD_BORDER,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Ionicons name="alert-circle-outline" size={23} color={HEAVENLY_GOLD} />
+        </View>
+
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: theme.colors.text, fontSize: 18, fontWeight: "900" }}>
+            Requests needing review
+          </Text>
+
+          <Text
+            style={{
+              color: theme.colors.muted,
+              fontSize: 12.5,
+              fontWeight: "700",
+              lineHeight: 18,
+              marginTop: 4,
+            }}
+          >
+            {requests.length} group request{requests.length === 1 ? "" : "s"} waiting for
+            approval.
+          </Text>
+        </View>
+      </View>
+
+      {requests.map((request) => (
+        <PendingRequestCard
+          key={request.id}
+          request={request}
+          acting={actingRequestId === request.id}
+          onApprove={onApprove}
+          onDecline={onDecline}
+          onOpenGroup={onOpenGroup}
+        />
+      ))}
+    </View>
+  );
+}
+
 function CategorySection({ category, groups, expanded, onToggle, onManage }) {
   const isOlive = category.tint === "olive";
 
@@ -360,52 +609,161 @@ export default function ChurchGroupsAdmin({ navigation, route }) {
   const [expandedCategory, setExpandedCategory] = useState(null);
   const [liveGroups, setLiveGroups] = useState([]);
   const [loadingGroups, setLoadingGroups] = useState(false);
+  const [pendingRequests, setPendingRequests] = useState([]);
+  const [loadingRequests, setLoadingRequests] = useState(false);
+  const [actingRequestId, setActingRequestId] = useState(null);
 
   const loadGroups = useCallback(async () => {
-  if (!churchId) return;
+    if (!churchId) return;
 
-  try {
-    setLoadingGroups(true);
+    try {
+      setLoadingGroups(true);
 
-    const { data, error } = await supabase
-      .from("church_groups")
-      .select("*")
-      .eq("church_id", churchId)
-      .order("created_at", { ascending: false });
+      const { data, error } = await supabase
+        .from("church_groups")
+        .select("*")
+        .eq("church_id", churchId)
+        .order("created_at", { ascending: false });
 
-    if (error) throw error;
+      if (error) throw error;
 
-    const mapped = (data || []).map((item) => ({
-      id: item.id,
-      name: item.name,
-      type: item.type,
-      area: item.area || "Area not set",
-      leader: item.leader_name || "Leader not set",
-      time:
-        item.meeting_day || item.meeting_time
-          ? `${item.meeting_day || ""} ${item.meeting_time || ""}`.trim()
-          : "Time not set",
-      status: item.status === "active" ? "Active" : item.status,
-    }));
+      const mapped = (data || []).map((item) => ({
+        id: item.id,
+        name: item.name,
+        type: item.type,
+        area: item.area || "Area not set",
+        leader: item.leader_name || "Leader not set",
+        time:
+          item.meeting_day || item.meeting_time
+            ? `${item.meeting_day || ""} ${item.meeting_time || ""}`.trim()
+            : "Time not set",
+        status: item.status === "active" ? "Active" : item.status,
+      }));
 
-    setLiveGroups(mapped);
-  } catch (e) {
-    console.log("load church groups error:", e);
-    setLiveGroups([]);
-  } finally {
-    setLoadingGroups(false);
-  }
-}, [churchId]);
+      setLiveGroups(mapped);
+    } catch (e) {
+      console.log("load church groups error:", e);
+      setLiveGroups([]);
+    } finally {
+      setLoadingGroups(false);
+    }
+  }, [churchId]);
 
-useEffect(() => {
-  loadGroups();
-}, [loadGroups]);
+  const loadPendingRequests = useCallback(async () => {
+    if (!churchId) return;
 
-useFocusEffect(
-  useCallback(() => {
+    try {
+      setLoadingRequests(true);
+
+      const { data: memberRows, error: memberError } = await supabase
+        .from("church_group_members")
+        .select("id, group_id, church_id, user_id, role, status, created_at")
+        .eq("church_id", churchId)
+        .eq("status", "pending")
+        .order("created_at", { ascending: false });
+
+      if (memberError) throw memberError;
+
+      const rows = memberRows || [];
+
+      if (rows.length === 0) {
+        setPendingRequests([]);
+        return;
+      }
+
+      const groupIds = [...new Set(rows.map((row) => row.group_id).filter(Boolean))];
+      const userIds = [...new Set(rows.map((row) => row.user_id).filter(Boolean))];
+
+      let groupsById = {};
+      let profilesById = {};
+
+      if (groupIds.length > 0) {
+        const { data: groupsData, error: groupsError } = await supabase
+          .from("church_groups")
+          .select("id, name, type, area, leader_name, meeting_day, meeting_time, status")
+          .in("id", groupIds);
+
+        if (groupsError) {
+          console.log("load pending request groups error:", groupsError);
+        } else {
+          groupsById = (groupsData || []).reduce((acc, group) => {
+            acc[group.id] = group;
+            return acc;
+          }, {});
+        }
+      }
+
+      if (userIds.length > 0) {
+        const { data: profilesData, error: profilesError } = await supabase
+          .from("profiles")
+          .select("id, display_name, handle, avatar_url")
+          .in("id", userIds);
+
+        if (profilesError) {
+          console.log("load pending request profiles error:", profilesError);
+        } else {
+          profilesById = (profilesData || []).reduce((acc, profile) => {
+            acc[profile.id] = profile;
+            return acc;
+          }, {});
+        }
+      }
+
+      const mapped = rows.map((row) => {
+        const profile = profilesById[row.user_id] || null;
+        const group = groupsById[row.group_id] || null;
+        const name =
+          profile?.display_name ||
+          profile?.handle ||
+          row.user_id?.slice(0, 8) ||
+          "Someone";
+
+        return {
+          id: row.id,
+          userId: row.user_id,
+          groupId: row.group_id,
+          churchId: row.church_id,
+          createdAt: row.created_at,
+          name,
+          initials: getInitials(name),
+          groupName: group?.name || "Unknown group",
+          group: group
+            ? {
+                id: group.id,
+                name: group.name,
+                type: group.type,
+                area: group.area || "Area not set",
+                leader: group.leader_name || "Leader not set",
+                time:
+                  group.meeting_day || group.meeting_time
+                    ? `${group.meeting_day || ""} ${group.meeting_time || ""}`.trim()
+                    : "Time not set",
+                status: group.status === "active" ? "Active" : group.status,
+              }
+            : null,
+        };
+      });
+
+      setPendingRequests(mapped);
+    } catch (e) {
+      console.log("load pending group requests error:", e);
+      setPendingRequests([]);
+    } finally {
+      setLoadingRequests(false);
+    }
+  }, [churchId]);
+
+  useEffect(() => {
     loadGroups();
-  }, [loadGroups])
-);
+    loadPendingRequests();
+  }, [loadGroups, loadPendingRequests]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadGroups();
+      loadPendingRequests();
+    }, [loadGroups, loadPendingRequests])
+  );
 
   const activeGroups = liveGroups.length > 0 ? liveGroups : mockGroups;
 
@@ -438,6 +796,96 @@ useFocusEffect(
       churchId,
       churchName,
       group: selectedGroup,
+    });
+  }
+
+  async function handleApproveRequest(request) {
+    if (!request?.id) return;
+
+    try {
+      setActingRequestId(request.id);
+
+      const { error } = await supabase
+        .from("church_group_members")
+        .update({
+          status: "approved",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", request.id);
+
+      if (error) throw error;
+
+      setPendingRequests((current) =>
+        current.filter((item) => item.id !== request.id)
+      );
+
+      Alert.alert("Approved", `${request.name} has been added to ${request.groupName}.`);
+
+      await loadGroups();
+      await loadPendingRequests();
+    } catch (e) {
+      console.log("approve pending group request error:", e);
+      Alert.alert("Could not approve request", e?.message || "Please try again.");
+    } finally {
+      setActingRequestId(null);
+    }
+  }
+
+  async function handleDeclineRequest(request) {
+    if (!request?.id) return;
+
+    Alert.alert(
+      "Decline request",
+      `Decline ${request.name}'s request to join ${request.groupName}?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Decline",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setActingRequestId(request.id);
+
+              const { error } = await supabase
+                .from("church_group_members")
+                .delete()
+                .eq("id", request.id);
+
+              if (error) throw error;
+
+              setPendingRequests((current) =>
+                current.filter((item) => item.id !== request.id)
+              );
+
+              await loadGroups();
+              await loadPendingRequests();
+            } catch (e) {
+              console.log("decline pending group request error:", e);
+              Alert.alert("Could not decline request", e?.message || "Please try again.");
+            } finally {
+              setActingRequestId(null);
+            }
+          },
+        },
+      ]
+    );
+  }
+
+  function handleOpenRequestGroup(request) {
+    const targetGroup =
+      activeGroups.find((group) => group.id === request.groupId) ||
+      request.group ||
+      null;
+
+    if (!targetGroup) {
+      Alert.alert("Group not found", "We could not open this group right now.");
+      return;
+    }
+
+    navigation.navigate("ChurchGroupManage", {
+      churchId,
+      churchName,
+      group: targetGroup,
     });
   }
 
@@ -567,6 +1015,15 @@ useFocusEffect(
             <Ionicons name="add-circle-outline" size={18} color={theme.colors.text} />
             <Text style={theme.button.primaryText}>Create new group</Text>
           </Pressable>
+
+          <PendingRequestsPanel
+            requests={pendingRequests}
+            loading={loadingRequests}
+            actingRequestId={actingRequestId}
+            onApprove={handleApproveRequest}
+            onDecline={handleDeclineRequest}
+            onOpenGroup={handleOpenRequestGroup}
+          />
 
           {loadingGroups ? (
             <Text

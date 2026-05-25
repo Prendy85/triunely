@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { Animated, Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+
 import { useRealtime } from "../context/RealtimeProvider";
 import { theme } from "../theme/theme";
 
@@ -10,36 +11,102 @@ function getNotificationText(notification) {
     return {
       title: "New notification",
       body: "You have a new update.",
+      icon: "🔔",
     };
   }
 
   const type = notification.type || notification.notification_type || "";
 
+  if (type === "church_group_join_request") {
+    return {
+      title: "New group request",
+      body:
+        notification.body ||
+        notification.message ||
+        "Someone requested to join a church group.",
+      icon: "👥",
+    };
+  }
+  if (type === "church_group_request_approved") {
+  return {
+    title: "Group request approved",
+    body:
+      notification.body ||
+      notification.message ||
+      "Your request to join a church group has been approved.",
+    icon: "✅",
+  };
+}
+
+  if (type === "church_join_request") {
+    return {
+      title: "New church join request",
+      body:
+        notification.body ||
+        notification.message ||
+        "Someone requested to join your church.",
+      icon: "⛪",
+    };
+  }
+
   if (type === "event_invite") {
     return {
       title: "New event invite",
-      body: notification.title || notification.body || "You’ve been invited to an event.",
+      body:
+        notification.title ||
+        notification.body ||
+        "You’ve been invited to an event.",
+      icon: "📅",
     };
   }
 
   if (type === "fellowship_request") {
     return {
       title: "New fellowship request",
-      body: notification.title || notification.body || "Someone sent you a fellowship request.",
+      body:
+        notification.title ||
+        notification.body ||
+        "Someone sent you a fellowship request.",
+      icon: "🤝",
     };
   }
 
   if (type === "church_notice") {
     return {
       title: "New church notice",
-      body: notification.title || notification.body || "Your church posted a new notice.",
+      body:
+        notification.title ||
+        notification.body ||
+        "Your church posted a new notice.",
+      icon: "📣",
     };
   }
 
   return {
     title: notification.title || "New notification",
     body: notification.body || notification.message || "You have a new update.",
+    icon: "🔔",
   };
+}
+
+function getNotificationChurchId(notification) {
+  return (
+    notification?.church_id ||
+    notification?.payload?.church_id ||
+    notification?.data?.church_id ||
+    notification?.metadata?.church_id ||
+    null
+  );
+}
+
+function getNotificationChurchName(notification) {
+  return (
+    notification?.church_name ||
+    notification?.payload?.church_name ||
+    notification?.data?.church_name ||
+    notification?.metadata?.church_name ||
+    "Church"
+  );
 }
 
 export default function InAppNotificationBanner({ navigation }) {
@@ -78,6 +145,8 @@ export default function InAppNotificationBanner({ navigation }) {
   if (!notification) return null;
 
   const handlePress = () => {
+    const type = notification.type || notification.notification_type || "";
+
     Animated.timing(translateY, {
       toValue: -140,
       duration: 160,
@@ -85,9 +154,33 @@ export default function InAppNotificationBanner({ navigation }) {
     }).start(() => {
       clearNotification?.();
 
-      if (navigation?.navigate) {
-        navigation.navigate("Notifications");
+      if (!navigation?.navigate) return;
+
+      if (type === "church_group_join_request") {
+        const churchId = getNotificationChurchId(notification);
+        const churchName = getNotificationChurchName(notification);
+
+        if (churchId) {
+          navigation.navigate("ChurchGroupsAdmin", {
+            churchId,
+            churchName,
+            openRequests: true,
+            fromBanner: true,
+            notificationId: notification.id,
+            churchGroupId:
+              notification?.church_group_id ||
+              notification?.payload?.church_group_id ||
+              null,
+            churchGroupMemberId:
+              notification?.church_group_member_id ||
+              notification?.payload?.church_group_member_id ||
+              null,
+          });
+          return;
+        }
       }
+
+      navigation.navigate("Notifications");
     });
   };
 
@@ -140,7 +233,7 @@ export default function InAppNotificationBanner({ navigation }) {
               justifyContent: "center",
             }}
           >
-            <Text style={{ fontSize: 17 }}>🔔</Text>
+            <Text style={{ fontSize: 17 }}>{text.icon}</Text>
           </View>
 
           <View style={{ flex: 1 }}>
