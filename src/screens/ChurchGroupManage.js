@@ -23,34 +23,26 @@ function mapDbMember(item) {
       ? "Co-leader"
       : "Member";
 
-  const status =
-    item.status === "approved"
-      ? "Active"
-      : item.status || "Pending";
+  const status = item.status === "approved" ? "Active" : item.status || "Pending";
 
   const fallbackName = item.user_id?.slice(0, 8) || "Member";
 
- const displayName =
-  item.profile?.display_name ||
-  item.profile?.handle ||
-  fallbackName;
+  const displayName = item.profile?.display_name || item.profile?.handle || fallbackName;
 
- return {
-  id: item.id,
-  userId: item.user_id,
-  rawRole: item.role,
-  rawStatus: item.status,
-  name: displayName,
-  role,
-  status,
-  initials: displayName.charAt(0).toUpperCase(),
-  avatarUrl: item.profile?.avatar_url || null,
-};
+  return {
+    id: item.id,
+    userId: item.user_id,
+    rawRole: item.role,
+    rawStatus: item.status,
+    name: displayName,
+    role,
+    status,
+    initials: displayName.charAt(0).toUpperCase(),
+    avatarUrl: item.profile?.avatar_url || null,
+  };
 }
 
-
 function mapDbGroup(item) {
-    
   if (!item) return null;
 
   return {
@@ -462,38 +454,38 @@ function PendingRequestRow({ request, onApprove, onDecline }) {
       </View>
 
       <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-  <Pressable
-    onPress={() => onApprove?.(request)}
-    style={{
-      width: 34,
-      height: 34,
-      borderRadius: 17,
-      backgroundColor: SOFT_OLIVE_BG,
-      borderWidth: 1,
-      borderColor: CARD_BORDER,
-      alignItems: "center",
-      justifyContent: "center",
-    }}
-  >
-    <Ionicons name="checkmark" size={18} color={DEEP_OLIVE} />
-  </Pressable>
+        <Pressable
+          onPress={() => onApprove?.(request)}
+          style={{
+            width: 34,
+            height: 34,
+            borderRadius: 17,
+            backgroundColor: SOFT_OLIVE_BG,
+            borderWidth: 1,
+            borderColor: CARD_BORDER,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Ionicons name="checkmark" size={18} color={DEEP_OLIVE} />
+        </Pressable>
 
-  <Pressable
-    onPress={() => onDecline?.(request)}
-    style={{
-      width: 34,
-      height: 34,
-      borderRadius: 17,
-      backgroundColor: SOFT_GOLD_BG,
-      borderWidth: 1,
-      borderColor: CARD_BORDER,
-      alignItems: "center",
-      justifyContent: "center",
-    }}
-  >
-    <Ionicons name="close" size={18} color={HEAVENLY_GOLD} />
-  </Pressable>
-</View>
+        <Pressable
+          onPress={() => onDecline?.(request)}
+          style={{
+            width: 34,
+            height: 34,
+            borderRadius: 17,
+            backgroundColor: SOFT_GOLD_BG,
+            borderWidth: 1,
+            borderColor: CARD_BORDER,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Ionicons name="close" size={18} color={HEAVENLY_GOLD} />
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -567,25 +559,20 @@ function MembersSection({
       </View>
 
       {loadingMembers ? (
-  <ActivityIndicator
-    color={theme.colors.gold}
-    style={{ marginTop: 18 }}
-  />
-) : members.length === 0 ? (
-  <Text
-    style={{
-      color: theme.colors.muted,
-      fontWeight: "700",
-      marginTop: 14,
-    }}
-  >
-    No members found yet.
-  </Text>
-) : (
-  members.map((member) => (
-    <MemberRow key={member.id} member={member} />
-  ))
-)}
+        <ActivityIndicator color={theme.colors.gold} style={{ marginTop: 18 }} />
+      ) : members.length === 0 ? (
+        <Text
+          style={{
+            color: theme.colors.muted,
+            fontWeight: "700",
+            marginTop: 14,
+          }}
+        >
+          No members found yet.
+        </Text>
+      ) : (
+        members.map((member) => <MemberRow key={member.id} member={member} />)
+      )}
 
       <View style={{ marginTop: 12 }}>
         <Text style={{ color: theme.colors.text, fontSize: 15, fontWeight: "900" }}>
@@ -603,30 +590,30 @@ function MembersSection({
           }}
         >
           {canManageGroup
-  ? "Review people waiting to join this group. Approve adds them as active members; decline removes the request."
-  : "Only group leaders and co-leaders can approve or decline join requests."}
+            ? "Review people waiting to join this group. Approve adds them as active members; decline removes the request."
+            : "Only church admins, group leaders and co-leaders can approve or decline join requests."}
         </Text>
 
         {loadingMembers ? null : pendingMembers.length === 0 ? (
-  <Text
-    style={{
-      color: theme.colors.muted,
-      fontWeight: "700",
-      marginTop: 10,
-    }}
-  >
-    No pending requests.
-  </Text>
-) : (
-  pendingMembers.map((request) => (
-  <PendingRequestRow
-    key={request.id}
-    request={request}
-    onApprove={onApproveRequest}
-    onDecline={onDeclineRequest}
-  />
-))
-)}
+          <Text
+            style={{
+              color: theme.colors.muted,
+              fontWeight: "700",
+              marginTop: 10,
+            }}
+          >
+            No pending requests.
+          </Text>
+        ) : (
+          pendingMembers.map((request) => (
+            <PendingRequestRow
+              key={request.id}
+              request={request}
+              onApprove={onApproveRequest}
+              onDecline={onDeclineRequest}
+            />
+          ))
+        )}
       </View>
 
       <Pressable
@@ -782,36 +769,65 @@ export default function ChurchGroupManage({ navigation, route }) {
   const { churchId, churchName, group } = route?.params || {};
   const groupId = group?.id || route?.params?.groupId || null;
 
- const [dbGroup, setDbGroup] = useState(null);
-const [loadingGroup, setLoadingGroup] = useState(false);
-const [dbMembers, setDbMembers] = useState([]);
-const [pendingMembers, setPendingMembers] = useState([]);
-const [loadingMembers, setLoadingMembers] = useState(false);
-const [currentUserId, setCurrentUserId] = useState(null);
-const [canManageGroup, setCanManageGroup] = useState(false);
+  const [dbGroup, setDbGroup] = useState(null);
+  const [loadingGroup, setLoadingGroup] = useState(false);
+  const [dbMembers, setDbMembers] = useState([]);
+  const [pendingMembers, setPendingMembers] = useState([]);
+  const [loadingMembers, setLoadingMembers] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState(null);
+  const [isChurchAdmin, setIsChurchAdmin] = useState(false);
+  const [canManageGroup, setCanManageGroup] = useState(false);
 
-useEffect(() => {
-  let alive = true;
+  useEffect(() => {
+    let alive = true;
 
-  async function loadCurrentUser() {
-    const { data, error } = await supabase.auth.getUser();
+    async function loadCurrentUserAndAdminStatus() {
+      const { data, error } = await supabase.auth.getUser();
 
-    if (error) {
-      console.log("load current user error:", error);
-      return;
+      if (error) {
+        console.log("load current user error:", error);
+        return;
+      }
+
+      const uid = data?.user?.id || null;
+
+      if (!uid) {
+        if (alive) {
+          setCurrentUserId(null);
+          setIsChurchAdmin(false);
+        }
+        return;
+      }
+
+      let adminStatus = false;
+
+      if (churchId) {
+        const { data: adminRows, error: adminError } = await supabase
+          .from("church_admins")
+          .select("id")
+          .eq("church_id", churchId)
+          .eq("user_id", uid)
+          .limit(1);
+
+        if (adminError) {
+          console.log("load church admin status error:", adminError);
+        } else {
+          adminStatus = Array.isArray(adminRows) && adminRows.length > 0;
+        }
+      }
+
+      if (alive) {
+        setCurrentUserId(uid);
+        setIsChurchAdmin(adminStatus);
+      }
     }
 
-    if (alive) {
-      setCurrentUserId(data?.user?.id || null);
-    }
-  }
+    loadCurrentUserAndAdminStatus();
 
-  loadCurrentUser();
-
-  return () => {
-    alive = false;
-  };
-}, []);
+    return () => {
+      alive = false;
+    };
+  }, [churchId]);
 
   useEffect(() => {
     let alive = true;
@@ -847,147 +863,149 @@ useEffect(() => {
   }, [groupId]);
 
   useEffect(() => {
-  let alive = true;
+    let alive = true;
 
-  async function loadMembers() {
-    if (!groupId) return;
+    async function loadMembers() {
+      if (!groupId) return;
+
+      try {
+        setLoadingMembers(true);
+
+        const { data, error } = await supabase
+          .from("church_group_members")
+          .select("*")
+          .eq("group_id", groupId)
+          .order("created_at", { ascending: true });
+
+        if (error) throw error;
+
+        const memberRows = data || [];
+
+        const userIds = memberRows.map((member) => member.user_id).filter(Boolean);
+
+        let profilesByUserId = {};
+
+        if (userIds.length > 0) {
+          const { data: profilesData, error: profilesError } = await supabase
+            .from("profiles")
+            .select("id, display_name, handle, avatar_url")
+            .in("id", userIds);
+
+          if (profilesError) {
+            console.log("load church group member profiles error:", profilesError);
+          } else {
+            profilesByUserId = (profilesData || []).reduce((acc, profile) => {
+              acc[profile.id] = profile;
+              return acc;
+            }, {});
+          }
+        }
+
+        const mapped = memberRows.map((member) =>
+          mapDbMember({
+            ...member,
+            profile: profilesByUserId[member.user_id] || null,
+          })
+        );
+
+        const approvedMapped = mapped.filter((member) => member.status === "Active");
+        const pendingMapped = mapped.filter((member) => member.status !== "Active");
+
+        const currentUserMembership = mapped.find(
+          (member) => member.userId === currentUserId
+        );
+
+        const userIsGroupLeaderOrCoLeader =
+          currentUserMembership?.rawStatus === "approved" &&
+          ["leader", "co_leader"].includes(currentUserMembership?.rawRole);
+
+        const userCanManageGroup = isChurchAdmin || userIsGroupLeaderOrCoLeader;
+
+        if (alive) {
+          setDbMembers(approvedMapped);
+          setPendingMembers(pendingMapped);
+          setCanManageGroup(userCanManageGroup);
+        }
+      } catch (e) {
+        console.log("load church group members error:", e);
+
+        if (alive) {
+          setDbMembers([]);
+          setPendingMembers([]);
+          setCanManageGroup(false);
+        }
+      } finally {
+        if (alive) {
+          setLoadingMembers(false);
+        }
+      }
+    }
+
+    loadMembers();
+
+    return () => {
+      alive = false;
+    };
+  }, [groupId, currentUserId, isChurchAdmin]);
+
+  async function handleApproveRequest(request) {
+    if (!canManageGroup) {
+      Alert.alert(
+        "Permission needed",
+        "Only church admins, group leaders and co-leaders can approve requests."
+      );
+      return;
+    }
 
     try {
-      setLoadingMembers(true);
-
-     const { data, error } = await supabase
-  .from("church_group_members")
-  .select("*")
-  .eq("group_id", groupId)
-  .order("created_at", { ascending: true });
+      const { error } = await supabase
+        .from("church_group_members")
+        .update({
+          status: "approved",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", request.id);
 
       if (error) throw error;
 
-      const memberRows = data || [];
+      setPendingMembers((current) => current.filter((member) => member.id !== request.id));
 
-const userIds = memberRows
-  .map((member) => member.user_id)
-  .filter(Boolean);
-
-let profilesByUserId = {};
-
-if (userIds.length > 0) {
- const { data: profilesData, error: profilesError } = await supabase
-  .from("profiles")
-  .select("id, display_name, handle, avatar_url")
-  .in("id", userIds);
-
-if (profilesError) {
-  console.log("load church group member profiles error:", profilesError);
-} else {
- 
-
-  profilesByUserId = (profilesData || []).reduce((acc, profile) => {
-    acc[profile.id] = profile;
-    return acc;
-  }, {});
-}
-}
-
-const mapped = memberRows.map((member) =>
-  mapDbMember({
-    ...member,
-    profile: profilesByUserId[member.user_id] || null,
-  })
-);
-
-const approvedMapped = mapped.filter((member) => member.status === "Active");
-const pendingMapped = mapped.filter((member) => member.status !== "Active");
-
-const currentUserMembership = mapped.find(
-  (member) => member.userId === currentUserId
-);
-
-const userCanManageGroup =
-  currentUserMembership?.rawStatus === "approved" &&
-  ["leader", "co_leader"].includes(currentUserMembership?.rawRole);
-
-if (alive) {
-  setDbMembers(approvedMapped);
-  setPendingMembers(pendingMapped);
-  setCanManageGroup(userCanManageGroup);
-}
+      setDbMembers((current) => [
+        ...current,
+        {
+          ...request,
+          status: "Active",
+        },
+      ]);
     } catch (e) {
-      console.log("load church group members error:", e);
-
-  if (alive) {
-  setDbMembers([]);
-  setPendingMembers([]);
-  setCanManageGroup(false);
-}
-    } finally {
-      if (alive) {
-        setLoadingMembers(false);
-      }
+      console.log("approve church group request error:", e);
+      Alert.alert("Could not approve request", "Please try again.");
     }
   }
 
-  loadMembers();
+  async function handleDeclineRequest(request) {
+    if (!canManageGroup) {
+      Alert.alert(
+        "Permission needed",
+        "Only church admins, group leaders and co-leaders can decline requests."
+      );
+      return;
+    }
 
-  return () => {
-    alive = false;
-  };
-}, [groupId, currentUserId]);
+    try {
+      const { error } = await supabase
+        .from("church_group_members")
+        .delete()
+        .eq("id", request.id);
 
-async function handleApproveRequest(request) {
-  if (!canManageGroup) {
-  Alert.alert("Permission needed", "Only group leaders and co-leaders can approve requests.");
-  return;
-}
-  try {
-    const { error } = await supabase
-      .from("church_group_members")
-      .update({
-        status: "approved",
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", request.id);
+      if (error) throw error;
 
-    if (error) throw error;
-
-    setPendingMembers((current) =>
-      current.filter((member) => member.id !== request.id)
-    );
-
-    setDbMembers((current) => [
-      ...current,
-      {
-        ...request,
-        status: "Active",
-      },
-    ]);
-  } catch (e) {
-    console.log("approve church group request error:", e);
-    Alert.alert("Could not approve request", "Please try again.");
+      setPendingMembers((current) => current.filter((member) => member.id !== request.id));
+    } catch (e) {
+      console.log("decline church group request error:", e);
+      Alert.alert("Could not decline request", "Please try again.");
+    }
   }
-}
-
-async function handleDeclineRequest(request) {
-  if (!canManageGroup) {
-  Alert.alert("Permission needed", "Only group leaders and co-leaders can decline requests.");
-  return;
-}
-  try {
-    const { error } = await supabase
-      .from("church_group_members")
-      .delete()
-      .eq("id", request.id);
-
-    if (error) throw error;
-
-    setPendingMembers((current) =>
-      current.filter((member) => member.id !== request.id)
-    );
-  } catch (e) {
-    console.log("decline church group request error:", e);
-    Alert.alert("Could not decline request", "Please try again.");
-  }
-}
 
   const activeGroup = useMemo(() => {
     return dbGroup || group || {};
@@ -1078,27 +1096,27 @@ async function handleDeclineRequest(request) {
             {churchName || "your church"}.
           </Text>
 
-   <GroupOverviewCard
-  groupName={groupName}
-  groupType={groupType}
-  groupArea={groupArea}
-  groupLeader={groupLeader}
-  groupTime={groupTime}
-  groupStatus={groupStatus}
-  groupDescription={groupDescription}
-  memberCount={dbMembers.length}
-  pendingRequestCount={pendingMembers.length}
-/>
+          <GroupOverviewCard
+            groupName={groupName}
+            groupType={groupType}
+            groupArea={groupArea}
+            groupLeader={groupLeader}
+            groupTime={groupTime}
+            groupStatus={groupStatus}
+            groupDescription={groupDescription}
+            memberCount={dbMembers.length}
+            pendingRequestCount={pendingMembers.length}
+          />
 
-<MembersSection
-  members={dbMembers}
-  pendingMembers={pendingMembers}
-  loadingMembers={loadingMembers}
-  memberCount={dbMembers.length}
-  canManageGroup={canManageGroup}
-  onApproveRequest={handleApproveRequest}
-  onDeclineRequest={handleDeclineRequest}
-/>
+          <MembersSection
+            members={dbMembers}
+            pendingMembers={pendingMembers}
+            loadingMembers={loadingMembers}
+            memberCount={dbMembers.length}
+            canManageGroup={canManageGroup}
+            onApproveRequest={handleApproveRequest}
+            onDeclineRequest={handleDeclineRequest}
+          />
 
           <QuickActionsSection groupName={groupName} />
 
@@ -1168,7 +1186,7 @@ async function handleDeclineRequest(request) {
               }}
             >
               Group details, approved members and join requests are now live. Permissions, leader roles,
-group updates, attendance and care tools will be wired separately.
+              group updates, attendance and care tools will be wired separately.
             </Text>
           </View>
 
