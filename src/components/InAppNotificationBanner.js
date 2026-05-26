@@ -4,6 +4,7 @@ import { Animated, Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useRealtime } from "../context/RealtimeProvider";
+import { supabase } from "../lib/supabase";
 import { theme } from "../theme/theme";
 
 function getNotificationText(notification) {
@@ -27,16 +28,28 @@ function getNotificationText(notification) {
       icon: "👥",
     };
   }
+
   if (type === "church_group_request_approved") {
-  return {
-    title: "Group request approved",
-    body:
-      notification.body ||
-      notification.message ||
-      "Your request to join a church group has been approved.",
-    icon: "✅",
-  };
-}
+    return {
+      title: "Group request approved",
+      body:
+        notification.body ||
+        notification.message ||
+        "Your request to join a church group has been approved.",
+      icon: "✅",
+    };
+  }
+
+  if (type === "church_group_invite") {
+    return {
+      title: "Group invite",
+      body:
+        notification.body ||
+        notification.message ||
+        "You have been invited to join a church group.",
+      icon: "📩",
+    };
+  }
 
   if (type === "church_join_request") {
     return {
@@ -99,6 +112,26 @@ function getNotificationChurchId(notification) {
   );
 }
 
+function getNotificationChurchGroupId(notification) {
+  return (
+    notification?.church_group_id ||
+    notification?.payload?.church_group_id ||
+    notification?.data?.church_group_id ||
+    notification?.metadata?.church_group_id ||
+    null
+  );
+}
+
+function getNotificationChurchGroupMemberId(notification) {
+  return (
+    notification?.church_group_member_id ||
+    notification?.payload?.church_group_member_id ||
+    notification?.data?.church_group_member_id ||
+    notification?.metadata?.church_group_member_id ||
+    null
+  );
+}
+
 function getNotificationChurchName(notification) {
   return (
     notification?.church_name ||
@@ -155,6 +188,45 @@ export default function InAppNotificationBanner({ navigation }) {
       clearNotification?.();
 
       if (!navigation?.navigate) return;
+
+      if (type === "church_group_invite") {
+        const churchId = getNotificationChurchId(notification);
+        const churchName = getNotificationChurchName(notification);
+        const churchGroupId = getNotificationChurchGroupId(notification);
+        const churchGroupMemberId = getNotificationChurchGroupMemberId(notification);
+
+        if (churchGroupId) {
+          supabase
+            .from("church_groups")
+            .select("*")
+            .eq("id", churchGroupId)
+            .maybeSingle()
+            .then(({ data, error }) => {
+              if (error) {
+                console.log("banner open church group invite error:", error);
+                navigation.navigate("Notifications");
+                return;
+              }
+
+              navigation.navigate("ChurchGroupDetail", {
+                churchId: churchId || data?.church_id || null,
+                churchName,
+                group:
+                  data || {
+                    id: churchGroupId,
+                    church_id: churchId || null,
+                    name: "Church Group",
+                  },
+                fromBanner: true,
+                notificationId: notification.id,
+                churchGroupId,
+                churchGroupMemberId,
+              });
+            });
+
+          return;
+        }
+      }
 
       if (type === "church_group_join_request") {
         const churchId = getNotificationChurchId(notification);

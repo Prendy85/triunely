@@ -22,6 +22,7 @@ import {
   respondToChurchJoinRequest,
 } from "../lib/notifications";
 
+import { supabase } from "../lib/supabase";
 import { theme } from "../theme/theme";
 
 function formatTime(ts) {
@@ -54,6 +55,26 @@ function getNotificationChurchName(item) {
     item?.data?.church_name ||
     item?.metadata?.church_name ||
     "Church"
+  );
+}
+
+function getNotificationChurchGroupId(item) {
+  return (
+    item?.church_group_id ||
+    item?.payload?.church_group_id ||
+    item?.data?.church_group_id ||
+    item?.metadata?.church_group_id ||
+    null
+  );
+}
+
+function getNotificationChurchGroupMemberId(item) {
+  return (
+    item?.church_group_member_id ||
+    item?.payload?.church_group_member_id ||
+    item?.data?.church_group_member_id ||
+    item?.metadata?.church_group_member_id ||
+    null
   );
 }
 
@@ -193,6 +214,81 @@ export default function NotificationsScreen() {
       } catch (e) {
         console.log("handleOpenChurchGroupRequest error:", e);
         setErrorText(e?.message || "Failed to open group request");
+      }
+    },
+    [navigation, load]
+  );
+
+  const handleOpenChurchGroupInvite = useCallback(
+    async (item) => {
+      try {
+        if (!item?.id) return;
+
+        console.log("GROUP INVITE NOTIFICATION PRESSED:", {
+          id: item?.id,
+          type: item?.type,
+          church_id: item?.church_id,
+          church_group_id: item?.church_group_id,
+          church_group_member_id: item?.church_group_member_id,
+          payload: item?.payload,
+        });
+
+        if (item.is_read === false) {
+          await markNotificationRead(item.id);
+        }
+
+        const churchId = getNotificationChurchId(item);
+        const churchName = getNotificationChurchName(item);
+        const churchGroupId = getNotificationChurchGroupId(item);
+        const churchGroupMemberId = getNotificationChurchGroupMemberId(item);
+
+        if (!churchGroupId) {
+          setErrorText("This group invite is missing its group link.");
+          await load();
+          return;
+        }
+
+        const { data: groupData, error: groupError } = await supabase
+          .from("church_groups")
+          .select("*")
+          .eq("id", churchGroupId)
+          .maybeSingle();
+
+        if (groupError) {
+          console.log("handleOpenChurchGroupInvite group error:", groupError);
+        }
+
+        const finalChurchId = churchId || groupData?.church_id || null;
+
+        console.log("OPENING CHURCH GROUP DETAIL FROM NOTIFICATION:", {
+          routeName: "ChurchGroupDetail",
+          churchId: finalChurchId,
+          churchName,
+          churchGroupId,
+          churchGroupMemberId,
+          groupName: groupData?.name,
+        });
+
+        navigation.navigate("ChurchGroupDetail", {
+          churchId: finalChurchId,
+          churchName,
+          group:
+            groupData || {
+              id: churchGroupId,
+              church_id: finalChurchId,
+              name: "Church Group",
+            },
+          fromNotification: true,
+          notificationId: item.id,
+          churchGroupId,
+          churchGroupMemberId,
+          membershipStatus: "invited",
+        });
+
+        await load();
+      } catch (e) {
+        console.log("handleOpenChurchGroupInvite error:", e);
+        setErrorText(e?.message || "Failed to open group invite");
       }
     },
     [navigation, load]
@@ -500,6 +596,72 @@ export default function NotificationsScreen() {
                 }}
               >
                 Tap to review group requests
+              </Text>
+            </View>
+
+            <View style={{ alignItems: "flex-end", marginLeft: 10 }}>
+              <Text style={{ color: theme.colors.muted, fontSize: 12 }}>
+                {time}
+              </Text>
+              <Ionicons
+                name="chevron-forward"
+                size={18}
+                color={theme.colors.muted}
+                style={{ marginTop: 6 }}
+              />
+            </View>
+          </View>
+        </Pressable>
+      );
+    }
+
+    if (item.type === "church_group_invite") {
+      return (
+        <Pressable
+          onPress={() => handleOpenChurchGroupInvite(item)}
+          style={({ pressed }) => ({
+            paddingHorizontal: 14,
+            paddingVertical: 12,
+            borderBottomWidth: 1,
+            borderBottomColor: theme.colors.divider,
+            backgroundColor: theme.colors.bg,
+            opacity: pressed ? 0.75 : 1,
+          })}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <Ionicons
+              name="mail-unread-outline"
+              size={23}
+              color={isUnread ? theme.colors.gold : theme.colors.muted}
+            />
+
+            <View style={{ marginLeft: 10, flex: 1 }}>
+              <Text
+                style={{
+                  color: theme.colors.text,
+                  fontWeight: isUnread ? "900" : "800",
+                }}
+                numberOfLines={1}
+              >
+                {item.title || "Group invite"}
+              </Text>
+
+              <Text
+                style={{ color: theme.colors.muted, marginTop: 3 }}
+                numberOfLines={2}
+              >
+                {item.body || "You have been invited to join a church group."}
+              </Text>
+
+              <Text
+                style={{
+                  color: theme.colors.goldPressed,
+                  fontSize: 12,
+                  fontWeight: "900",
+                  marginTop: 6,
+                }}
+              >
+                Tap to view and respond
               </Text>
             </View>
 
