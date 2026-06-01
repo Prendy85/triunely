@@ -1,27 +1,70 @@
 // src/components/NewPrayerGroupModal.js
+import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
 import {
-    Modal,
-    Pressable,
-    ScrollView,
-    Text,
-    TextInput,
-    View,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
 } from "react-native";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+
+const PREMIUM_CREAM = "#FFFCF5";
+const SURFACE = "#FFFFFF";
+const EVENT_AMBER = "#B45309";
+const EVENT_BROWN = "#7C2D12";
+const OLIVE = "#4F633B";
+const TEXT = "#1F2933";
+const MUTED = "#6B7280";
+
+const CARD_BORDER = "rgba(15, 23, 42, 0.08)";
+const AMBER_SOFT = "rgba(180, 83, 9, 0.10)";
+const AMBER_BORDER = "rgba(180, 83, 9, 0.18)";
+const OLIVE_SOFT = "rgba(79, 99, 59, 0.10)";
+const OLIVE_BORDER = "rgba(79, 99, 59, 0.18)";
+const SHADOW = "rgba(15, 23, 42, 0.10)";
+
+const displayFont = Platform.OS === "ios" ? "Georgia" : "serif";
+
+const serifHeading = {
+  fontFamily: displayFont,
+  color: TEXT,
+  fontWeight: "900",
+  letterSpacing: -0.35,
+};
 
 const PRIVACY_OPTIONS = [
-  { id: "public", label: "Public (anyone can find and see requests)" },
-  { id: "request", label: "By request (ask to join)" },
-  { id: "private", label: "Private (invite only)" },
+  {
+    id: "public",
+    label: "Public",
+    description: "Anyone can find the group and see prayer requests.",
+    icon: "earth-outline",
+  },
+  {
+    id: "request",
+    label: "By request",
+    description: "People can ask to join before seeing group prayers.",
+    icon: "person-add-outline",
+  },
+  {
+    id: "private",
+    label: "Private",
+    description: "Invite-only. Best for sensitive or closed groups.",
+    icon: "lock-closed-outline",
+  },
 ];
 
 const GROUP_TYPES = [
-  { id: "church", label: "Church" },
-  { id: "family", label: "Family" },
-  { id: "friends", label: "Friends" },
-  { id: "youth", label: "Youth" },
-  { id: "ministry", label: "Ministry" },
-  { id: "other", label: "Other" },
+  { id: "church", label: "Church", icon: "business-outline" },
+  { id: "family", label: "Family", icon: "home-outline" },
+  { id: "friends", label: "Friends", icon: "people-outline" },
+  { id: "youth", label: "Youth", icon: "happy-outline" },
+  { id: "ministry", label: "Ministry", icon: "heart-outline" },
+  { id: "other", label: "Other", icon: "ellipse-outline" },
 ];
 
 export default function NewPrayerGroupModal({
@@ -30,286 +73,524 @@ export default function NewPrayerGroupModal({
   onSubmit,
   loading,
 }) {
+  const insets = useSafeAreaInsets();
+
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [privacy, setPrivacy] = useState("public");
   const [groupType, setGroupType] = useState("church");
 
+  const reset = () => {
+    setName("");
+    setDescription("");
+    setPrivacy("public");
+    setGroupType("church");
+  };
+
   const handleCreate = () => {
-    if (!name.trim()) {
-      return;
-    }
+    if (!name.trim()) return;
     onSubmit(name.trim(), description.trim() || null, privacy, groupType);
   };
 
   const resetAndClose = () => {
     if (loading) return;
-    setName("");
-    setDescription("");
-    setPrivacy("public");
-    setGroupType("church");
+    reset();
     onClose && onClose();
+  };
+
+  const PrivacyOption = ({ option }) => {
+    const selected = privacy === option.id;
+
+    return (
+      <Pressable
+        onPress={() => setPrivacy(option.id)}
+        style={({ pressed }) => ({
+          padding: 13,
+          borderRadius: 22,
+          marginBottom: 10,
+          backgroundColor: selected ? AMBER_SOFT : SURFACE,
+          borderWidth: 1,
+          borderColor: selected ? AMBER_BORDER : CARD_BORDER,
+          shadowColor: SHADOW,
+          shadowOpacity: selected ? 0.05 : 0.03,
+          shadowRadius: 8,
+          shadowOffset: { width: 0, height: 3 },
+          elevation: selected ? 2 : 1,
+          transform: [{ scale: pressed ? 0.985 : 1 }],
+        })}
+      >
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
+          <View
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: 999,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: selected ? AMBER_SOFT : OLIVE_SOFT,
+              borderWidth: 1,
+              borderColor: selected ? AMBER_BORDER : OLIVE_BORDER,
+              marginRight: 11,
+            }}
+          >
+            <Ionicons
+              name={option.icon}
+              size={19}
+              color={selected ? EVENT_AMBER : OLIVE}
+            />
+          </View>
+
+          <View style={{ flex: 1 }}>
+            <Text
+              style={{
+                color: selected ? EVENT_BROWN : TEXT,
+                fontSize: 14,
+                fontWeight: "900",
+              }}
+            >
+              {option.label}
+            </Text>
+
+            <Text
+              style={{
+                color: MUTED,
+                marginTop: 3,
+                fontSize: 12,
+                lineHeight: 17,
+                fontWeight: "700",
+              }}
+            >
+              {option.description}
+            </Text>
+          </View>
+
+          {selected ? (
+            <Ionicons name="checkmark-circle" size={21} color={EVENT_AMBER} />
+          ) : null}
+        </View>
+      </Pressable>
+    );
   };
 
   return (
     <Modal
       visible={visible}
-      animationType="slide"
-      transparent
+      animationType="fade"
+      transparent={false}
+      presentationStyle="fullScreen"
       onRequestClose={resetAndClose}
     >
-      <View
-        style={{
-          flex: 1,
-          backgroundColor: "rgba(0,0,0,0.6)",
-          justifyContent: "flex-end",
-        }}
+      <SafeAreaView
+        edges={["top"]}
+        style={{ flex: 1, backgroundColor: PREMIUM_CREAM }}
       >
-        <View
-          style={{
-            backgroundColor: "#0D1B2A",
-            paddingHorizontal: 16,
-            paddingTop: 12,
-            paddingBottom: 24,
-            borderTopLeftRadius: 20,
-            borderTopRightRadius: 20,
-            maxHeight: "90%",
-          }}
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
         >
-          {/* Handle bar */}
-          <View
-            style={{
-              width: 40,
-              height: 4,
-              borderRadius: 999,
-              backgroundColor: "#233952",
-              alignSelf: "center",
-              marginBottom: 10,
-            }}
-          />
-
-          <Text
-            style={{
-              color: "#fff",
-              fontSize: 18,
-              fontWeight: "700",
-              marginBottom: 4,
-            }}
-          >
-            Create prayer group
-          </Text>
-          <Text style={{ color: "#9bb3c9", marginBottom: 12, fontSize: 13 }}>
-            Create a space for your church, family, or friends to share
-            prayer requests and encouragement.
-          </Text>
-
-          <ScrollView
-            style={{ flexGrow: 0 }}
-            contentContainerStyle={{ paddingBottom: 20 }}
-          >
-            {/* Group name */}
-            <Text
-              style={{
-                color: "#CFE0FF",
-                fontSize: 13,
-                marginBottom: 4,
-                marginTop: 4,
-              }}
-            >
-              Group name
-            </Text>
-            <TextInput
-              value={name}
-              onChangeText={setName}
-              placeholder="e.g. Hope Church Young Adults"
-              placeholderTextColor="#567094"
-              style={{
-                backgroundColor: "#11233B",
-                borderRadius: 10,
-                paddingHorizontal: 12,
-                paddingVertical: 10,
-                color: "#fff",
-                fontSize: 14,
-              }}
-            />
-
-            {/* Description */}
-            <Text
-              style={{
-                color: "#CFE0FF",
-                fontSize: 13,
-                marginBottom: 4,
-                marginTop: 12,
-              }}
-            >
-              Description (optional)
-            </Text>
-            <TextInput
-              value={description}
-              onChangeText={setDescription}
-              placeholder="Describe who this group is for and how to use it."
-              placeholderTextColor="#567094"
-              multiline
-              style={{
-                backgroundColor: "#11233B",
-                borderRadius: 10,
-                paddingHorizontal: 12,
-                paddingVertical: 10,
-                color: "#fff",
-                fontSize: 14,
-                minHeight: 70,
-                textAlignVertical: "top",
-              }}
-            />
-
-            {/* Privacy */}
-            <Text
-              style={{
-                color: "#CFE0FF",
-                fontSize: 13,
-                marginBottom: 4,
-                marginTop: 12,
-              }}
-            >
-              Privacy
-            </Text>
+          <View style={{ flex: 1, backgroundColor: PREMIUM_CREAM }}>
+            {/* Header */}
             <View
               style={{
-                backgroundColor: "#11233B",
-                borderRadius: 10,
-                padding: 8,
+                paddingHorizontal: 18,
+                paddingTop: 8,
+                paddingBottom: 12,
+                borderBottomWidth: 1,
+                borderBottomColor: CARD_BORDER,
+                backgroundColor: PREMIUM_CREAM,
               }}
             >
-              {PRIVACY_OPTIONS.map((option) => {
-                const selected = privacy === option.id;
-                return (
-                  <Pressable
-                    key={option.id}
-                    onPress={() => setPrivacy(option.id)}
-                    style={{
-                      paddingVertical: 8,
-                      paddingHorizontal: 8,
-                      borderRadius: 8,
-                      backgroundColor: selected ? "#163453" : "transparent",
-                      marginBottom: 4,
-                    }}
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <Pressable
+                  onPress={resetAndClose}
+                  disabled={loading}
+                  hitSlop={10}
+                  style={({ pressed }) => ({
+                    width: 42,
+                    height: 42,
+                    borderRadius: 999,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: pressed ? OLIVE_SOFT : SURFACE,
+                    borderWidth: 1,
+                    borderColor: CARD_BORDER,
+                    opacity: loading ? 0.6 : 1,
+                    transform: [{ scale: pressed ? 0.96 : 1 }],
+                  })}
+                >
+                  <Ionicons name="close" size={22} color={TEXT} />
+                </Pressable>
+
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text
+                    style={[
+                      serifHeading,
+                      {
+                        fontSize: 25,
+                        lineHeight: 29,
+                      },
+                    ]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
                   >
-                    <Text
-                      style={{
-                        color: selected ? "#F2B705" : "#CFE0FF",
-                        fontSize: 13,
-                      }}
-                    >
-                      {option.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
+                    Prayer group
+                  </Text>
+
+                  <Text
+                    style={{
+                      color: MUTED,
+                      marginTop: 1,
+                      fontSize: 12.5,
+                      lineHeight: 17,
+                      fontWeight: "700",
+                    }}
+                    numberOfLines={2}
+                  >
+                    Create a shared space for prayer and encouragement.
+                  </Text>
+                </View>
+              </View>
             </View>
 
-            {/* Group type */}
-            <Text
-              style={{
-                color: "#CFE0FF",
-                fontSize: 13,
-                marginBottom: 4,
-                marginTop: 12,
+            {/* Body */}
+            <ScrollView
+              style={{ flex: 1 }}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{
+                paddingHorizontal: 18,
+                paddingTop: 16,
+                paddingBottom: 22,
               }}
             >
-              Group type
-            </Text>
-            <View
-              style={{
-                flexDirection: "row",
-                flexWrap: "wrap",
-              }}
-            >
-              {GROUP_TYPES.map((g) => {
-                const selected = groupType === g.id;
-                return (
-                  <Pressable
-                    key={g.id}
-                    onPress={() => setGroupType(g.id)}
+              <View
+                style={{
+                  backgroundColor: SURFACE,
+                  borderRadius: 26,
+                  borderWidth: 1,
+                  borderColor: AMBER_BORDER,
+                  padding: 15,
+                  shadowColor: SHADOW,
+                  shadowOpacity: 0.06,
+                  shadowRadius: 12,
+                  shadowOffset: { width: 0, height: 5 },
+                  elevation: 2,
+                }}
+              >
+                <View style={{ flexDirection: "row", alignItems: "center" }}>
+                  <View
                     style={{
-                      paddingHorizontal: 10,
-                      paddingVertical: 6,
+                      width: 46,
+                      height: 46,
                       borderRadius: 999,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: AMBER_SOFT,
                       borderWidth: 1,
-                      borderColor: selected ? "#F2B705" : "#233952",
-                      backgroundColor: selected ? "#233952" : "transparent",
-                      marginRight: 8,
-                      marginBottom: 8,
+                      borderColor: AMBER_BORDER,
+                      marginRight: 12,
                     }}
                   >
+                    <Ionicons
+                      name="people-outline"
+                      size={22}
+                      color={EVENT_AMBER}
+                    />
+                  </View>
+
+                  <View style={{ flex: 1 }}>
                     <Text
                       style={{
-                        color: selected ? "#F2B705" : "#CFE0FF",
-                        fontSize: 12,
+                        color: TEXT,
+                        fontSize: 16,
+                        fontWeight: "900",
                       }}
                     >
-                      {g.label}
+                      Group details
                     </Text>
-                  </Pressable>
-                );
-              })}
+
+                    <Text
+                      style={{
+                        color: MUTED,
+                        marginTop: 3,
+                        fontSize: 12,
+                        lineHeight: 17,
+                        fontWeight: "700",
+                      }}
+                    >
+                      Name it clearly so people understand the purpose.
+                    </Text>
+                  </View>
+                </View>
+
+                <Text
+                  style={{
+                    color: TEXT,
+                    fontSize: 13,
+                    fontWeight: "900",
+                    marginTop: 16,
+                    marginBottom: 7,
+                  }}
+                >
+                  Group name
+                </Text>
+
+                <TextInput
+                  value={name}
+                  onChangeText={setName}
+                  placeholder="e.g. Hope Church Young Adults"
+                  placeholderTextColor="rgba(107, 114, 128, 0.72)"
+                  style={{
+                    backgroundColor: PREMIUM_CREAM,
+                    borderRadius: 18,
+                    paddingHorizontal: 13,
+                    paddingVertical: 12,
+                    color: TEXT,
+                    fontSize: 15,
+                    fontWeight: "650",
+                    borderWidth: 1,
+                    borderColor: CARD_BORDER,
+                  }}
+                />
+
+                <Text
+                  style={{
+                    color: TEXT,
+                    fontSize: 13,
+                    fontWeight: "900",
+                    marginTop: 14,
+                    marginBottom: 7,
+                  }}
+                >
+                  Description
+                </Text>
+
+                <TextInput
+                  value={description}
+                  onChangeText={setDescription}
+                  placeholder="Describe who this group is for and how to use it."
+                  placeholderTextColor="rgba(107, 114, 128, 0.72)"
+                  multiline
+                  textAlignVertical="top"
+                  style={{
+                    backgroundColor: PREMIUM_CREAM,
+                    borderRadius: 18,
+                    paddingHorizontal: 13,
+                    paddingVertical: 12,
+                    color: TEXT,
+                    fontSize: 15,
+                    lineHeight: 21,
+                    fontWeight: "650",
+                    minHeight: 92,
+                    borderWidth: 1,
+                    borderColor: CARD_BORDER,
+                  }}
+                />
+              </View>
+
+              <View
+                style={{
+                  marginTop: 14,
+                  backgroundColor: SURFACE,
+                  borderRadius: 26,
+                  borderWidth: 1,
+                  borderColor: CARD_BORDER,
+                  padding: 15,
+                  shadowColor: SHADOW,
+                  shadowOpacity: 0.04,
+                  shadowRadius: 10,
+                  shadowOffset: { width: 0, height: 4 },
+                  elevation: 1,
+                }}
+              >
+                <Text
+                  style={{
+                    color: TEXT,
+                    fontSize: 16,
+                    fontWeight: "900",
+                    marginBottom: 4,
+                  }}
+                >
+                  Privacy
+                </Text>
+
+                <Text
+                  style={{
+                    color: MUTED,
+                    fontSize: 12,
+                    lineHeight: 17,
+                    fontWeight: "700",
+                    marginBottom: 12,
+                  }}
+                >
+                  Choose how visible this group should be.
+                </Text>
+
+                {PRIVACY_OPTIONS.map((option) => (
+                  <PrivacyOption key={option.id} option={option} />
+                ))}
+              </View>
+
+              <View
+                style={{
+                  marginTop: 14,
+                  backgroundColor: SURFACE,
+                  borderRadius: 26,
+                  borderWidth: 1,
+                  borderColor: CARD_BORDER,
+                  padding: 15,
+                  shadowColor: SHADOW,
+                  shadowOpacity: 0.04,
+                  shadowRadius: 10,
+                  shadowOffset: { width: 0, height: 4 },
+                  elevation: 1,
+                }}
+              >
+                <Text
+                  style={{
+                    color: TEXT,
+                    fontSize: 16,
+                    fontWeight: "900",
+                    marginBottom: 4,
+                  }}
+                >
+                  Group type
+                </Text>
+
+                <Text
+                  style={{
+                    color: MUTED,
+                    fontSize: 12,
+                    lineHeight: 17,
+                    fontWeight: "700",
+                    marginBottom: 12,
+                  }}
+                >
+                  This helps organise prayer spaces later.
+                </Text>
+
+                <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
+                  {GROUP_TYPES.map((g) => {
+                    const selected = groupType === g.id;
+
+                    return (
+                      <Pressable
+                        key={g.id}
+                        onPress={() => setGroupType(g.id)}
+                        style={({ pressed }) => ({
+                          paddingHorizontal: 12,
+                          paddingVertical: 9,
+                          borderRadius: 999,
+                          borderWidth: 1,
+                          borderColor: selected ? AMBER_BORDER : CARD_BORDER,
+                          backgroundColor: selected
+                            ? AMBER_SOFT
+                            : pressed
+                            ? OLIVE_SOFT
+                            : PREMIUM_CREAM,
+                          marginRight: 8,
+                          marginBottom: 8,
+                          flexDirection: "row",
+                          alignItems: "center",
+                          transform: [{ scale: pressed ? 0.97 : 1 }],
+                        })}
+                      >
+                        <Ionicons
+                          name={g.icon}
+                          size={15}
+                          color={selected ? EVENT_AMBER : OLIVE}
+                        />
+
+                        <Text
+                          style={{
+                            color: selected ? EVENT_BROWN : TEXT,
+                            fontSize: 12,
+                            fontWeight: "900",
+                            marginLeft: 6,
+                          }}
+                        >
+                          {g.label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+            </ScrollView>
+
+            {/* Footer */}
+            <View
+              style={{
+                paddingHorizontal: 18,
+                paddingTop: 12,
+                paddingBottom: Math.max(insets.bottom, 12),
+                backgroundColor: PREMIUM_CREAM,
+                borderTopWidth: 1,
+                borderTopColor: CARD_BORDER,
+                flexDirection: "row",
+              }}
+            >
+              <Pressable
+                onPress={resetAndClose}
+                disabled={loading}
+                style={({ pressed }) => ({
+                  flex: 1,
+                  paddingVertical: 13,
+                  borderRadius: 999,
+                  alignItems: "center",
+                  marginRight: 8,
+                  borderWidth: 1,
+                  borderColor: OLIVE_BORDER,
+                  backgroundColor: SURFACE,
+                  opacity: loading ? 0.6 : 1,
+                  transform: [{ scale: pressed ? 0.97 : 1 }],
+                })}
+              >
+                <Text
+                  style={{
+                    color: OLIVE,
+                    fontSize: 14,
+                    fontWeight: "900",
+                  }}
+                >
+                  Cancel
+                </Text>
+              </Pressable>
+
+              <Pressable
+                onPress={handleCreate}
+                disabled={loading || !name.trim()}
+                style={({ pressed }) => ({
+                  flex: 1,
+                  paddingVertical: 13,
+                  borderRadius: 999,
+                  alignItems: "center",
+                  backgroundColor: name.trim() ? EVENT_AMBER : AMBER_SOFT,
+                  borderWidth: 1,
+                  borderColor: AMBER_BORDER,
+                  opacity: loading || !name.trim() ? 0.65 : 1,
+                  shadowColor: EVENT_AMBER,
+                  shadowOpacity: name.trim() ? 0.16 : 0,
+                  shadowRadius: 10,
+                  shadowOffset: { width: 0, height: 5 },
+                  elevation: name.trim() ? 3 : 0,
+                  transform: [{ scale: pressed && name.trim() ? 0.97 : 1 }],
+                })}
+              >
+                <Text
+                  style={{
+                    color: name.trim() ? "#FFFFFF" : EVENT_BROWN,
+                    fontSize: 14,
+                    fontWeight: "900",
+                  }}
+                >
+                  {loading ? "Creating…" : "Create group"}
+                </Text>
+              </Pressable>
             </View>
-          </ScrollView>
-
-          {/* Buttons */}
-          <View
-            style={{
-              flexDirection: "row",
-              marginTop: 8,
-            }}
-          >
-            <Pressable
-              onPress={resetAndClose}
-              style={{
-                flex: 1,
-                paddingVertical: 10,
-                borderRadius: 999,
-                alignItems: "center",
-                marginRight: 8,
-                borderWidth: 1,
-                borderColor: "#233952",
-              }}
-              disabled={loading}
-            >
-              <Text
-                style={{
-                  color: "#CFE0FF",
-                  fontSize: 13,
-                  fontWeight: "500",
-                }}
-              >
-                Cancel
-              </Text>
-            </Pressable>
-
-            <Pressable
-              onPress={handleCreate}
-              style={{
-                flex: 1,
-                paddingVertical: 10,
-                borderRadius: 999,
-                alignItems: "center",
-                backgroundColor: name.trim() ? "#1B6BF2" : "#163453",
-              }}
-              disabled={loading || !name.trim()}
-            >
-              <Text
-                style={{
-                  color: "#fff",
-                  fontSize: 13,
-                  fontWeight: "600",
-                }}
-              >
-                {loading ? "Creating…" : "Create group"}
-              </Text>
-            </Pressable>
           </View>
-        </View>
-      </View>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
     </Modal>
   );
 }
