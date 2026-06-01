@@ -16,6 +16,16 @@ function dayNumberFromStartDate(startsOnYYYYMMDD) {
   return Math.max(1, diffDays + 1);
 }
 
+function cycleDayNumber(dayNumber, cycleLength = 30) {
+  const n = Number(dayNumber || 1);
+  const len = Number(cycleLength || 30);
+
+  if (!Number.isFinite(n) || n < 1) return 1;
+  if (!Number.isFinite(len) || len < 1) return n;
+
+  return ((Math.floor(n) - 1) % Math.floor(len)) + 1;
+}
+
 function normalizeVerseRow(v) {
   if (!v) return { ref: "—", translation: "WEB", text: "—", verseId: null };
 
@@ -59,7 +69,10 @@ export async function loadDailyV2Board({ dayNumberOverride } = {}) {
   }
 
   const computedDayNumber = dayNumberFromStartDate(pack.starts_on);
-  const requestedDayNumber = dayNumberOverride ?? computedDayNumber;
+
+// Starter 30 should cycle through Day 1–30 instead of falling back to Day 1
+// after the pack has been active longer than 30 days.
+const requestedDayNumber = dayNumberOverride ?? cycleDayNumber(computedDayNumber, 30);
 
   // 2) Load v2 day row for this pack + day_number (fallback to day 1 if not seeded)
   const fetchDay = async (dn) => {

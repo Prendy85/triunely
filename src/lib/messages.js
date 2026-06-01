@@ -57,6 +57,20 @@ export async function getOrCreateChurchConversation(churchId) {
   return data; // uuid
 }
 
+export async function getOrCreateChurchGroupConversation(groupId) {
+  if (!groupId) throw new Error("Missing groupId");
+
+  const { data, error } = await supabase.rpc(
+    "get_or_create_church_group_conversation",
+    {
+      p_group_id: groupId,
+    }
+  );
+
+  if (error) throw error;
+  return data; // uuid
+}
+
 // ---------- User search (DM) ----------
 
 export async function searchUsersForDM(query, limit = 20) {

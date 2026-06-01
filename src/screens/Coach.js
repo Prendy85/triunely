@@ -19,7 +19,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Screen from "../components/Screen";
 import { usePoints } from "../context/PointsContext";
 import { supabase } from "../lib/supabase";
-import { theme } from "../theme/theme";
 
 const FAITH_COACH_URL =
   "https://eadxngfhthbrwrkgpdsw.supabase.co/functions/v1/faith-coach";
@@ -30,6 +29,31 @@ const PAGE_SIZE = 80;
 const INPUT_MIN_HEIGHT = 44;
 const INPUT_MAX_HEIGHT = 140;
 
+// --- Premium Triunely Coach visual system ---
+const PREMIUM_CREAM = "#FFFCF5";
+const SURFACE = "#FFFFFF";
+const EVENT_AMBER = "#B45309";
+const EVENT_BROWN = "#7C2D12";
+const OLIVE = "#4F633B";
+const TEXT = "#1F2933";
+const MUTED = "#6B7280";
+
+const CARD_BORDER = "rgba(15, 23, 42, 0.08)";
+const AMBER_SOFT = "rgba(180, 83, 9, 0.10)";
+const AMBER_BORDER = "rgba(180, 83, 9, 0.18)";
+const OLIVE_SOFT = "rgba(79, 99, 59, 0.10)";
+const OLIVE_BORDER = "rgba(79, 99, 59, 0.18)";
+const SHADOW = "rgba(15, 23, 42, 0.10)";
+
+const displayFont = Platform.OS === "ios" ? "Georgia" : "serif";
+
+const serifHeading = {
+  fontFamily: displayFont,
+  color: TEXT,
+  fontWeight: "900",
+  letterSpacing: -0.45,
+};
+
 const firstNameOnly = (s) => (s || "").trim().split(/\s+/)[0] || "";
 
 export default function Coach({ navigation, route }) {
@@ -37,7 +61,7 @@ export default function Coach({ navigation, route }) {
   const listRef = useRef(null);
 
   const tabBarHeight = useBottomTabBarHeight();
-  const insets = useSafeAreaInsets(); // kept, but NOT used for bottom spacing (see below)
+  const insets = useSafeAreaInsets();
 
   const routeChatId = route?.params?.chatId || null;
 
@@ -52,8 +76,6 @@ export default function Coach({ navigation, route }) {
 
   const [inputHeight, setInputHeight] = useState(INPUT_MIN_HEIGHT);
 
-  // iOS: offset by tab bar so the input clears it when keyboard shows.
-  // Android: 0 (tab bar + insets can over-lift; "height" behavior handles most cases).
   const keyboardVerticalOffset = Platform.OS === "ios" ? tabBarHeight : 0;
 
   const canSend = useMemo(
@@ -71,8 +93,12 @@ export default function Coach({ navigation, route }) {
     const hideEvent =
       Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
 
-    const showSub = Keyboard.addListener(showEvent, () => setKeyboardOpen(true));
-    const hideSub = Keyboard.addListener(hideEvent, () => setKeyboardOpen(false));
+    const showSub = Keyboard.addListener(showEvent, () =>
+      setKeyboardOpen(true)
+    );
+    const hideSub = Keyboard.addListener(hideEvent, () =>
+      setKeyboardOpen(false)
+    );
 
     return () => {
       showSub.remove();
@@ -87,8 +113,12 @@ export default function Coach({ navigation, route }) {
   const getSessionOrThrow = async () => {
     const { data, error } = await supabase.auth.getSession();
     if (error) throw error;
+
     const session = data?.session;
-    if (!session?.access_token || !session?.user?.id) throw new Error("No session");
+    if (!session?.access_token || !session?.user?.id) {
+      throw new Error("No session");
+    }
+
     return session;
   };
 
@@ -103,6 +133,7 @@ export default function Coach({ navigation, route }) {
       const fn = firstNameOnly(profile?.display_name);
       if (fn) return fn;
     }
+
     return "";
   };
 
@@ -125,6 +156,7 @@ export default function Coach({ navigation, route }) {
       .single();
 
     if (insErr) throw insErr;
+
     return created.id;
   };
 
@@ -136,6 +168,7 @@ export default function Coach({ navigation, route }) {
       .maybeSingle();
 
     if (error) throw error;
+
     return data?.ended_at ? true : false;
   };
 
@@ -148,6 +181,7 @@ export default function Coach({ navigation, route }) {
       .limit(PAGE_SIZE);
 
     if (error) throw error;
+
     return data || [];
   };
 
@@ -159,11 +193,13 @@ export default function Coach({ navigation, route }) {
       .single();
 
     if (error) throw error;
+
     return data;
   };
 
   const fetchGreetingIfEmpty = async (session, cid, fn) => {
     const existing = await loadMessagesForChat(cid);
+
     if (existing.length > 0) {
       setMessages(existing);
       return;
@@ -187,7 +223,13 @@ export default function Coach({ navigation, route }) {
       if (json?.text?.trim()) greetText = json.text.trim();
     }
 
-    const saved = await insertMessage(cid, session.user.id, "assistant", greetText);
+    const saved = await insertMessage(
+      cid,
+      session.user.id,
+      "assistant",
+      greetText
+    );
+
     setMessages([saved]);
   };
 
@@ -212,7 +254,9 @@ export default function Coach({ navigation, route }) {
     });
 
     if (!res.ok) return null;
+
     const json = await res.json();
+
     return {
       title: (json?.title || "").trim(),
       summary: (json?.summary || "").trim(),
@@ -221,12 +265,15 @@ export default function Coach({ navigation, route }) {
 
   const boot = async () => {
     setBooting(true);
+
     try {
       const session = await getSessionOrThrow();
       const fn = await loadProfileFirstName(session.user.id);
+
       setFirstName(fn);
 
       const cid = routeChatId || (await getOrCreateActiveChat(session.user.id));
+
       setChatId(cid);
 
       const ended = await getChatEndedState(cid);
@@ -240,6 +287,7 @@ export default function Coach({ navigation, route }) {
       }
     } catch (e) {
       console.log("Coach boot error", e);
+
       setMessages([
         {
           id: "local-boot",
@@ -276,6 +324,7 @@ export default function Coach({ navigation, route }) {
 
       try {
         const meta = await summarizeChat(session, endingChatId, endingMessages);
+
         if (meta?.title || meta?.summary) {
           await supabase
             .from("faith_coach_chats")
@@ -291,6 +340,7 @@ export default function Coach({ navigation, route }) {
       }
 
       const newChatId = await getOrCreateActiveChat(session.user.id);
+
       setChatId(newChatId);
       setChatEnded(false);
       setMessages([]);
@@ -323,6 +373,7 @@ export default function Coach({ navigation, route }) {
         .eq("user_id", session.user.id);
 
       if (error) throw error;
+
       setChatEnded(false);
     } catch (e) {
       console.log("Resume chat error", e);
@@ -332,6 +383,7 @@ export default function Coach({ navigation, route }) {
 
   const send = async () => {
     const trimmed = input.trim();
+
     if (!trimmed || sending || !chatId || chatEnded) return;
 
     setSending(true);
@@ -341,13 +393,21 @@ export default function Coach({ navigation, route }) {
     try {
       const session = await getSessionOrThrow();
 
-      const savedUserMsg = await insertMessage(chatId, session.user.id, "user", trimmed);
+      const savedUserMsg = await insertMessage(
+        chatId,
+        session.user.id,
+        "user",
+        trimmed
+      );
+
       const nextMessages = [...messages, savedUserMsg];
+
       setMessages(nextMessages);
 
-      const historyForAI = nextMessages
-        .slice(-MAX_HISTORY)
-        .map((m) => ({ role: m.role, content: m.content }));
+      const historyForAI = nextMessages.slice(-MAX_HISTORY).map((m) => ({
+        role: m.role,
+        content: m.content,
+      }));
 
       const res = await fetch(FAITH_COACH_URL, {
         method: "POST",
@@ -355,7 +415,10 @@ export default function Coach({ navigation, route }) {
           "Content-Type": "application/json",
           Authorization: `Bearer ${session.access_token}`,
         },
-        body: JSON.stringify({ messages: historyForAI, user_first_name: firstName }),
+        body: JSON.stringify({
+          messages: historyForAI,
+          user_first_name: firstName,
+        }),
       });
 
       if (!res.ok) {
@@ -368,17 +431,26 @@ export default function Coach({ navigation, route }) {
           "assistant",
           "I’m not able to respond right now. Please try again in a moment."
         );
+
         setMessages((prev) => [...prev, fallback]);
         return;
       }
 
       const data = await res.json();
-      const replyText = data?.text?.trim() || "I didn’t receive a response. Please try again.";
+      const replyText =
+        data?.text?.trim() || "I didn’t receive a response. Please try again.";
 
-      const savedAssistantMsg = await insertMessage(chatId, session.user.id, "assistant", replyText);
+      const savedAssistantMsg = await insertMessage(
+        chatId,
+        session.user.id,
+        "assistant",
+        replyText
+      );
+
       setMessages((prev) => [...prev, savedAssistantMsg]);
 
       const award = awardCoachPointOnce();
+
       if (award?.granted) {
         Alert.alert("+1 Light Point", "Daily Faith Coach bonus awarded.");
       }
@@ -392,22 +464,106 @@ export default function Coach({ navigation, route }) {
 
   const renderItem = ({ item }) => {
     const isUser = item.role === "user";
+
     return (
       <View
         style={{
           alignSelf: isUser ? "flex-end" : "flex-start",
-          backgroundColor: isUser ? theme.colors.blue : theme.colors.surfaceAlt,
-          borderWidth: 1,
-          borderColor: isUser ? "transparent" : theme.colors.divider,
-          padding: 12,
-          borderRadius: 16,
-          marginVertical: 6,
-          maxWidth: "88%",
+          maxWidth: isUser ? "82%" : "92%",
+          marginVertical: 7,
         }}
       >
-        <Text style={{ color: theme.colors.text, lineHeight: 20, fontWeight: "600" }}>
-          {item.content}
-        </Text>
+        {!isUser ? (
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              marginBottom: 6,
+              marginLeft: 2,
+            }}
+          >
+            <View
+              style={{
+                width: 24,
+                height: 24,
+                borderRadius: 999,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: AMBER_SOFT,
+                borderWidth: 1,
+                borderColor: AMBER_BORDER,
+                marginRight: 7,
+              }}
+            >
+              <Ionicons name="sparkles-outline" size={14} color={EVENT_AMBER} />
+            </View>
+
+            <Text
+              style={{
+                color: EVENT_BROWN,
+                fontSize: 12,
+                fontWeight: "900",
+              }}
+            >
+              Faith Coach
+            </Text>
+          </View>
+        ) : null}
+
+        <View
+          style={{
+            backgroundColor: isUser ? OLIVE_SOFT : "#FFFFFF",
+            borderWidth: 1,
+            borderColor: isUser ? OLIVE_BORDER : AMBER_BORDER,
+            paddingVertical: isUser ? 10 : 14,
+            paddingHorizontal: isUser ? 12 : 15,
+            borderRadius: isUser ? 16 : 22,
+            borderTopRightRadius: isUser ? 6 : 22,
+            borderTopLeftRadius: isUser ? 16 : 6,
+            shadowColor: SHADOW,
+            shadowOpacity: isUser ? 0.03 : 0.09,
+            shadowRadius: isUser ? 6 : 13,
+            shadowOffset: { width: 0, height: isUser ? 2 : 5 },
+            elevation: isUser ? 1 : 3,
+          }}
+        >
+          {!isUser ? (
+            <View
+              style={{
+                marginBottom: 10,
+                paddingBottom: 9,
+                borderBottomWidth: 1,
+                borderBottomColor: CARD_BORDER,
+                flexDirection: "row",
+                alignItems: "center",
+              }}
+            >
+              <Ionicons name="leaf-outline" size={15} color={EVENT_AMBER} />
+
+              <Text
+                style={{
+                  color: MUTED,
+                  marginLeft: 6,
+                  fontSize: 11,
+                  fontWeight: "800",
+                }}
+              >
+                Biblical encouragement
+              </Text>
+            </View>
+          ) : null}
+
+          <Text
+            style={{
+              color: isUser ? OLIVE : TEXT,
+              lineHeight: isUser ? 20 : 23,
+              fontWeight: isUser ? "700" : "650",
+              fontSize: isUser ? 14 : 15.5,
+            }}
+          >
+            {item.content}
+          </Text>
+        </View>
       </View>
     );
   };
@@ -417,110 +573,237 @@ export default function Coach({ navigation, route }) {
     Math.min(INPUT_MAX_HEIGHT, inputHeight)
   );
 
-  /**
-   * KEY FIX:
-   * Do NOT use insets.bottom here (it’s ~48px on your device and creates the “inch gap”).
-   * Your bottom tab bar already occupies the bottom area visually.
-   */
   const inputBottomPad = keyboardOpen ? 10 : 4;
 
   return (
-    <Screen backgroundColor={theme.colors.bg} padded={false} style={{ flex: 1 }}>
+    <Screen backgroundColor={PREMIUM_CREAM} padded={false} style={{ flex: 1 }}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         keyboardVerticalOffset={keyboardVerticalOffset}
       >
-        <View style={{ flex: 1, padding: 16 }}>
-          {/* Header row */}
+        <View style={{ flex: 1, paddingHorizontal: 16, paddingTop: 14 }}>
+          {/* Premium Coach Header */}
           <View
             style={{
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "space-between",
-              marginBottom: 10,
+              marginBottom: 14,
+              padding: 16,
+              borderRadius: 28,
+              backgroundColor: SURFACE,
+              borderWidth: 1,
+              borderColor: AMBER_BORDER,
+              shadowColor: SHADOW,
+              shadowOpacity: 0.09,
+              shadowRadius: 14,
+              shadowOffset: { width: 0, height: 6 },
+              elevation: 3,
             }}
           >
-            <View>
-              <Text style={theme.text.h1}>Faith Coach</Text>
-              <Text style={[theme.text.muted, { marginTop: 2 }]}>Saved automatically</Text>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 12,
+              }}
+            >
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  flex: 1,
+                }}
+              >
+                <View
+                  style={{
+                    width: 48,
+                    height: 48,
+                    borderRadius: 999,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: AMBER_SOFT,
+                    borderWidth: 1,
+                    borderColor: AMBER_BORDER,
+                    marginRight: 12,
+                  }}
+                >
+                  <Ionicons
+                    name="sparkles-outline"
+                    size={22}
+                    color={EVENT_AMBER}
+                  />
+                </View>
+
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={[
+                      serifHeading,
+                      {
+                        fontSize: 26,
+                        lineHeight: 30,
+                      },
+                    ]}
+                  >
+                    Faith Coach
+                  </Text>
+
+                  <Text
+                    style={{
+                      color: MUTED,
+                      marginTop: 3,
+                      fontSize: 13,
+                      lineHeight: 18,
+                      fontWeight: "700",
+                    }}
+                  >
+                    Gentle guidance, prayerful reflection, and biblical
+                    encouragement.
+                  </Text>
+                </View>
+              </View>
             </View>
 
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                marginTop: 14,
+                gap: 10,
+              }}
+            >
               <Pressable
                 onPress={() => navigation.navigate("CoachChats")}
                 disabled={booting || sending}
                 hitSlop={8}
-                style={[
-                  theme.button.outline,
-                  {
-                    paddingHorizontal: 12,
-                    paddingVertical: 8,
-                    borderRadius: 999,
-                    opacity: booting || sending ? 0.6 : 1,
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: 8,
-                  },
-                ]}
+                style={({ pressed }) => ({
+                  flex: 1,
+                  paddingVertical: 11,
+                  paddingHorizontal: 13,
+                  borderRadius: 999,
+                  backgroundColor: pressed ? OLIVE_SOFT : SURFACE,
+                  borderWidth: 1,
+                  borderColor: OLIVE_BORDER,
+                  opacity: booting || sending ? 0.6 : 1,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                })}
               >
-                <Ionicons name="chatbubbles-outline" size={16} color={theme.colors.text2} />
-                <Text style={theme.button.outlineText}>Chats</Text>
+                <Ionicons name="chatbubbles-outline" size={16} color={OLIVE} />
+
+                <Text
+                  style={{
+                    color: OLIVE,
+                    fontSize: 13,
+                    fontWeight: "900",
+                  }}
+                >
+                  Chats
+                </Text>
               </Pressable>
 
               <Pressable
                 onPress={endChat}
                 disabled={booting || !chatId || sending}
                 hitSlop={8}
-                style={[
-                  theme.button.primary,
-                  {
-                    paddingHorizontal: 12,
-                    paddingVertical: 8,
-                    borderRadius: 999,
-                    opacity: booting || !chatId || sending ? 0.6 : 1,
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: 8,
-                  },
-                ]}
+                style={({ pressed }) => ({
+                  flex: 1,
+                  paddingVertical: 11,
+                  paddingHorizontal: 13,
+                  borderRadius: 999,
+                  backgroundColor: pressed ? AMBER_SOFT : EVENT_AMBER,
+                  borderWidth: 1,
+                  borderColor: AMBER_BORDER,
+                  opacity: booting || !chatId || sending ? 0.6 : 1,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                  shadowColor: EVENT_AMBER,
+                  shadowOpacity: booting || !chatId || sending ? 0 : 0.18,
+                  shadowRadius: 10,
+                  shadowOffset: { width: 0, height: 5 },
+                  elevation: booting || !chatId || sending ? 0 : 3,
+                })}
               >
-                <Ionicons name="stop-circle-outline" size={16} color={theme.colors.text} />
-                <Text style={theme.button.primaryText}>End</Text>
+                <Ionicons
+                  name="stop-circle-outline"
+                  size={16}
+                  color="#FFFFFF"
+                />
+
+                <Text
+                  style={{
+                    color: "#FFFFFF",
+                    fontSize: 13,
+                    fontWeight: "900",
+                  }}
+                >
+                  End Chat
+                </Text>
               </Pressable>
             </View>
           </View>
 
           {/* Ended banner */}
           {chatEnded ? (
-            <View style={[theme.glow.outer, { padding: 1, borderRadius: 18, marginBottom: 12 }]}>
-              <View style={[theme.glow.inner, { padding: 12, borderRadius: 16 }]}>
-                <View style={{ flexDirection: "row", alignItems: "center" }}>
-                  <Ionicons
-                    name="information-circle-outline"
-                    size={18}
-                    color={theme.colors.muted}
-                    style={{ marginRight: 8 }}
-                  />
-                  <Text style={{ color: theme.colors.text2, flex: 1, fontWeight: "600" }}>
-                    This chat is ended. Resume it to continue.
-                  </Text>
+            <View
+              style={{
+                padding: 12,
+                borderRadius: 18,
+                marginBottom: 12,
+                backgroundColor: SURFACE,
+                borderWidth: 1,
+                borderColor: AMBER_BORDER,
+                shadowColor: SHADOW,
+                shadowOpacity: 0.06,
+                shadowRadius: 10,
+                shadowOffset: { width: 0, height: 4 },
+                elevation: 2,
+              }}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <Ionicons
+                  name="information-circle-outline"
+                  size={18}
+                  color={EVENT_AMBER}
+                  style={{ marginRight: 8 }}
+                />
 
-                  <Pressable
-                    onPress={resumeChat}
-                    style={[
-                      theme.button.primary,
-                      {
-                        paddingHorizontal: 12,
-                        paddingVertical: 8,
-                        borderRadius: 999,
-                        marginLeft: 10,
-                      },
-                    ]}
+                <Text
+                  style={{
+                    color: TEXT,
+                    flex: 1,
+                    fontWeight: "700",
+                    lineHeight: 18,
+                  }}
+                >
+                  This chat is ended. Resume it to continue.
+                </Text>
+
+                <Pressable
+                  onPress={resumeChat}
+                  style={{
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                    borderRadius: 999,
+                    marginLeft: 10,
+                    backgroundColor: EVENT_AMBER,
+                    borderWidth: 1,
+                    borderColor: AMBER_BORDER,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: "#FFFFFF",
+                      fontWeight: "900",
+                      fontSize: 12,
+                    }}
                   >
-                    <Text style={theme.button.primaryText}>Resume</Text>
-                  </Pressable>
-                </View>
+                    Resume
+                  </Text>
+                </Pressable>
               </View>
             </View>
           ) : null}
@@ -529,8 +812,17 @@ export default function Coach({ navigation, route }) {
           <View style={{ flex: 1 }}>
             {booting ? (
               <View style={{ marginTop: 12, alignItems: "center" }}>
-                <ActivityIndicator color={theme.colors.gold} />
-                <Text style={[theme.text.muted, { marginTop: 8 }]}>Loading…</Text>
+                <ActivityIndicator color={EVENT_AMBER} />
+
+                <Text
+                  style={{
+                    color: MUTED,
+                    marginTop: 8,
+                    fontWeight: "700",
+                  }}
+                >
+                  Loading…
+                </Text>
               </View>
             ) : (
               <FlatList
@@ -551,75 +843,124 @@ export default function Coach({ navigation, route }) {
               <View
                 style={{
                   alignSelf: "flex-start",
-                  backgroundColor: theme.colors.surfaceAlt,
+                  backgroundColor: SURFACE,
                   borderWidth: 1,
-                  borderColor: theme.colors.divider,
-                  padding: 12,
-                  borderRadius: 16,
+                  borderColor: CARD_BORDER,
+                  paddingVertical: 11,
+                  paddingHorizontal: 13,
+                  borderRadius: 18,
+                  borderTopLeftRadius: 6,
                   marginVertical: 6,
                   maxWidth: "88%",
                   flexDirection: "row",
                   alignItems: "center",
+                  shadowColor: SHADOW,
+                  shadowOpacity: 0.06,
+                  shadowRadius: 10,
+                  shadowOffset: { width: 0, height: 4 },
+                  elevation: 2,
                 }}
               >
-                <ActivityIndicator size="small" color={theme.colors.gold} />
-                <Text style={{ color: theme.colors.muted, marginLeft: 8, fontWeight: "600" }}>
-                  Faith Coach is thinking…
+                <ActivityIndicator size="small" color={EVENT_AMBER} />
+
+                <Text
+                  style={{
+                    color: MUTED,
+                    marginLeft: 8,
+                    fontWeight: "700",
+                  }}
+                >
+                  Faith Coach is reflecting…
                 </Text>
               </View>
             ) : null}
           </View>
 
-          {/* Input row */}
-          <View style={{ paddingBottom: inputBottomPad }}>
-            <View style={{ flexDirection: "row", alignItems: "flex-end", marginTop: 10 }}>
+          {/* Premium Input row */}
+          <View
+            style={{
+              paddingBottom: inputBottomPad,
+              paddingTop: 10,
+              backgroundColor: PREMIUM_CREAM,
+            }}
+          >
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "flex-end",
+                padding: 10,
+                borderRadius: 24,
+                backgroundColor: SURFACE,
+                borderWidth: 1,
+                borderColor: CARD_BORDER,
+                shadowColor: SHADOW,
+                shadowOpacity: 0.08,
+                shadowRadius: 12,
+                shadowOffset: { width: 0, height: 5 },
+                elevation: 3,
+              }}
+            >
               <TextInput
                 placeholder={chatEnded ? "Resume chat to reply…" : "Ask Faith Coach…"}
-                placeholderTextColor={theme.input.placeholder}
+                placeholderTextColor="rgba(107, 114, 128, 0.72)"
                 value={input}
                 onChangeText={setInput}
                 editable={!sending && !!chatId && !chatEnded}
                 multiline
                 textAlignVertical="top"
                 onContentSizeChange={(e) => {
-                  const h = e?.nativeEvent?.contentSize?.height || INPUT_MIN_HEIGHT;
+                  const h =
+                    e?.nativeEvent?.contentSize?.height || INPUT_MIN_HEIGHT;
                   setInputHeight(h + 12);
                 }}
                 scrollEnabled={computedInputHeight >= INPUT_MAX_HEIGHT}
-                style={[
-                  theme.input.box,
-                  {
-                    flex: 1,
-                    marginRight: 10,
-                    opacity: sending || !chatId || chatEnded ? 0.7 : 1,
-                    minHeight: INPUT_MIN_HEIGHT,
-                    height: computedInputHeight,
-                    lineHeight: 20,
-                    paddingTop: 12,
-                    paddingBottom: 12,
-                  },
-                ]}
+                style={{
+                  flex: 1,
+                  marginRight: 10,
+                  opacity: sending || !chatId || chatEnded ? 0.7 : 1,
+                  minHeight: INPUT_MIN_HEIGHT,
+                  height: computedInputHeight,
+                  maxHeight: INPUT_MAX_HEIGHT,
+                  color: TEXT,
+                  fontSize: 15,
+                  lineHeight: 21,
+                  fontWeight: "650",
+                  paddingTop: 11,
+                  paddingBottom: 11,
+                  paddingHorizontal: 12,
+                  borderRadius: 18,
+                  backgroundColor: PREMIUM_CREAM,
+                  borderWidth: 1,
+                  borderColor: CARD_BORDER,
+                }}
               />
 
               <Pressable
                 onPress={send}
                 disabled={!canSend}
-                style={[
-                  theme.button.primary,
-                  {
-                    height: INPUT_MIN_HEIGHT,
-                    paddingHorizontal: 14,
-                    borderRadius: 12,
-                    justifyContent: "center",
-                    alignItems: "center",
-                    opacity: !canSend ? 0.6 : 1,
-                    flexDirection: "row",
-                    gap: 8,
-                  },
-                ]}
+                style={({ pressed }) => ({
+                  width: 46,
+                  height: 46,
+                  borderRadius: 999,
+                  justifyContent: "center",
+                  alignItems: "center",
+                  opacity: !canSend ? 0.5 : 1,
+                  backgroundColor: canSend ? EVENT_AMBER : AMBER_SOFT,
+                  borderWidth: 1,
+                  borderColor: AMBER_BORDER,
+                  shadowColor: EVENT_AMBER,
+                  shadowOpacity: canSend ? 0.22 : 0,
+                  shadowRadius: 10,
+                  shadowOffset: { width: 0, height: 5 },
+                  elevation: canSend ? 3 : 0,
+                  transform: [{ scale: pressed && canSend ? 0.95 : 1 }],
+                })}
               >
-                <Ionicons name="send" size={16} color={theme.colors.text} />
-                <Text style={theme.button.primaryText}>Send</Text>
+                <Ionicons
+                  name="send"
+                  size={17}
+                  color={canSend ? "#FFFFFF" : EVENT_BROWN}
+                />
               </Pressable>
             </View>
           </View>

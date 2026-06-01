@@ -1,6 +1,144 @@
 // src/features/events/services/eventsService.js
 import { supabase } from "../../../lib/supabase";
 
+const EVENT_SELECT_SUMMARY = `
+  id,
+  created_by,
+  church_id,
+  title,
+  description,
+  start_at,
+  end_at,
+  location_name,
+  location_address,
+  online_url,
+  image_url,
+  visibility,
+  status,
+  capacity,
+  created_at,
+
+  event_type,
+  attendance_method,
+  repeat_type,
+  repeat_interval,
+  repeat_day,
+  registration_enabled,
+  external_registration_url,
+  registration_questions,
+
+  event_attendees (
+    user_id,
+    status
+  ),
+  event_invites (
+    invited_user_id,
+    status
+  ),
+  churches:church_id (
+    id,
+    name,
+    display_name,
+    avatar_url,
+    is_verified
+  )
+`;
+
+const EVENT_SELECT_DETAIL = `
+  id,
+  created_by,
+  church_id,
+  title,
+  description,
+  start_at,
+  end_at,
+  location_name,
+  location_address,
+  online_url,
+  image_url,
+  visibility,
+  status,
+  capacity,
+  created_at,
+
+  event_type,
+  attendance_method,
+  repeat_type,
+  repeat_interval,
+  repeat_day,
+  registration_enabled,
+  external_registration_url,
+  registration_questions,
+
+  event_attendees (
+    user_id,
+    status,
+    profiles:user_id (
+      id,
+      display_name,
+      avatar_url
+    )
+  ),
+  event_invites (
+    invited_user_id,
+    status,
+    profiles:invited_user_id (
+      id,
+      display_name,
+      avatar_url
+    )
+  ),
+  churches:church_id (
+    id,
+    name,
+    display_name,
+    avatar_url,
+    is_verified
+  )
+`;
+
+function cleanRegistrationQuestions(value) {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map((question, index) => {
+      const label = String(question?.label || "").trim();
+
+      if (!label) return null;
+
+      const type = [
+        "short_text",
+        "long_text",
+        "yes_no",
+        "single_choice",
+        "multi_choice",
+      ].includes(question?.type)
+        ? question.type
+        : "short_text";
+
+      const options = Array.isArray(question?.options)
+        ? question.options
+            .map((option) => String(option || "").trim())
+            .filter(Boolean)
+        : [];
+
+      const needsOptions = type === "single_choice" || type === "multi_choice";
+
+      return {
+        id:
+          question?.id ||
+          `q_${Date.now()}_${index}_${Math.random()
+            .toString(36)
+            .slice(2, 8)}`,
+        label,
+        type,
+        required: question?.required === true,
+        options: needsOptions ? options : [],
+      };
+    })
+    .filter(Boolean);
+}
+
 export async function getCurrentUserId() {
   const { data, error } = await supabase.auth.getUser();
 
@@ -17,41 +155,8 @@ export async function fetchUpcomingEvents({ limit = 20 } = {}) {
 
   const { data, error } = await supabase
     .from("events")
-    .select(
-      `
-      id,
-      created_by,
-      church_id,
-      title,
-      description,
-      start_at,
-      end_at,
-      location_name,
-      location_address,
-      online_url,
-      image_url,
-      visibility,
-      status,
-      capacity,
-      created_at,
-      event_attendees (
-        user_id,
-        status
-      ),
-      event_invites (
-        invited_user_id,
-        status
-      ),
-      churches:church_id (
-        id,
-        name,
-        display_name,
-        avatar_url,
-        is_verified
-      )
-    `
-    )
-    .gte("start_at", nowIso)
+    .select(EVENT_SELECT_SUMMARY)
+    .or(`start_at.gte.${nowIso},end_at.gte.${nowIso}`)
     .in("status", ["published", "cancelled"])
     .order("start_at", { ascending: true })
     .limit(limit);
@@ -78,42 +183,9 @@ export async function fetchMyEvents({ userId, limit = 50 } = {}) {
     // 1) Events created by this user
     const { data: createdEvents, error: createdErr } = await supabase
       .from("events")
-      .select(
-        `
-        id,
-        created_by,
-        church_id,
-        title,
-        description,
-        start_at,
-        end_at,
-        location_name,
-        location_address,
-        online_url,
-        image_url,
-        visibility,
-        status,
-        capacity,
-        created_at,
-        event_attendees (
-          user_id,
-          status
-        ),
-        event_invites (
-          invited_user_id,
-          status
-        ),
-        churches:church_id (
-          id,
-          name,
-          display_name,
-          avatar_url,
-          is_verified
-        )
-      `
-      )
+      .select(EVENT_SELECT_SUMMARY)
       .eq("created_by", userId)
-      .gte("start_at", nowIso)
+      .or(`start_at.gte.${nowIso},end_at.gte.${nowIso}`)
       .in("status", ["published", "cancelled"])
       .order("start_at", { ascending: true })
       .limit(limit);
@@ -150,42 +222,9 @@ export async function fetchMyEvents({ userId, limit = 50 } = {}) {
     if (relatedEventIds.length > 0) {
       const { data, error } = await supabase
         .from("events")
-        .select(
-          `
-          id,
-          created_by,
-          church_id,
-          title,
-          description,
-          start_at,
-          end_at,
-          location_name,
-          location_address,
-          online_url,
-          image_url,
-          visibility,
-          status,
-          capacity,
-          created_at,
-          event_attendees (
-            user_id,
-            status
-          ),
-          event_invites (
-            invited_user_id,
-            status
-          ),
-          churches:church_id (
-            id,
-            name,
-            display_name,
-            avatar_url,
-            is_verified
-          )
-        `
-        )
+        .select(EVENT_SELECT_SUMMARY)
         .in("id", relatedEventIds)
-        .gte("start_at", nowIso)
+        .or(`start_at.gte.${nowIso},end_at.gte.${nowIso}`)
         .in("status", ["published", "cancelled"])
         .order("start_at", { ascending: true })
         .limit(limit);
@@ -229,50 +268,7 @@ export async function fetchEventById(eventId) {
 
   const { data, error } = await supabase
     .from("events")
-    .select(
-      `
-      id,
-      created_by,
-      church_id,
-      title,
-      description,
-      start_at,
-      end_at,
-      location_name,
-      location_address,
-      online_url,
-      image_url,
-      visibility,
-      status,
-      capacity,
-      created_at,
-      event_attendees (
-        user_id,
-        status,
-        profiles:user_id (
-          id,
-          display_name,
-          avatar_url
-        )
-      ),
-      event_invites (
-        invited_user_id,
-        status,
-        profiles:invited_user_id (
-          id,
-          display_name,
-          avatar_url
-        )
-      ),
-      churches:church_id (
-        id,
-        name,
-        display_name,
-        avatar_url,
-        is_verified
-      )
-    `
-    )
+    .select(EVENT_SELECT_DETAIL)
     .eq("id", eventId)
     .maybeSingle();
 
@@ -299,6 +295,15 @@ export async function createEvent({
   visibility = "public",
   churchId = null,
   capacity = null,
+
+  eventType = "single",
+  attendanceMethod = "open_rsvp",
+  repeatType = "none",
+  repeatInterval = 1,
+  repeatDay = null,
+  registrationEnabled = false,
+  externalRegistrationUrl = null,
+  registrationQuestions = [],
 }) {
   const userId = await getCurrentUserId();
 
@@ -320,34 +325,58 @@ export async function createEvent({
     };
   }
 
-  const payload = {
-    created_by: userId,
-    church_id: churchId || null,
-    title: cleanTitle,
-    description: description ? String(description).trim() : null,
-    start_at: startAt,
-    end_at: endAt || null,
-    location_name: locationName ? String(locationName).trim() : null,
-    location_address: locationAddress ? String(locationAddress).trim() : null,
-    online_url: onlineUrl ? String(onlineUrl).trim() : null,
-    image_url: imageUrl ? String(imageUrl).trim() : null,
-    visibility,
-    status: "published",
-    capacity: capacity ? Number(capacity) : null,
-  };
+  const cleanEventType = ["single", "course_programme"].includes(eventType)
+    ? eventType
+    : "single";
+
+  const cleanAttendanceMethod = [
+    "open_rsvp",
+    "registration_required",
+    "external_registration",
+    "invite_only",
+  ].includes(attendanceMethod)
+    ? attendanceMethod
+    : "open_rsvp";
+
+  const cleanRepeatType = ["none", "weekly"].includes(repeatType)
+    ? repeatType
+    : "none";
+
+  const cleanRepeatInterval = Number(repeatInterval || 1);
+
+  const cleanRepeatDay =
+    repeatDay === null || repeatDay === undefined || repeatDay === ""
+      ? null
+      : Number(repeatDay);
+
+  const cleanedRegistrationQuestions =
+    cleanAttendanceMethod === "registration_required"
+      ? cleanRegistrationQuestions(registrationQuestions)
+      : [];
 
   const { data, error } = await supabase.rpc("create_event_rpc", {
-    p_title: payload.title,
-    p_description: payload.description,
-    p_start_at: payload.start_at,
-    p_end_at: payload.end_at,
-    p_location_name: payload.location_name,
-    p_location_address: payload.location_address,
-    p_online_url: payload.online_url,
-    p_visibility: payload.visibility,
-    p_church_id: payload.church_id,
-    p_capacity: payload.capacity,
-    p_image_url: payload.image_url,
+    p_title: cleanTitle,
+    p_description: description ? String(description).trim() : null,
+    p_start_at: startAt,
+    p_end_at: endAt || null,
+    p_location_name: locationName ? String(locationName).trim() : null,
+    p_location_address: locationAddress ? String(locationAddress).trim() : null,
+    p_online_url: onlineUrl ? String(onlineUrl).trim() : null,
+    p_visibility: visibility,
+    p_church_id: churchId || null,
+    p_capacity: capacity ? Number(capacity) : null,
+    p_image_url: imageUrl ? String(imageUrl).trim() : null,
+
+    p_event_type: cleanEventType,
+    p_attendance_method: cleanAttendanceMethod,
+    p_repeat_type: cleanRepeatType,
+    p_repeat_interval: cleanRepeatInterval >= 1 ? cleanRepeatInterval : 1,
+    p_repeat_day: cleanRepeatDay,
+    p_registration_enabled: !!registrationEnabled,
+    p_external_registration_url: externalRegistrationUrl
+      ? String(externalRegistrationUrl).trim()
+      : null,
+    p_registration_questions: cleanedRegistrationQuestions,
   });
 
   if (error) {
@@ -454,7 +483,7 @@ export async function inviteUsersToEvent({ eventId, userIds }) {
     return { ok: false, error: error.message };
   }
 
-    // Create notifications through secure RPC.
+  // Create notifications through secure RPC.
   // Non-blocking: if notification creation fails, the invite still counts as sent.
   try {
     const { data: notificationCount, error: notifErr } = await supabase.rpc(
@@ -496,40 +525,7 @@ export async function updateEventVisibility({ eventId, visibility }) {
     .from("events")
     .update({ visibility })
     .eq("id", eventId)
-    .select(
-      `
-      id,
-      created_by,
-      church_id,
-      title,
-      description,
-      start_at,
-      end_at,
-      location_name,
-      location_address,
-      online_url,
-      image_url,
-      visibility,
-      status,
-      capacity,
-      created_at,
-      event_attendees (
-        user_id,
-        status
-      ),
-      event_invites (
-        invited_user_id,
-        status
-      ),
-      churches:church_id (
-        id,
-        name,
-        display_name,
-        avatar_url,
-        is_verified
-      )
-    `
-    )
+    .select(EVENT_SELECT_SUMMARY)
     .maybeSingle();
 
   if (error) {
@@ -577,7 +573,7 @@ export function formatEventDateTime(startAt, endAt) {
   try {
     const start = new Date(startAt);
 
-    const date = start.toLocaleDateString(undefined, {
+    const startDate = start.toLocaleDateString(undefined, {
       weekday: "short",
       day: "numeric",
       month: "short",
@@ -588,16 +584,31 @@ export function formatEventDateTime(startAt, endAt) {
       minute: "2-digit",
     });
 
-    if (!endAt) return `${date} · ${startTime}`;
+    if (!endAt) return `${startDate} · ${startTime}`;
 
     const end = new Date(endAt);
+
+    const endDate = end.toLocaleDateString(undefined, {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+    });
 
     const endTime = end.toLocaleTimeString(undefined, {
       hour: "2-digit",
       minute: "2-digit",
     });
 
-    return `${date} · ${startTime} - ${endTime}`;
+    const sameDay =
+      start.getFullYear() === end.getFullYear() &&
+      start.getMonth() === end.getMonth() &&
+      start.getDate() === end.getDate();
+
+    if (sameDay) {
+      return `${startDate} · ${startTime} - ${endTime}`;
+    }
+
+    return `${startDate} · ${startTime} - ${endDate} · ${endTime}`;
   } catch {
     return "Date to be confirmed";
   }

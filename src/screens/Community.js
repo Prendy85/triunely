@@ -1750,29 +1750,38 @@ if (linkPreview) {
   }, [currentStory?.id]);
 
   const renderFeedHeader = () => (
-    <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 6 }}>
+    <View
+  style={{
+    paddingHorizontal: theme.premium.spacing.screenX,
+    paddingTop: theme.premium.spacing.headerTop,
+    paddingBottom: 6,
+  }}
+>
  {/* Top header row */}
 <View
   style={{
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 18,
-    minHeight: 42,
+    marginBottom: 14,
+    minHeight: 44,
   }}
 >
- {/* Left: Community */}
-<View style={{ flexDirection: "row", alignItems: "center", flexShrink: 1 }}>
-  <Text
-    style={{
-      color: theme.colors.text,
-      fontSize: 24,
-      fontWeight: "900",
-      letterSpacing: -0.5,
-    }}
-  >
-    Community
-  </Text>
+{/* Left: Community */}
+<View style={{ flexShrink: 1, minWidth: 0 }}>
+ <Text
+  style={{
+    ...theme.premium.text.screenTitle,
+    fontSize: 28,
+    lineHeight: 32,
+    letterSpacing: -0.35,
+  }}
+  numberOfLines={1}
+  adjustsFontSizeToFit
+  minimumFontScale={0.86}
+>
+  Community
+</Text>
 </View>
 
   {/* Right: Messages + Notifications + Fellowship + Search */}
@@ -1970,15 +1979,13 @@ if (linkPreview) {
       marginBottom: 12,
     }}
   >
-    <Text
-      style={{
-        color: theme.colors.text,
-        fontSize: 24,
-        fontWeight: "900",
-      }}
-    >
-      Suggested Networks
-    </Text>
+   <Text
+  style={{
+    ...theme.premium.text.sectionTitle,
+  }}
+>
+  Suggested Networks
+</Text>
 
     <Pressable onPress={() => navigation.navigate("Networks")}>
       <Text
@@ -2300,16 +2307,14 @@ if (linkPreview) {
 
       {/* Community Feed header */}
 <View style={{ marginTop: 20, marginBottom: 12 }}>
-  <Text
-    style={{
-      color: theme.colors.text,
-      fontSize: 24,
-      fontWeight: "900",
-      marginBottom: 12,
-    }}
-  >
-    Community Feed
-  </Text>
+ <Text
+  style={{
+    ...theme.premium.text.sectionTitle,
+    marginBottom: 12,
+  }}
+>
+  Community Feed
+</Text>
 
   <View
     style={{

@@ -12,6 +12,7 @@ import {
 } from "react-native";
 
 import Screen from "../components/Screen";
+import { getOrCreateChurchGroupConversation } from "../lib/messages";
 import { supabase } from "../lib/supabase";
 import { theme } from "../theme/theme";
 
@@ -333,10 +334,12 @@ export default function ChurchGroupDetail({ navigation, route }) {
   const initialMembershipStatus = route?.params?.membershipStatus || "";
 
   const [viewerId, setViewerId] = useState(null);
-  const [membership, setMembership] = useState(null);
-  const [membershipStatus, setMembershipStatus] = useState(initialMembershipStatus);
-  const [loadingMembership, setLoadingMembership] = useState(true);
-  const [acting, setActing] = useState(false);
+const [membership, setMembership] = useState(null);
+const [membershipStatus, setMembershipStatus] = useState(initialMembershipStatus);
+const [loadingMembership, setLoadingMembership] = useState(true);
+const [acting, setActing] = useState(false);
+const [isChurchAdmin, setIsChurchAdmin] = useState(false);
+const [openingChat, setOpeningChat] = useState(false);
 
   const visual = getGroupVisual(group);
   const isGoldVisual = visual.tone === "gold";
@@ -361,6 +364,12 @@ export default function ChurchGroupDetail({ navigation, route }) {
     );
   }, [group?.id, churchId, viewerId, membershipStatus, groupVisibility, groupAudience]);
 
+  const canOpenGroupChat = useMemo(() => {
+  const status = String(membershipStatus || "").toLowerCase();
+
+  return !!group?.id && !!viewerId && (status === "approved" || isChurchAdmin);
+}, [group?.id, viewerId, membershipStatus, isChurchAdmin]);
+
   useEffect(() => {
     let alive = true;
 
@@ -381,13 +390,29 @@ export default function ChurchGroupDetail({ navigation, route }) {
         setViewerId(uid);
 
         if (!uid || !group?.id || !churchId) {
-          setMembership(null);
-          setMembershipStatus(initialMembershipStatus || "");
-          return;
-        }
+  setMembership(null);
+  setMembershipStatus(initialMembershipStatus || "");
+  setIsChurchAdmin(false);
+  return;
+}
 
-        const { data, error } = await supabase
-          .from("church_group_members")
+const { data: adminRows, error: adminError } = await supabase
+  .from("church_admins")
+  .select("user_id")
+  .eq("church_id", churchId)
+  .eq("user_id", uid)
+  .limit(1);
+
+if (adminError) {
+  console.log("ChurchGroupDetail admin check error:", adminError);
+}
+
+if (!alive) return;
+
+setIsChurchAdmin(Array.isArray(adminRows) && adminRows.length > 0);
+
+const { data, error } = await supabase
+  .from("church_group_members")
           .select("id, group_id, church_id, user_id, role, status, created_at")
           .eq("church_id", churchId)
           .eq("group_id", group.id)
@@ -552,6 +577,41 @@ export default function ChurchGroupDetail({ navigation, route }) {
     }
   }
 
+  async function handleOpenGroupChat() {
+  if (!group?.id) {
+    Alert.alert("Group not found", "We could not find this group.");
+    return;
+  }
+
+  if (!canOpenGroupChat) {
+    Alert.alert(
+      "Group chat unavailable",
+      "Only approved group members and church admins can open this group chat."
+    );
+    return;
+  }
+
+  try {
+    setOpeningChat(true);
+
+    const conversationId = await getOrCreateChurchGroupConversation(group.id);
+
+    navigation.navigate("Chat", {
+      conversationId,
+      type: "church_group",
+      title: group?.name || "Group chat",
+    });
+  } catch (e) {
+    console.log("ChurchGroupDetail open group chat error:", e);
+    Alert.alert(
+      "Could not open group chat",
+      e?.message || "Please try again."
+    );
+  } finally {
+    setOpeningChat(false);
+  }
+}
+
   function renderActionPanel() {
     const status = String(membershipStatus || "").toLowerCase();
 
@@ -566,16 +626,27 @@ export default function ChurchGroupDetail({ navigation, route }) {
       );
     }
 
-    if (status === "approved") {
-      return (
-        <InfoBox
-          icon="checkmark-circle-outline"
-          title="You’re in this group"
-          body="This group is part of your church life in Triunely."
-          tone="olive"
-        />
-      );
-    }
+   if (status === "approved") {
+  return (
+    <InfoBox
+      icon="checkmark-circle-outline"
+      title="You’re in this group"
+      body="You can now join the group conversation, prayer, care and discipleship life here."
+      tone="olive"
+    />
+  );
+}
+
+if (isChurchAdmin) {
+  return (
+    <InfoBox
+      icon="shield-checkmark-outline"
+      title="Church admin access"
+      body="As a church admin, you can open this group chat and support the group’s communication."
+      tone="olive"
+    />
+  );
+}
 
     if (status === "pending") {
       return (
@@ -1027,38 +1098,93 @@ export default function ChurchGroupDetail({ navigation, route }) {
             </View>
 
             <View
-              style={{
-                backgroundColor: theme.colors.surface,
-                borderRadius: 20,
-                borderWidth: 1,
-                borderColor: CARD_BORDER,
-                padding: 15,
-                marginTop: 16,
-              }}
-            >
-              <Text
-                style={{
-                  color: theme.colors.text,
-                  fontSize: 19,
-                  fontWeight: "900",
-                  marginBottom: 6,
-                }}
-              >
-                Group chat
-              </Text>
+  style={{
+    backgroundColor: theme.colors.surface,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
+    padding: 15,
+    marginTop: 16,
+  }}
+>
+  <Text
+    style={{
+      color: theme.colors.text,
+      fontSize: 19,
+      fontWeight: "900",
+      marginBottom: 6,
+    }}
+  >
+    Group chat
+  </Text>
 
-              <Text
-                style={{
-                  color: theme.colors.muted,
-                  fontSize: 13,
-                  fontWeight: "700",
-                  lineHeight: 20,
-                }}
-              >
-                Group chats will be created from the group creation flow later. When
-                enabled, approved group members will be added automatically in Messages.
-              </Text>
-            </View>
+  <Text
+    style={{
+      color: theme.colors.muted,
+      fontSize: 13,
+      fontWeight: "700",
+      lineHeight: 20,
+    }}
+  >
+    A shared conversation for approved members, leaders and church admins.
+  </Text>
+
+  {canOpenGroupChat ? (
+    <Pressable
+      onPress={handleOpenGroupChat}
+      disabled={openingChat}
+      style={({ pressed }) => ({
+        marginTop: 14,
+        borderRadius: 999,
+        paddingVertical: 13,
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: HEAVENLY_GOLD,
+        opacity: pressed || openingChat ? 0.75 : 1,
+        flexDirection: "row",
+        gap: 8,
+      })}
+    >
+      {openingChat ? (
+        <ActivityIndicator size="small" color="#fff" />
+      ) : (
+        <Ionicons name="chatbubbles-outline" size={19} color="#fff" />
+      )}
+
+      <Text style={{ color: "#fff", fontWeight: "900" }}>
+        {openingChat ? "Opening chat…" : "Message group"}
+      </Text>
+    </Pressable>
+  ) : (
+    <View
+      style={{
+        marginTop: 14,
+        borderRadius: 16,
+        padding: 12,
+        backgroundColor: SOFT_OLIVE_BG,
+        borderWidth: 1,
+        borderColor: "rgba(79, 99, 59, 0.14)",
+        flexDirection: "row",
+        alignItems: "center",
+      }}
+    >
+      <Ionicons name="lock-closed-outline" size={18} color={DEEP_OLIVE} />
+
+      <Text
+        style={{
+          flex: 1,
+          marginLeft: 8,
+          color: theme.colors.muted,
+          fontSize: 12.5,
+          fontWeight: "800",
+          lineHeight: 18,
+        }}
+      >
+        Group chat unlocks once you’re an approved group member.
+      </Text>
+    </View>
+  )}
+</View>
           </View>
         </ScrollView>
       )}

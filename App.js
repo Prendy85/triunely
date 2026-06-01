@@ -21,55 +21,54 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
+import ImpactModal from "./src/components/ImpactModal";
+import InAppNotificationBanner from "./src/components/InAppNotificationBanner";
 import { FellowshipRequestsModalProvider } from "./src/context/FellowshipRequestsModalProvider";
 import { PointsProvider } from "./src/context/PointsContext";
 import { RealtimeProvider } from "./src/context/RealtimeProvider";
 import { supabase } from "./src/lib/supabase";
-
-// Theme
 import { theme } from "./src/theme/theme";
 
-// screens (tabs)
+// Auth / onboarding
 import AuthScreen from "./src/screens/Auth";
+import CompleteProfileOnboarding from "./src/screens/CompleteProfileOnboarding";
+
+// Main tab screens
 import Coach from "./src/screens/Coach";
 import CoachChats from "./src/screens/CoachChats";
 import Community from "./src/screens/Community";
 import Daily from "./src/screens/Daily";
+import Prayer from "./src/screens/Prayer";
+import Profile from "./src/screens/Profile";
+
+// Global / shared screens
+import Chat from "./src/screens/Chat";
+import DirectMessageUserSearch from "./src/screens/DirectMessageUserSearch";
+import GlobalSearch from "./src/screens/GlobalSearch";
 import MessagesInbox from "./src/screens/MessagesInbox";
 import NetworkDetail from "./src/screens/NetworkDetail";
 import Networks from "./src/screens/Networks";
 import NotificationsScreen from "./src/screens/NotificationsScreen";
-import Prayer from "./src/screens/Prayer";
-import Profile from "./src/screens/Profile";
 import UserProfile from "./src/screens/UserProfile";
 
-// Global Search screen
-import GlobalSearch from "./src/screens/GlobalSearch";
-
-// onboarding screen
-import CompleteProfileOnboarding from "./src/screens/CompleteProfileOnboarding";
-
-// impact modal
-import ImpactModal from "./src/components/ImpactModal";
-import InAppNotificationBanner from "./src/components/InAppNotificationBanner";
-
-// full-page courtroom screens
+// Apologetics screens
 import ApologeticsArena from "./src/screens/ApologeticsArena";
 import ExhibitBrief from "./src/screens/ExhibitBrief";
 
-// church admin screens
-import ChurchAdminHome from "./src/screens/ChurchAdminHome";
-import ChurchNoticeboard from "./src/screens/ChurchNoticeboard";
-import WeeklyChallengeEditor from "./src/screens/WeeklyChallengeEditor";
-import WeeklyMessageEditor from "./src/screens/WeeklyMessageEditor";
-
-// church hub + feed + church profile + inbox
+// Church screens
 import ChurchAdminAdmins from "./src/screens/ChurchAdminAdmins";
 import ChurchAdminGiving from "./src/screens/ChurchAdminGiving";
+import ChurchAdminHome from "./src/screens/ChurchAdminHome";
 import ChurchAdminHub from "./src/screens/ChurchAdminHub";
 import ChurchAdminInbox from "./src/screens/ChurchAdminInbox";
 import ChurchAdminThread from "./src/screens/ChurchAdminThread";
+import ChurchCreateChurch from "./src/screens/ChurchCreateChurch";
 import ChurchCreateGroup from "./src/screens/ChurchCreateGroup";
+import ChurchEdit from "./src/screens/ChurchEdit";
+import ChurchEventAttendeeViewer from "./src/screens/ChurchEventAttendeeViewer";
+import ChurchEventRegistrationDetail from "./src/screens/ChurchEventRegistrationDetail";
+import ChurchEventRegistrationList from "./src/screens/ChurchEventRegistrationList";
+import ChurchEventRegistrations from "./src/screens/ChurchEventRegistrations";
 import ChurchFeed from "./src/screens/ChurchFeed";
 import ChurchFind from "./src/screens/ChurchFind";
 import ChurchGiving from "./src/screens/ChurchGiving";
@@ -78,22 +77,18 @@ import ChurchGroupManage from "./src/screens/ChurchGroupManage";
 import ChurchGroupsAdmin from "./src/screens/ChurchGroupsAdmin";
 import ChurchGroupsMember from "./src/screens/ChurchGroupsMember";
 import ChurchInbox from "./src/screens/ChurchInbox";
+import ChurchNoticeboard from "./src/screens/ChurchNoticeboard";
 import ChurchProfilePublic from "./src/screens/ChurchProfilePublic";
+import MinistryOperationsScreen from "./src/screens/MinistryOperationsScreen";
+import WeeklyChallengeEditor from "./src/screens/WeeklyChallengeEditor";
+import WeeklyMessageEditor from "./src/screens/WeeklyMessageEditor";
 
-// ✅ Existing: ChurchEdit screen
-import ChurchEdit from "./src/screens/ChurchEdit";
-
-// ✅ Step 2B: ADD ChurchCreateChurch screen
-import Chat from "./src/screens/Chat";
-import ChurchCreateChurch from "./src/screens/ChurchCreateChurch";
-import DirectMessageUserSearch from "./src/screens/DirectMessageUserSearch";
-
-// events screens
-// events screens
+// Event screens
 import CreateEventScreen from "./src/features/events/screens/CreateEventScreen";
 import EventDetailsScreen from "./src/features/events/screens/EventDetailsScreen";
 import EventInvitePeopleScreen from "./src/features/events/screens/EventInvitePeopleScreen";
 import EventsScreen from "./src/features/events/screens/EventsScreen";
+import RegisterEventScreen from "./src/features/events/screens/RegisterEventScreen";
 
 const Tab = createBottomTabNavigator();
 const CoachStack = createNativeStackNavigator();
@@ -103,19 +98,13 @@ const ProfileStack = createNativeStackNavigator();
 const ChurchStack = createNativeStackNavigator();
 const RootStack = createNativeStackNavigator();
 
-// ✅ Nav ref kept (useful for later)
 const navigationRef = createNavigationContainerRef();
 
-// Hard-coded for now – you can change this number any time.
 const CURRENT_SUBSCRIBERS = 0;
 const SUBSCRIPTION_PRICE = 6.99;
 const CHARITY_PER_SUBSCRIBER = 2;
 const GOAL_SUBSCRIBERS = 1_000_000;
 
-/**
- * NotificationsBell
- * - headerRight bell button (used by stacks)
- */
 function NotificationsBell({ navigation }) {
   return (
     <Pressable
@@ -132,16 +121,6 @@ function NotificationsBell({ navigation }) {
   );
 }
 
-/**
- * ChurchEntry
- * - This is the first screen in the Church tab.
- * - It decides which church profile to open.
- *
- * REQUIRED BEHAVIOR:
- * - If user has APPROVED membership -> open that church
- * - Else if user is admin (church_admins) -> open that church
- * - Else -> go to ChurchFind (NO default church fallback)
- */
 function ChurchEntry({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [resolvedChurchId, setResolvedChurchId] = useState(null);
@@ -150,33 +129,29 @@ function ChurchEntry({ navigation }) {
   useEffect(() => {
     let alive = true;
 
-    (async () => {
+    async function resolveChurch() {
       try {
         setLoading(true);
         setErrorText("");
 
         const { data: sessData, error: sessErr } =
           await supabase.auth.getSession();
+
         if (sessErr) throw sessErr;
 
         const uid = sessData?.session?.user?.id;
 
-        // If not signed in (shouldn't happen in tabs), go to Find Church.
         if (!uid) {
           if (!alive) return;
+
           setResolvedChurchId(null);
           navigation.replace("ChurchFind");
           return;
         }
 
-        // Resolve which church to open for this user.
-        // Order:
-        // 1) APPROVED church_memberships
-        // 2) church_admins (admin but not a membership row)
         let approvedMemberChurchId = null;
         let adminChurchId = null;
 
-        // 1) Approved membership
         try {
           const { data, error } = await supabase
             .from("church_memberships")
@@ -195,7 +170,6 @@ function ChurchEntry({ navigation }) {
           console.log("church_memberships lookup exception:", e);
         }
 
-        // 2) church_admins
         try {
           const { data, error } = await supabase
             .from("church_admins")
@@ -207,13 +181,14 @@ function ChurchEntry({ navigation }) {
           if (!error && Array.isArray(data) && data.length > 0) {
             adminChurchId = data?.[0]?.church_id ?? null;
           }
-        } catch (e) {
-          // Ignore
+        } catch {
+          // Ignore admin lookup exception.
         }
 
         const finalId = approvedMemberChurchId || adminChurchId || null;
 
         if (!alive) return;
+
         setResolvedChurchId(finalId);
 
         if (finalId) {
@@ -223,6 +198,7 @@ function ChurchEntry({ navigation }) {
         }
       } catch (e) {
         if (!alive) return;
+
         console.log("ChurchEntry routing error:", e);
         setErrorText(e?.message || "Could not load your church right now.");
         setResolvedChurchId(null);
@@ -230,7 +206,9 @@ function ChurchEntry({ navigation }) {
       } finally {
         if (alive) setLoading(false);
       }
-    })();
+    }
+
+    resolveChurch();
 
     return () => {
       alive = false;
@@ -304,7 +282,11 @@ function ChurchEntry({ navigation }) {
           onPress={() => navigation.replace("ChurchFind")}
           style={[
             theme.button.primary,
-            { borderRadius: 14, paddingVertical: 12, paddingHorizontal: 14 },
+            {
+              borderRadius: 14,
+              paddingVertical: 12,
+              paddingHorizontal: 14,
+            },
           ]}
         >
           <Text style={theme.button.primaryText}>Find your church</Text>
@@ -358,6 +340,7 @@ function CommunityStackNavigator() {
     </CommunityStack.Navigator>
   );
 }
+
 function PrayerStackNavigator() {
   return (
     <PrayerStack.Navigator screenOptions={{ headerShown: false }}>
@@ -378,100 +361,151 @@ function ChurchStackNavigator() {
   return (
     <ChurchStack.Navigator screenOptions={{ headerShown: false }}>
       <ChurchStack.Screen name="ChurchEntry" component={ChurchEntry} />
+
       <ChurchStack.Screen
         name="ChurchProfilePublic"
         component={ChurchProfilePublic}
+        options={{ animation: "slide_from_right" }}
       />
+
       <ChurchStack.Screen
         name="ChurchCreateChurch"
         component={ChurchCreateChurch}
         options={{ animation: "slide_from_right" }}
       />
+
       <ChurchStack.Screen
         name="ChurchEdit"
         component={ChurchEdit}
         options={{ animation: "slide_from_right" }}
       />
+
       <ChurchStack.Screen
         name="ChurchFind"
         component={ChurchFind}
         options={{ animation: "slide_from_right" }}
       />
+
       <ChurchStack.Screen
         name="ChurchInbox"
         component={ChurchInbox}
         options={{ animation: "slide_from_right" }}
       />
+
       <ChurchStack.Screen
         name="ChurchAdminInbox"
         component={ChurchAdminInbox}
         options={{ animation: "slide_from_right" }}
       />
+
       <ChurchStack.Screen
         name="ChurchAdminThread"
         component={ChurchAdminThread}
         options={{ animation: "slide_from_right" }}
       />
+
       <ChurchStack.Screen
         name="ChurchAdminHub"
         component={ChurchAdminHub}
         options={{ animation: "slide_from_right" }}
       />
+
       <ChurchStack.Screen
-  name="ChurchAdminGiving"
-  component={ChurchAdminGiving}
-  options={{ animation: "slide_from_right" }}
-/>
+        name="MinistryOperations"
+        component={MinistryOperationsScreen}
+        options={{ animation: "slide_from_right" }}
+      />
+
+      <ChurchStack.Screen
+        name="ChurchEventRegistrations"
+        component={ChurchEventRegistrations}
+        options={{ animation: "slide_from_right" }}
+      />
+
+      <ChurchStack.Screen
+        name="ChurchEventRegistrationList"
+        component={ChurchEventRegistrationList}
+        options={{ animation: "slide_from_right" }}
+      />
+
+      <ChurchStack.Screen
+        name="ChurchEventRegistrationDetail"
+        component={ChurchEventRegistrationDetail}
+        options={{ animation: "slide_from_right" }}
+      />
+
+      <ChurchStack.Screen
+        name="ChurchEventAttendeeViewer"
+        component={ChurchEventAttendeeViewer}
+        options={{ animation: "slide_from_right" }}
+      />
+
+      <ChurchStack.Screen
+        name="ChurchAdminGiving"
+        component={ChurchAdminGiving}
+        options={{ animation: "slide_from_right" }}
+      />
+
       <ChurchStack.Screen
         name="ChurchAdminAdmins"
         component={ChurchAdminAdmins}
         options={{ animation: "slide_from_right" }}
       />
+
       <ChurchStack.Screen
         name="ChurchFeed"
         component={ChurchFeed}
         options={{ animation: "slide_from_right" }}
       />
+
       <ChurchStack.Screen
         name="ChurchAdminHome"
         component={ChurchAdminHome}
         options={{ animation: "slide_from_right" }}
       />
+
       <ChurchStack.Screen
         name="WeeklyMessageEditor"
         component={WeeklyMessageEditor}
         options={{ animation: "slide_from_right" }}
       />
+
       <ChurchStack.Screen
         name="WeeklyChallengeEditor"
         component={WeeklyChallengeEditor}
         options={{ animation: "slide_from_right" }}
       />
+
       <ChurchStack.Screen
         name="ChurchNoticeboard"
         component={ChurchNoticeboard}
         options={{ animation: "slide_from_right" }}
       />
-     <ChurchStack.Screen
-  name="ChurchGroupsMember"
-  component={ChurchGroupsMember}
-  options={{ animation: "slide_from_right" }}
-/>
-<ChurchStack.Screen
-  name="ChurchGroupDetail"
-  component={ChurchGroupDetail}
-  options={{ animation: "slide_from_right" }}
-/>
-<ChurchStack.Screen
-  name="ChurchGroupsAdmin"
-  component={ChurchGroupsAdmin}
-  options={{ animation: "slide_from_right" }}
-/>
-<ChurchStack.Screen
-  name="ChurchGroupManage"
-  component={ChurchGroupManage}
-  options={{ animation: "slide_from_right" }}
-/>
+
+      <ChurchStack.Screen
+        name="ChurchGroupsMember"
+        component={ChurchGroupsMember}
+        options={{ animation: "slide_from_right" }}
+      />
+
+      <ChurchStack.Screen
+        name="ChurchGroupDetail"
+        component={ChurchGroupDetail}
+        options={{ animation: "slide_from_right" }}
+      />
+
+      <ChurchStack.Screen
+        name="ChurchGroupsAdmin"
+        component={ChurchGroupsAdmin}
+        options={{ animation: "slide_from_right" }}
+      />
+
+      <ChurchStack.Screen
+        name="ChurchGroupManage"
+        component={ChurchGroupManage}
+        options={{ animation: "slide_from_right" }}
+      />
+
       <ChurchStack.Screen
         name="ChurchCreateGroup"
         component={ChurchCreateGroup}
@@ -481,9 +515,10 @@ function ChurchStackNavigator() {
   );
 }
 
-function MainTabs() {
+function MainTabs({ initialTabName = "Daily" }) {
   return (
     <Tab.Navigator
+      initialRouteName={initialTabName}
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarStyle: {
@@ -497,18 +532,29 @@ function MainTabs() {
         tabBarIcon: ({ color, size, focused }) => {
           let iconName = "ellipse-outline";
 
-          if (route.name === "Daily")
+          if (route.name === "Daily") {
             iconName = focused ? "calendar" : "calendar-outline";
-          if (route.name === "Coach")
+          }
+
+          if (route.name === "Coach") {
             iconName = focused ? "chatbubbles" : "chatbubbles-outline";
-          if (route.name === "Prayer")
+          }
+
+          if (route.name === "Prayer") {
             iconName = focused ? "hand-left" : "hand-left-outline";
-          if (route.name === "Community")
+          }
+
+          if (route.name === "Community") {
             iconName = focused ? "people" : "people-outline";
-          if (route.name === "Church")
+          }
+
+          if (route.name === "Church") {
             iconName = focused ? "business" : "business-outline";
-          if (route.name === "Profile")
+          }
+
+          if (route.name === "Profile") {
             iconName = focused ? "person" : "person-outline";
+          }
 
           return <Ionicons name={iconName} size={size ?? 22} color={color} />;
         },
@@ -524,171 +570,241 @@ function MainTabs() {
   );
 }
 
-function RootNavigator() {
+function RootNavigator({ initialTabName = "Daily" }) {
   return (
     <RootStack.Navigator screenOptions={{ headerShown: false }}>
-      <RootStack.Screen name="MainTabs" component={MainTabs} />
+      <RootStack.Screen name="MainTabs">
+        {(props) => <MainTabs {...props} initialTabName={initialTabName} />}
+      </RootStack.Screen>
+
       <RootStack.Screen
         name="MessagesInbox"
         component={MessagesInbox}
         options={{ animation: "slide_from_right" }}
       />
+
       <RootStack.Screen
         name="DirectMessageUserSearch"
         component={DirectMessageUserSearch}
         options={{ animation: "slide_from_right" }}
       />
+
       <RootStack.Screen
         name="Notifications"
         component={NotificationsScreen}
         options={{ animation: "slide_from_right", headerShown: false }}
       />
+
       <RootStack.Screen
         name="GlobalSearch"
         component={GlobalSearch}
         options={{ animation: "slide_from_right" }}
       />
 
-            <RootStack.Screen
+      <RootStack.Screen
         name="Events"
         component={EventsScreen}
         options={{ animation: "slide_from_right" }}
       />
+
       <RootStack.Screen
         name="CreateEvent"
         component={CreateEventScreen}
         options={{ animation: "slide_from_right" }}
       />
+
       <RootStack.Screen
         name="EventDetails"
         component={EventDetailsScreen}
         options={{ animation: "slide_from_right" }}
       />
-            <RootStack.Screen
+
+      <RootStack.Screen
+        name="RegisterEvent"
+        component={RegisterEventScreen}
+        options={{ animation: "slide_from_right" }}
+      />
+
+      <RootStack.Screen
         name="EventInvitePeople"
         component={EventInvitePeopleScreen}
         options={{ animation: "slide_from_right" }}
       />
+
       <RootStack.Screen
         name="ApologeticsArena"
         component={ApologeticsArena}
         options={{ animation: "slide_from_right" }}
       />
+
       <RootStack.Screen
         name="ExhibitBrief"
         component={ExhibitBrief}
         options={{ animation: "slide_from_right" }}
       />
+
       <RootStack.Screen
         name="UserProfile"
         component={UserProfile}
         options={{ animation: "slide_from_right" }}
       />
+
       <RootStack.Screen
         name="ChurchFind"
         component={ChurchFind}
         options={{ animation: "slide_from_right" }}
       />
+
       <RootStack.Screen
         name="ChurchProfilePublic"
         component={ChurchProfilePublic}
         options={{ animation: "slide_from_right" }}
       />
+
       <RootStack.Screen
-  name="ChurchGiving"
-  component={ChurchGiving}
-  options={{ animation: "slide_from_right" }}
-/>
+        name="ChurchGiving"
+        component={ChurchGiving}
+        options={{ animation: "slide_from_right" }}
+      />
+
       <RootStack.Screen
         name="ChurchCreateChurch"
         component={ChurchCreateChurch}
         options={{ animation: "slide_from_right" }}
       />
+
       <RootStack.Screen
         name="ChurchEdit"
         component={ChurchEdit}
         options={{ animation: "slide_from_right" }}
       />
+
       <RootStack.Screen
         name="ChurchInbox"
         component={ChurchInbox}
         options={{ animation: "slide_from_right" }}
       />
+
       <RootStack.Screen
         name="ChurchAdminInbox"
         component={ChurchAdminInbox}
         options={{ animation: "slide_from_right" }}
       />
+
       <RootStack.Screen
         name="ChurchAdminThread"
         component={ChurchAdminThread}
         options={{ animation: "slide_from_right" }}
       />
+
       <RootStack.Screen
         name="ChurchAdminHub"
         component={ChurchAdminHub}
         options={{ animation: "slide_from_right" }}
       />
+
       <RootStack.Screen
-  name="ChurchAdminGiving"
-  component={ChurchAdminGiving}
-  options={{ animation: "slide_from_right" }}
-/>
+        name="MinistryOperations"
+        component={MinistryOperationsScreen}
+        options={{ animation: "slide_from_right" }}
+      />
+
+      <RootStack.Screen
+        name="ChurchEventRegistrations"
+        component={ChurchEventRegistrations}
+        options={{ animation: "slide_from_right" }}
+      />
+
+      <RootStack.Screen
+        name="ChurchEventRegistrationList"
+        component={ChurchEventRegistrationList}
+        options={{ animation: "slide_from_right" }}
+      />
+
+      <RootStack.Screen
+        name="ChurchEventRegistrationDetail"
+        component={ChurchEventRegistrationDetail}
+        options={{ animation: "slide_from_right" }}
+      />
+
+      <RootStack.Screen
+        name="ChurchEventAttendeeViewer"
+        component={ChurchEventAttendeeViewer}
+        options={{ animation: "slide_from_right" }}
+      />
+
+      <RootStack.Screen
+        name="ChurchAdminGiving"
+        component={ChurchAdminGiving}
+        options={{ animation: "slide_from_right" }}
+      />
+
       <RootStack.Screen
         name="ChurchAdminAdmins"
         component={ChurchAdminAdmins}
         options={{ animation: "slide_from_right" }}
       />
+
       <RootStack.Screen
         name="ChurchFeed"
         component={ChurchFeed}
         options={{ animation: "slide_from_right" }}
       />
+
       <RootStack.Screen
         name="ChurchAdminHome"
         component={ChurchAdminHome}
         options={{ animation: "slide_from_right" }}
       />
+
       <RootStack.Screen
         name="WeeklyMessageEditor"
         component={WeeklyMessageEditor}
         options={{ animation: "slide_from_right" }}
       />
+
       <RootStack.Screen
         name="WeeklyChallengeEditor"
         component={WeeklyChallengeEditor}
         options={{ animation: "slide_from_right" }}
       />
+
       <RootStack.Screen
         name="ChurchNoticeboard"
         component={ChurchNoticeboard}
         options={{ animation: "slide_from_right" }}
       />
+
       <RootStack.Screen
         name="Chat"
         component={Chat}
         options={{ animation: "slide_from_right" }}
       />
-     <RootStack.Screen
-  name="ChurchGroupsMember"
-  component={ChurchGroupsMember}
-  options={{ animation: "slide_from_right" }}
-/>
-<RootStack.Screen
-  name="ChurchGroupDetail"
-  component={ChurchGroupDetail}
-  options={{ animation: "slide_from_right" }}
-/>
-<RootStack.Screen
-  name="ChurchGroupsAdmin"
-  component={ChurchGroupsAdmin}
-  options={{ animation: "slide_from_right" }}
-/>
-<RootStack.Screen
-  name="ChurchGroupManage"
-  component={ChurchGroupManage}
-  options={{ animation: "slide_from_right" }}
-/>
+
+      <RootStack.Screen
+        name="ChurchGroupsMember"
+        component={ChurchGroupsMember}
+        options={{ animation: "slide_from_right" }}
+      />
+
+      <RootStack.Screen
+        name="ChurchGroupDetail"
+        component={ChurchGroupDetail}
+        options={{ animation: "slide_from_right" }}
+      />
+
+      <RootStack.Screen
+        name="ChurchGroupsAdmin"
+        component={ChurchGroupsAdmin}
+        options={{ animation: "slide_from_right" }}
+      />
+
+      <RootStack.Screen
+        name="ChurchGroupManage"
+        component={ChurchGroupManage}
+        options={{ animation: "slide_from_right" }}
+      />
+
       <RootStack.Screen
         name="ChurchCreateGroup"
         component={ChurchCreateGroup}
@@ -707,13 +823,14 @@ export default function App() {
   const [profile, setProfile] = useState(null);
   const [profileLoading, setProfileLoading] = useState(false);
 
-  // ✅ Auth overlay: only used during the Auth exit animation
-  const [showAuthOverlay, setShowAuthOverlay] = useState(false);
+  const [churchAdminLandingChecked, setChurchAdminLandingChecked] =
+    useState(false);
+  const [isChurchAdminLandingUser, setIsChurchAdminLandingUser] =
+    useState(false);
 
-  // ✅ Auth exit finished flag: we only fade overlay once session exists AND exit finished
+  const [showAuthOverlay, setShowAuthOverlay] = useState(false);
   const [authExitFinished, setAuthExitFinished] = useState(false);
 
-  // ✅ Fade overlay opacity
   const authOverlayOpacity = useRef(new Animated.Value(1)).current;
   const impactTimerRef = useRef(null);
 
@@ -750,56 +867,71 @@ export default function App() {
     []
   );
 
-  // Keep session in sync with Supabase
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => setSession(data.session ?? null));
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, sess) => setSession(sess));
-    return () => sub.subscription.unsubscribe();
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session ?? null);
+    });
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, sess) => {
+      setSession(sess);
+    });
+
+    return () => {
+      sub.subscription.unsubscribe();
+    };
   }, []);
 
-  // Handle deep links (PKCE)
   useEffect(() => {
-    const handleUrl = async (url) => {
+    async function handleUrl(url) {
       try {
         const { queryParams } = Linking.parse(url);
         const code = queryParams?.code;
+
         if (code) {
           await supabase.auth.exchangeCodeForSession(code);
         }
       } catch {
-        // ignore
+        // Ignore deep-link exchange errors.
       }
-    };
+    }
 
-    Linking.getInitialURL().then((url) => url && handleUrl(url));
+    Linking.getInitialURL().then((url) => {
+      if (url) handleUrl(url);
+    });
+
     const sub = Linking.addEventListener("url", ({ url }) => handleUrl(url));
-    return () => sub.remove();
+
+    return () => {
+      sub.remove();
+    };
   }, []);
 
-  // When session appears, queue Impact (but never show it while auth overlay is up)
   useEffect(() => {
     if (session) {
       setShowImpact(false);
       setPendingImpact(true);
-    } else {
-  setShowImpact(false);
-  setPendingImpact(false);
-  setProfile(null);
+      setChurchAdminLandingChecked(false);
+      setIsChurchAdminLandingUser(false);
+      return;
+    }
 
-  // ✅ clear delayed impact timer on logout
-  if (impactTimerRef.current) {
-    clearTimeout(impactTimerRef.current);
-    impactTimerRef.current = null;
-  }
+    setShowImpact(false);
+    setPendingImpact(false);
+    setProfile(null);
 
-  // reset auth overlay state on logout
-  setShowAuthOverlay(false);
-  setAuthExitFinished(false);
-  authOverlayOpacity.setValue(1);
-}
+    setChurchAdminLandingChecked(false);
+    setIsChurchAdminLandingUser(false);
+
+    if (impactTimerRef.current) {
+      clearTimeout(impactTimerRef.current);
+      impactTimerRef.current = null;
+    }
+
+    setShowAuthOverlay(false);
+    setAuthExitFinished(false);
+    authOverlayOpacity.setValue(1);
   }, [session, authOverlayOpacity]);
 
-  // Load the current user's profile when we have a session
   useEffect(() => {
     async function loadProfile() {
       if (!session) {
@@ -810,6 +942,7 @@ export default function App() {
 
       try {
         setProfileLoading(true);
+
         const { data, error } = await supabase
           .from("profiles")
           .select("*")
@@ -833,7 +966,55 @@ export default function App() {
     loadProfile();
   }, [session]);
 
-  // ✅ If Auth exit finished AND session exists, fade the overlay away (no hard cut)
+  useEffect(() => {
+    let alive = true;
+
+    async function checkChurchAdminLanding() {
+      if (!session?.user?.id) {
+        setChurchAdminLandingChecked(false);
+        setIsChurchAdminLandingUser(false);
+        return;
+      }
+
+      try {
+        setChurchAdminLandingChecked(false);
+        setIsChurchAdminLandingUser(false);
+
+        const { data, error } = await supabase
+          .from("church_admins")
+          .select("church_id")
+          .eq("user_id", session.user.id)
+          .limit(1);
+
+        if (!alive) return;
+
+        if (error) {
+          console.log("church_admins landing lookup error:", error);
+          setIsChurchAdminLandingUser(false);
+        } else {
+          setIsChurchAdminLandingUser(
+            Array.isArray(data) && data.length > 0 && !!data[0]?.church_id
+          );
+        }
+      } catch (e) {
+        if (!alive) return;
+
+        console.log("church_admins landing lookup exception:", e);
+        setIsChurchAdminLandingUser(false);
+      } finally {
+        if (alive) {
+          setChurchAdminLandingChecked(true);
+        }
+      }
+    }
+
+    checkChurchAdminLanding();
+
+    return () => {
+      alive = false;
+    };
+  }, [session?.user?.id]);
+
   useEffect(() => {
     if (!session) return;
     if (!showAuthOverlay) return;
@@ -842,53 +1023,49 @@ export default function App() {
     fadeOutAuthOverlay(() => {
       setShowAuthOverlay(false);
       setAuthExitFinished(false);
-      authOverlayOpacity.setValue(1); // reset for next time
+      authOverlayOpacity.setValue(1);
     });
   }, [session, showAuthOverlay, authExitFinished, authOverlayOpacity]);
 
-  // ✅ Show impact ONLY once we're fully inside the app and NOT showing auth overlay
- useEffect(() => {
-  if (!session) return;
-  if (showAuthOverlay) return;
-  if (profileLoading) return;
-  if (!profile) return;
+  useEffect(() => {
+    if (!session) return;
+    if (showAuthOverlay) return;
+    if (profileLoading) return;
+    if (!profile) return;
 
-  const onboardingIncomplete = profile.has_completed_onboarding === false;
-  if (onboardingIncomplete) return;
+    const onboardingIncomplete = profile.has_completed_onboarding === false;
+    if (onboardingIncomplete) return;
 
-  if (!pendingImpact) return;
+    if (!pendingImpact) return;
 
-  // ✅ clear any previous timer (safety)
-  if (impactTimerRef.current) {
-    clearTimeout(impactTimerRef.current);
-    impactTimerRef.current = null;
-  }
-
-  // ✅ delay ImpactModal by 2 seconds
-  impactTimerRef.current = setTimeout(() => {
-    setShowImpact(true);
-    setPendingImpact(false);
-    impactTimerRef.current = null;
-  }, 2000);
-
-  // ✅ cleanup if conditions change before timer fires
-  return () => {
     if (impactTimerRef.current) {
       clearTimeout(impactTimerRef.current);
       impactTimerRef.current = null;
     }
-  };
-}, [session, showAuthOverlay, profileLoading, profile, pendingImpact]);
+
+    impactTimerRef.current = setTimeout(() => {
+      setShowImpact(true);
+      setPendingImpact(false);
+      impactTimerRef.current = null;
+    }, 2000);
+
+    return () => {
+      if (impactTimerRef.current) {
+        clearTimeout(impactTimerRef.current);
+        impactTimerRef.current = null;
+      }
+    };
+  }, [session, showAuthOverlay, profileLoading, profile, pendingImpact]);
 
   const shouldShowAuth = !session || showAuthOverlay;
+  const initialTabName = isChurchAdminLandingUser ? "Church" : "Daily";
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <KeyboardProvider>
-          {/* App underlay mounts as soon as session exists */}
           {session ? (
-            profileLoading ? (
+            profileLoading || !churchAdminLandingChecked ? (
               <View
                 style={{
                   flex: 1,
@@ -917,10 +1094,13 @@ export default function App() {
                   <>
                     <FellowshipRequestsModalProvider>
                       <RealtimeProvider session={session} profile={profile}>
-                      <NavigationContainer ref={navigationRef} linking={linking}>
-  <RootNavigator />
-  <InAppNotificationBanner navigation={navigationRef} />
-</NavigationContainer>
+                        <NavigationContainer
+                          ref={navigationRef}
+                          linking={linking}
+                        >
+                          <RootNavigator initialTabName={initialTabName} />
+                          <InAppNotificationBanner navigation={navigationRef} />
+                        </NavigationContainer>
                       </RealtimeProvider>
                     </FellowshipRequestsModalProvider>
 
@@ -938,7 +1118,6 @@ export default function App() {
             )
           ) : null}
 
-          {/* Auth (full-screen when logged out, or overlay during transition) */}
           {shouldShowAuth ? (
             <Animated.View
               pointerEvents="auto"
@@ -954,13 +1133,11 @@ export default function App() {
             >
               <AuthScreen
                 onAuthSuccessStart={() => {
-                  // Keep auth visible even if session flips mid-animation
                   setShowAuthOverlay(true);
                   setAuthExitFinished(false);
                   authOverlayOpacity.setValue(1);
                 }}
                 onAuthSuccessEnd={() => {
-                  // Mark exit finished; the effect will fade once session exists
                   setAuthExitFinished(true);
                 }}
               />

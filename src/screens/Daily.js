@@ -1,5 +1,7 @@
 // src/screens/Daily.js
+import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
+import LottieView from "lottie-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
@@ -7,9 +9,11 @@ import {
   Alert,
   Animated,
   Easing,
+  ImageBackground,
   Keyboard,
   KeyboardAvoidingView,
   Modal,
+  PanResponder,
   Platform,
   Pressable,
   ScrollView,
@@ -37,6 +41,18 @@ import {
 import { supabase } from "../lib/supabase";
 
 // ✅ Theme (match Prayer.js)
+import Reanimated, {
+  Easing as ReanimatedEasing,
+  useAnimatedStyle,
+  useSharedValue,
+  withDelay,
+  withRepeat,
+  withSequence,
+  withSpring,
+  withTiming,
+} from "react-native-reanimated";
+import formationConfetti from "../assets/lottie/formation-confetti.json";
+import formationDove from "../assets/lottie/formation-dove.json";
 import GlowButton from "../components/GlowButton";
 import GlowCard from "../components/GlowCard";
 import WeeklyChallengeSpotlight from "../components/WeeklyChallengeSpotlight";
@@ -50,19 +66,86 @@ import { theme } from "../theme/theme";
 
 
 
-// --- Visual rules requested ---
-// Incomplete = thick SILVER outline
-// Complete   = thick GOLD outline
+// --- Premium Triunely Daily visual system ---
+const PREMIUM_CREAM = "#FFFCF5";
+const SURFACE = "#FFFFFF";
+const EVENT_AMBER = "#B45309";
+const EVENT_BROWN = "#7C2D12";
+const OLIVE = "#4F633B";
+const TEXT = "#1F2933";
+const MUTED = "#6B7280";
+
+const CARD_BORDER = "rgba(15, 23, 42, 0.08)";
+const AMBER_SOFT = "rgba(180, 83, 9, 0.10)";
+const AMBER_BORDER = "rgba(180, 83, 9, 0.18)";
+const OLIVE_SOFT = "rgba(79, 99, 59, 0.10)";
+const OLIVE_BORDER = "rgba(79, 99, 59, 0.18)";
+const SHADOW = "rgba(15, 23, 42, 0.10)";
+
+// Keep these because the mission carousel still uses silver/gold status rings.
 const SILVER = "#C9CED8";
 const SILVER_DIM = "rgba(201,206,216,0.55)";
 const SILVER_HALO = "rgba(201,206,216,0.12)";
 
-// ✅ Neutral UI structure tokens (to avoid “gold everywhere”)
-const NEUTRAL_BORDER = "rgba(0,0,0,0.08)";
-const NEUTRAL_SHADOW = "rgba(0,0,0,0.18)";
-const PARCHMENT = "rgba(250, 247, 239, 1)"; // warm, calm section band
-const SAGE_BAND = "rgba(125, 160, 120, 0.10)"; // soft sage tint
+// Keep these existing variable names so older sections do not break.
+const NEUTRAL_BORDER = CARD_BORDER;
+const NEUTRAL_SHADOW = SHADOW;
+const PARCHMENT = "rgba(255, 252, 245, 1)";
+const SAGE_BAND = OLIVE_SOFT;
 const SECTION_GAP = 18;
+
+const displayFont = Platform.OS === "ios" ? "Georgia" : "serif";
+
+const serifHeading = {
+  fontFamily: displayFont,
+  color: TEXT,
+  fontWeight: "900",
+  letterSpacing: -0.45,
+};
+
+const SCRIPTURE_IMAGES = [
+  require("../assets/scripture/scripture-1.jpg"),
+  require("../assets/scripture/scripture-2.jpg"),
+  require("../assets/scripture/scripture-3.jpg"),
+  require("../assets/scripture/scripture-4.jpg"),
+  require("../assets/scripture/scripture-5.jpg"),
+  require("../assets/scripture/scripture-6.jpg"),
+  require("../assets/scripture/scripture-7.jpg"),
+  require("../assets/scripture/scripture-8.jpg"),
+  require("../assets/scripture/scripture-9.jpg"),
+  require("../assets/scripture/scripture-10.jpg"),
+  require("../assets/scripture/scripture-11.jpg"),
+  require("../assets/scripture/scripture-12.jpg"),
+  require("../assets/scripture/scripture-13.jpg"),
+  require("../assets/scripture/scripture-14.jpg"),
+];
+
+const getDayOfYear = () => {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), 0, 0);
+  const diff = now - start;
+  const oneDay = 1000 * 60 * 60 * 24;
+
+  return Math.floor(diff / oneDay);
+};
+
+const scriptureImageForToday = () => {
+  const dayOfYear = getDayOfYear();
+  const index = dayOfYear % SCRIPTURE_IMAGES.length;
+
+  return SCRIPTURE_IMAGES[index];
+};
+const premiumCardStyle = {
+  backgroundColor: SURFACE,
+  borderRadius: 24,
+  borderWidth: 1,
+  borderColor: CARD_BORDER,
+  shadowColor: SHADOW,
+  shadowOpacity: 0.09,
+  shadowRadius: 12,
+  shadowOffset: { width: 0, height: 5 },
+  elevation: 3,
+};
 
 const DISCIPLINE_META = {
   scripture: { label: "Scripture", icon: "📖", blurb: "Truth that resets your mind." },
@@ -74,9 +157,6 @@ const DISCIPLINE_META = {
 
 const DISCIPLINES = ["scripture", "prayer", "obedience", "service", "renunciation"];
 
-// Streak bonus tuning
-const STREAK_BONUS_CAP = 5;
-const streakBonus = (streak) => Math.min(Number(streak || 0), STREAK_BONUS_CAP);
 
 function groupMissions(missions) {
   const grouped = {};
@@ -351,8 +431,9 @@ const [dailyEventsLoading, setDailyEventsLoading] = useState(false);
 const [dailyEvents, setDailyEvents] = useState([]);
 const [noticeboardUnreadCount, setNoticeboardUnreadCount] = useState(0);
 
-  // DEV day switcher
-  const [dayOverride, setDayOverride] = useState(null);
+  // Hidden Daily preview switcher
+const [dayOverride, setDayOverride] = useState(null);
+const [dailyPreviewOpen, setDailyPreviewOpen] = useState(false);
 
   // Mission details expansion state
   const [openMissionId, setOpenMissionId] = useState(null);
@@ -367,17 +448,106 @@ const [noticeboardUnreadCount, setNoticeboardUnreadCount] = useState(0);
   const [coachData, setCoachData] = useState(null);
 
   // Completion modal
-  const [victoryOpen, setVictoryOpen] = useState(false);
-  const [victoryMission, setVictoryMission] = useState(null);
-  const [victoryUnseen, setVictoryUnseen] = useState(false);
-  const [victoryNote, setVictoryNote] = useState("");
   const [savingComplete, setSavingComplete] = useState(false);
+
+  const celebrationCardScale = useSharedValue(0.92);
+const celebrationCardOpacity = useSharedValue(0);
+const celebrationGlowScale = useSharedValue(0.72);
+const celebrationGlowOpacity = useSharedValue(0);
+const celebrationDoveFloat = useSharedValue(0);
+const celebrationDoveScale = useSharedValue(0.9);
+const celebrationProgress = useSharedValue(0);
+const celebrationMilestoneScale = useSharedValue(0.4);
+const celebrationMilestoneOpacity = useSharedValue(0);
+
+
+  // Formation celebration modal
+const [formationCelebrationOpen, setFormationCelebrationOpen] = useState(false);
+const [formationCelebrationMission, setFormationCelebrationMission] = useState(null);
+const [formationCelebrationCount, setFormationCelebrationCount] = useState(0);
 
   // Share modal
   const [shareOpen, setShareOpen] = useState(false);
   const [shareText, setShareText] = useState("");
   const [shareSaving, setShareSaving] = useState(false);
   const [shareVisibility, setShareVisibility] = useState("public");
+  const shareSheetTranslateY = useRef(new Animated.Value(0)).current;
+const shareSheetBaseYRef = useRef(0);
+
+const SHARE_SHEET_COLLAPSED_Y = 0;
+const SHARE_SHEET_EXPANDED_Y = -260;
+
+const animateShareSheetTo = useCallback(
+  (toValue) => {
+    Animated.spring(shareSheetTranslateY, {
+      toValue,
+      damping: 18,
+      stiffness: 160,
+      mass: 0.9,
+      useNativeDriver: true,
+    }).start();
+  },
+  [shareSheetTranslateY]
+);
+
+const closeShareSheet = useCallback(() => {
+  Animated.timing(shareSheetTranslateY, {
+    toValue: 40,
+    duration: 160,
+    easing: Easing.out(Easing.cubic),
+    useNativeDriver: true,
+  }).start(() => {
+    shareSheetTranslateY.setValue(0);
+    setShareOpen(false);
+  });
+}, [shareSheetTranslateY]);
+
+const shareSheetPanResponder = useMemo(
+  () =>
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, gestureState) =>
+        Math.abs(gestureState.dy) > 6,
+
+      onPanResponderGrant: () => {
+        shareSheetTranslateY.stopAnimation((value) => {
+          shareSheetBaseYRef.current = value;
+        });
+      },
+
+      onPanResponderMove: (_, gestureState) => {
+        const nextY = Math.max(
+          SHARE_SHEET_EXPANDED_Y,
+          Math.min(90, shareSheetBaseYRef.current + gestureState.dy)
+        );
+
+        shareSheetTranslateY.setValue(nextY);
+      },
+
+      onPanResponderRelease: (_, gestureState) => {
+        const finalY = shareSheetBaseYRef.current + gestureState.dy;
+
+        if (gestureState.dy > 140 && finalY > 20) {
+          closeShareSheet();
+          return;
+        }
+
+        if (finalY < -90) {
+          animateShareSheetTo(SHARE_SHEET_EXPANDED_Y);
+          return;
+        }
+
+        animateShareSheetTo(SHARE_SHEET_COLLAPSED_Y);
+      },
+    }),
+  [animateShareSheetTo, closeShareSheet, shareSheetTranslateY]
+);
+
+useEffect(() => {
+  if (shareOpen) {
+    shareSheetTranslateY.setValue(0);
+  }
+}, [shareOpen, shareSheetTranslateY]);
 
    // Weekly Challenge → Commitment → Share (Step D1)
   const [commitmentModalOpen, setCommitmentModalOpen] = useState(false);
@@ -696,27 +866,6 @@ const streakGlowOpacity = streakPulse.interpolate({
     return n;
   }, [completedByDiscipline]);
 
-  const basePointsToday = useMemo(() => {
-    const completedMissionIds = new Set((board?.completions || []).map((c) => c.mission_id));
-    let sum = 0;
-    for (const m of board?.missions || []) {
-      if (completedMissionIds.has(m.id)) sum += Number(m.reward_points || 0);
-    }
-    return sum;
-  }, [board]);
-
-  const streakBonusPerMission = useMemo(() => streakBonus(streak), [streak]);
-
-  const streakBonusToday = useMemo(() => {
-    const n = Number(completedCount || 0);
-    return n * streakBonusPerMission;
-  }, [completedCount, streakBonusPerMission]);
-
-  const earnedPointsToday = useMemo(
-    () => basePointsToday + streakBonusToday,
-    [basePointsToday, streakBonusToday]
-  );
-
   // ---------------- Apologetics state ----------------
   const [apoLoading, setApoLoading] = useState(false);
   const [apo, setApo] = useState(null);
@@ -773,23 +922,25 @@ const streakGlowOpacity = streakPulse.interpolate({
   const [bossSaving, setBossSaving] = useState(false);
   // ---------------------------------------------------
 
-  const reload = async (opts = {}) => {
-    setLoading(true);
+const reload = async (opts = {}) => {
+  const silent = !!opts.silent;
 
-    const dayNumberOverride = opts.dayNumberOverride ?? dayOverride ?? undefined;
+  if (!silent) setLoading(true);
 
-    const res = await loadDailyV2Board({ dayNumberOverride });
-    setBoard(res);
+  const dayNumberOverride = opts.dayNumberOverride ?? dayOverride ?? undefined;
 
-    setLoading(false);
+  const res = await loadDailyV2Board({ dayNumberOverride });
+  setBoard(res);
 
-    // Apologetics loads separately so Daily doesn't feel blocked
-    setApoLoading(true);
-    const apoRes = await loadApologeticsV2Board({ dayNumberOverride });
-    if (apoRes?.ok) setApo(apoRes);
-    else setApo({ ok: false, error: apoRes?.error || "Failed to load apologetics." });
-    setApoLoading(false);
-  };
+  if (!silent) setLoading(false);
+
+  // Apologetics loads separately so Daily doesn't feel blocked
+  setApoLoading(true);
+  const apoRes = await loadApologeticsV2Board({ dayNumberOverride });
+  if (apoRes?.ok) setApo(apoRes);
+  else setApo({ ok: false, error: apoRes?.error || "Failed to load apologetics." });
+  setApoLoading(false);
+};
 
   // ✅ PASTE IT RIGHT HERE (directly under reload)
 const loadWeeklyMessage = useCallback(async () => {
@@ -1155,6 +1306,151 @@ useEffect(() => {
   }
 }, [weeklyChallenge?.week_start, commitmentWeekStart]);
 
+useEffect(() => {
+if (!formationCelebrationOpen) {
+  celebrationCardScale.value = 0.92;
+  celebrationCardOpacity.value = 0;
+  celebrationGlowScale.value = 0.72;
+  celebrationGlowOpacity.value = 0;
+  celebrationDoveFloat.value = 0;
+  celebrationDoveScale.value = 0.9;
+  celebrationProgress.value = 0;
+  celebrationMilestoneScale.value = 0.4;
+  celebrationMilestoneOpacity.value = 0;
+  return;
+}
+
+celebrationMilestoneScale.value = 0.4;
+celebrationMilestoneOpacity.value = 0;
+
+  celebrationCardOpacity.value = withTiming(1, {
+    duration: 220,
+    easing: ReanimatedEasing.out(ReanimatedEasing.cubic),
+  });
+
+  celebrationCardScale.value = withSpring(1, {
+    damping: 14,
+    stiffness: 160,
+  });
+
+  celebrationGlowOpacity.value = withTiming(1, {
+    duration: 350,
+    easing: ReanimatedEasing.out(ReanimatedEasing.cubic),
+  });
+
+  celebrationGlowScale.value = withSpring(
+    formationCelebrationCount >= 5 ? 1.2 : 1.05,
+    {
+      damping: 14,
+      stiffness: 120,
+    }
+  );
+
+  celebrationDoveScale.value = withSpring(1, {
+    damping: 12,
+    stiffness: 180,
+  });
+
+  celebrationDoveFloat.value = withRepeat(
+    withSequence(
+      withTiming(-8, {
+        duration: 1800,
+        easing: ReanimatedEasing.inOut(ReanimatedEasing.sin),
+      }),
+      withTiming(0, {
+        duration: 1800,
+        easing: ReanimatedEasing.inOut(ReanimatedEasing.sin),
+      })
+    ),
+    -1,
+    true
+  );
+
+  celebrationProgress.value = withTiming(
+    Math.min(1, formationCelebrationCount / 5),
+    {
+      duration: 750,
+      easing: ReanimatedEasing.out(ReanimatedEasing.cubic),
+    }
+  );
+  celebrationMilestoneOpacity.value = withDelay(
+  680,
+  withSequence(
+    withTiming(1, { duration: 90 }),
+    withTiming(0, { duration: 520 })
+  )
+);
+
+celebrationMilestoneScale.value = withDelay(
+  680,
+  withSequence(
+    withTiming(1.15, {
+      duration: 120,
+      easing: ReanimatedEasing.out(ReanimatedEasing.cubic),
+    }),
+    withTiming(2.2, {
+      duration: 520,
+      easing: ReanimatedEasing.out(ReanimatedEasing.cubic),
+    })
+  )
+);
+
+}, [formationCelebrationOpen, formationCelebrationCount]);
+
+const animatedCelebrationCardStyle = useAnimatedStyle(() => ({
+  opacity: celebrationCardOpacity.value,
+  transform: [{ scale: celebrationCardScale.value }],
+}));
+
+const animatedCelebrationGlowStyle = useAnimatedStyle(() => ({
+  opacity: celebrationGlowOpacity.value,
+  transform: [{ scale: celebrationGlowScale.value }],
+}));
+
+const animatedCelebrationDoveStyle = useAnimatedStyle(() => ({
+  transform: [
+    { translateY: celebrationDoveFloat.value },
+    { scale: celebrationDoveScale.value },
+  ],
+}));
+
+const animatedCelebrationProgressStyle = useAnimatedStyle(() => ({
+  width: `${celebrationProgress.value * 100}%`,
+}));
+
+const animatedCelebrationMilestoneStyle = useAnimatedStyle(() => ({
+  opacity: celebrationMilestoneOpacity.value,
+  transform: [{ scale: celebrationMilestoneScale.value }],
+}));
+
+function getFormationCelebrationTitle(count) {
+  if (count >= 5) return "Day Complete";
+  if (count === 4) return "Nearly There";
+  if (count === 3) return "Your Rhythm Is Forming";
+  if (count === 2) return "Keep Walking";
+  return "A Faithful Step";
+}
+
+function getFormationCelebrationBody(count) {
+  if (count >= 5) {
+    return "Beautiful. You completed today’s full formation rhythm. Scripture, prayer, obedience, service and renunciation are shaping your walk with God.";
+  }
+
+  if (count === 4) {
+    return "You’re close to completing today’s formation rhythm. Keep walking faithfully.";
+  }
+
+  if (count === 3) {
+    return "This is becoming a rhythm now. Small faithful practices are shaping something real.";
+  }
+
+  if (count === 2) {
+    return "Two practices complete. Keep going — quiet consistency matters.";
+  }
+
+  return "One obedient step matters. Formation grows through faithful moments like this.";
+}
+
 
   const openScripture = (ref) => {
     if (!ref) return;
@@ -1193,52 +1489,44 @@ useEffect(() => {
     }
   };
 
-  const startCompleteMission = (mission) => {
-    setVictoryMission(mission);
-    setVictoryUnseen(false);
-    setVictoryNote("");
-    setVictoryOpen(true);
-  };
+ const startCompleteMission = async (mission) => {
+  if (!board?.day?.id || !mission) return;
 
-  const confirmCompleteMission = async () => {
-    if (!board?.day?.id || !victoryMission) return;
+  if (completedByDiscipline?.[mission.discipline]) {
+    Alert.alert(
+      "Already complete",
+      "You’ve already completed a practice for this discipline today."
+    );
+    return;
+  }
 
-    if (completedByDiscipline?.[victoryMission.discipline]) {
-      Alert.alert("Already done", "You’ve already completed a mission for this discipline today.");
-      setVictoryOpen(false);
+  try {
+    setSavingComplete(true);
+
+    const nextCompletedCount = Math.min(5, Number(completedCount || 0) + 1);
+
+    const res = await completeMissionV2({
+      dayId: board.day.id,
+      mission,
+      unseenAct: false,
+      reflectionText: "",
+    });
+
+    if (!res.ok) {
+      Alert.alert("Couldn’t mark complete", res.error || "Try again.");
       return;
     }
 
-    try {
-      setSavingComplete(true);
+  setFormationCelebrationMission(mission);
+setFormationCelebrationCount(nextCompletedCount);
+setFormationCelebrationOpen(true);
 
-      const res = await completeMissionV2({
-        dayId: board.day.id,
-        mission: victoryMission,
-        unseenAct: victoryUnseen,
-        reflectionText: victoryNote,
-      });
+await reload({ silent: true });
+  } finally {
+    setSavingComplete(false);
+  }
+};
 
-      if (!res.ok) {
-        Alert.alert("Couldn’t mark complete", res.error || "Try again.");
-        return;
-      }
-
-      setVictoryOpen(false);
-      await reload();
-
-      const base = Number(victoryMission.reward_points || 0);
-      const bonus = streakBonusPerMission;
-      const totalEarned = base + bonus;
-
-      Alert.alert(
-        "Mission complete",
-        `Reward claimed: +${totalEarned} points\n\nBase +${base} • Streak bonus +${bonus} (cap ${STREAK_BONUS_CAP})`
-      );
-    } finally {
-      setSavingComplete(false);
-    }
-  };
 
   const openShare = () => {
     if (!board?.day?.id) {
@@ -1250,55 +1538,123 @@ useEffect(() => {
     setShareOpen(true);
   };
 
-  const saveShare = async () => {
-    if (!board?.day?.id) return;
+const saveShare = async () => {
+  if (!board?.day?.id) return;
 
-    try {
-      setShareSaving(true);
+  try {
+    setShareSaving(true);
 
-      const completedMissionIds = new Set((board?.completions || []).map((c) => c.mission_id));
-      const completedMissions = (board?.missions || []).filter((m) => completedMissionIds.has(m.id));
+    const {
+      data: { user },
+      error: userErr,
+    } = await supabase.auth.getUser();
 
-      const payload = {
-        pack_id: board?.pack?.id,
-        pack_name: board?.pack?.name,
-        day_number: board?.dayNumber,
-        day_title: board?.day?.title,
-        verse_ref: board?.verse?.ref,
-        completed: completedMissions.map((m) => ({
-          discipline: m.discipline,
-          title: m.mission_title,
-          base_points: Number(m.reward_points || 0),
-          streak_bonus: streakBonusPerMission,
-          total_points: Number(m.reward_points || 0) + streakBonusPerMission,
-          unseen_allowed: m.allows_unseen_act,
-        })),
-        earned_points_today: earnedPointsToday,
-        base_points_today: basePointsToday,
-        streak_bonus_today: streakBonusToday,
-        streak_bonus_per_mission: streakBonusPerMission,
-        streak_bonus_cap: STREAK_BONUS_CAP,
-      };
-
-      const res = await upsertDailyShareV2({
-        dayId: board.day.id,
-        visibility: shareVisibility,
-        postText: shareText,
-        payload,
-      });
-
-      if (!res.ok) {
-        Alert.alert("Couldn’t save share", res.error || "Try again.");
-        return;
-      }
-
-      setShareOpen(false);
-      Alert.alert("Saved", "Your share draft is saved.");
-    } finally {
-      setShareSaving(false);
+    if (userErr || !user) {
+      Alert.alert("Share", "You must be logged in to share.");
+      return;
     }
-  };
 
+    const completedMissionIds = new Set(
+      (board?.completions || []).map((c) => c.mission_id)
+    );
+
+    const completedMissions = (board?.missions || []).filter((m) =>
+      completedMissionIds.has(m.id)
+    );
+
+    const completedCountForShare = Math.min(
+      5,
+      Number(completedMissions.length || completedCount || 0)
+    );
+
+    const formationTitle =
+      completedCountForShare >= 5
+        ? "Daily Formation Complete"
+        : "Daily Formation Progress";
+
+    const optionalMessage = String(shareText || "").trim();
+
+    const completedLines = completedMissions.length
+      ? completedMissions
+          .map((m) => {
+            const label = DISCIPLINE_META?.[m.discipline]?.label || m.discipline;
+            return `• ${label}: ${m.mission_title}`;
+          })
+          .join("\n")
+      : "• Formation practice completed";
+
+    const content =
+      `${formationTitle}\n` +
+      `${completedCountForShare}/5 practices completed today\n\n` +
+      `${completedLines}` +
+      (optionalMessage ? `\n\n${optionalMessage}` : "");
+
+    const payload = {
+      pack_id: board?.pack?.id,
+      pack_name: board?.pack?.name,
+      day_number: board?.dayNumber,
+      day_title: board?.day?.title,
+      verse_ref: board?.verse?.ref,
+      completed: completedMissions.map((m) => ({
+        discipline: m.discipline,
+        title: m.mission_title,
+        unseen_allowed: m.allows_unseen_act,
+      })),
+      completed_count: completedCountForShare,
+      formation_progress: {
+        completed: completedCountForShare,
+        total: 5,
+      },
+    };
+
+    // Keep the formation share record for future analytics/history.
+    await upsertDailyShareV2({
+      dayId: board.day.id,
+      visibility: "fellowship",
+      postText: optionalMessage,
+      payload,
+    });
+
+// Create the actual Home feed post.
+const { error: postErr } = await supabase.from("posts").insert({
+  user_id: user.id,
+  community_id: HOME_COMMUNITY_ID,
+
+  // This matches the existing Weekly Challenge Home feed share pattern.
+  // If your feed later gets a dedicated "fellowship" visibility, we can switch this.
+  visibility: "communities",
+
+  is_anonymous: false,
+
+  // Keep the user’s own words as the visible post message.
+  // The premium Formation card will show the formation summary separately.
+  content: optionalMessage,
+
+  url: null,
+
+  // These fields tell the feed to render this as a premium Formation Share Card.
+  media_type: "formation_share",
+  media_url: null,
+  link_title: formationTitle,
+  link_description: `${completedCountForShare}/5 practices completed today`,
+  link_image: null,
+});
+
+    if (postErr) {
+      console.log("Share formation -> posts error:", postErr);
+      Alert.alert("Share", postErr.message || "Could not share to the feed.");
+      return;
+    }
+
+    setShareOpen(false);
+    Alert.alert("Shared", "Your Formation update has been shared to your fellowship feed.");
+  } catch (e) {
+    console.log("Share formation unexpected error:", e);
+    Alert.alert("Share", "Could not share right now.");
+  } finally {
+    setShareSaving(false);
+  }
+};
   // ---------------- Apologetics derived data ----------------
   const apoDrills = apo?.drills || [];
   const attemptsByDrillId = apo?.attemptsByDrillId || {};
@@ -1590,18 +1946,33 @@ useEffect(() => {
   };
   // -----------------------------------------------------
 
-  if (loading || !board) {
-    return (
-      <Screen padded>
-        {() => (
-          <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-            <ActivityIndicator size="large" color={theme.colors.gold} />
-            <Text style={{ color: theme.colors.muted, marginTop: 8 }}>Loading Daily…</Text>
-          </View>
-        )}
-      </Screen>
-    );
-  }
+if (loading || !board) {
+  return (
+    <Screen backgroundColor={PREMIUM_CREAM} padded>
+      {() => (
+        <View
+          style={{
+            flex: 1,
+            justifyContent: "center",
+            alignItems: "center",
+          }}
+        >
+          <ActivityIndicator size="large" color={EVENT_AMBER} />
+
+          <Text
+            style={{
+              color: MUTED,
+              marginTop: 8,
+              fontWeight: "800",
+            }}
+          >
+            Loading Daily…
+          </Text>
+        </View>
+      )}
+    </Screen>
+  );
+}
 
   const verse = board?.verse || { text: "—", ref: "—", translation: "WEB" };
 
@@ -1616,58 +1987,138 @@ useEffect(() => {
   // ✅ “Peace under pressure” etc should feel like a proper title
   const scriptureTitle = board?.day?.title || "Daily Scripture";
 
-  const DevDaySwitcher = () => {
-    if (!__DEV__) return null;
+const DevDaySwitcher = () => {
+  if (!__DEV__ || !dailyPreviewOpen) return null;
 
-    const computed = board.computedDayNumber ?? board.dayNumber ?? 1;
-    const viewing = dayOverride ?? board.dayNumber ?? computed;
+  const computed = board?.computedDayNumber ?? board?.dayNumber ?? 1;
+  const viewing = Number(dayOverride ?? board?.dayNumber ?? computed ?? 1);
 
-    return (
-      <View style={{ marginTop: 12 }}>
-        <GlowCard innerStyle={{ paddingVertical: 10, paddingHorizontal: 12 }}>
-          <Text style={{ color: theme.colors.text2, fontSize: 12, fontWeight: "800" }}>
-            DEV: computedDay={computed} • viewingDay={viewing} • override={dayOverride ?? "none"}
+  const goToDay = (day) => {
+    const safeDay = Math.max(1, Math.min(30, Number(day || 1)));
+
+    setDayOverride(safeDay);
+    setOpenMissionId(null);
+
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({ y: 0, animated: true });
+    });
+  };
+
+  const resetPreview = () => {
+    setDayOverride(null);
+    setOpenMissionId(null);
+
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({ y: 0, animated: true });
+    });
+  };
+
+  const buttons = [
+    { label: "Day 1", onPress: () => goToDay(1) },
+    { label: "Day 10", onPress: () => goToDay(10) },
+    { label: "Day 20", onPress: () => goToDay(20) },
+    { label: "Day 30", onPress: () => goToDay(30) },
+    { label: "◀ Prev", onPress: () => goToDay(viewing - 1) },
+    { label: "Next ▶", onPress: () => goToDay(viewing + 1) },
+    { label: "Reset", onPress: resetPreview, primary: true },
+  ];
+
+  return (
+    <View
+      style={{
+        marginTop: 12,
+        marginBottom: 16,
+        padding: 12,
+        borderRadius: 22,
+        backgroundColor: SURFACE,
+        borderWidth: 1,
+        borderColor: AMBER_BORDER,
+        shadowColor: SHADOW,
+        shadowOpacity: 0.08,
+        shadowRadius: 10,
+        shadowOffset: { width: 0, height: 5 },
+        elevation: 2,
+      }}
+    >
+      <View
+        style={{
+          flexDirection: "row",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 10,
+        }}
+      >
+        <View style={{ flex: 1, paddingRight: 10 }}>
+          <Text
+            style={{
+              color: EVENT_BROWN,
+              fontSize: 13,
+              fontWeight: "900",
+            }}
+          >
+            Daily Preview
           </Text>
 
-          <View style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 10 }}>
-            {[
-              { label: "Go Day 1", onPress: () => setDayOverride(1) },
-              { label: "Go Day 2", onPress: () => setDayOverride(2) },
-              { label: "◀ Prev", onPress: () => setDayOverride(Math.max(1, viewing - 1)) },
-              { label: "Next ▶", onPress: () => setDayOverride(viewing + 1) },
-              { label: "Reset", onPress: () => setDayOverride(null), primary: true },
-            ].map((b) => (
-              <Pressable
-                key={b.label}
-                onPress={b.onPress}
-                style={{
-                  paddingVertical: 10,
-                  paddingHorizontal: 12,
-                  borderRadius: 999,
-                  backgroundColor: b.primary ? theme.colors.gold : theme.colors.surface,
-                  borderWidth: 1,
-                  // ✅ neutral structure border
-                  borderColor: b.primary ? theme.colors.goldOutline : NEUTRAL_BORDER,
-                  marginRight: 10,
-                  marginBottom: 10,
-                }}
-              >
-                <Text
-                  style={{
-                    color: b.primary ? theme.colors.text : theme.colors.text2,
-                    fontWeight: "900",
-                    fontSize: 12,
-                  }}
-                >
-                  {b.label}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-        </GlowCard>
+          <Text
+            style={{
+              color: MUTED,
+              fontSize: 12,
+              fontWeight: "700",
+              marginTop: 2,
+            }}
+          >
+            Viewing Day {viewing} • real cycle day {computed}
+          </Text>
+        </View>
+
+        <Pressable
+          onPress={() => setDailyPreviewOpen(false)}
+          style={{
+            width: 32,
+            height: 32,
+            borderRadius: 16,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: AMBER_SOFT,
+            borderWidth: 1,
+            borderColor: AMBER_BORDER,
+          }}
+        >
+          <Ionicons name="close" size={18} color={EVENT_BROWN} />
+        </Pressable>
       </View>
-    );
-  };
+
+      <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
+        {buttons.map((b) => (
+          <Pressable
+            key={b.label}
+            onPress={b.onPress}
+            style={{
+              paddingVertical: 9,
+              paddingHorizontal: 12,
+              borderRadius: 999,
+              backgroundColor: b.primary ? EVENT_AMBER : AMBER_SOFT,
+              borderWidth: 1,
+              borderColor: b.primary ? EVENT_AMBER : AMBER_BORDER,
+              marginRight: 8,
+              marginBottom: 8,
+            }}
+          >
+            <Text
+              style={{
+                color: b.primary ? "#FFFFFF" : EVENT_BROWN,
+                fontWeight: "900",
+                fontSize: 12,
+              }}
+            >
+              {b.label}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+    </View>
+  );
+};
 
   const missionsByDisciplineLocal = missionsByDiscipline;
   const completedByDisciplineLocal = completedByDiscipline;
@@ -1676,12 +2127,8 @@ useEffect(() => {
     const isMissionOpen = openMissionId === m.id;
     const disabled = completed;
 
-    const base = Number(m.reward_points || 0);
-    const bonus = streakBonusPerMission;
-    const totalReward = base + bonus;
-
-    // ✅ thick silver when incomplete; thick gold when complete
-    const outlineColor = disabled ? theme.colors.gold : SILVER;
+// ✅ thick silver when incomplete; thick gold when complete
+const outlineColor = disabled ? theme.colors.gold : SILVER;
 
     return (
       <View
@@ -1704,20 +2151,43 @@ useEffect(() => {
           elevation: 3,
         }}
       >
-        <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-          <Text style={{ color: theme.colors.text, fontWeight: "900", flex: 1, paddingRight: 10 }}>
-            {m.mission_title}
-          </Text>
-          <Text style={{ color: theme.colors.goldPressed, fontWeight: "900" }}>+{totalReward}</Text>
-        </View>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
+  <Text
+    style={{
+      color: theme.colors.text,
+      fontWeight: "900",
+      flex: 1,
+      paddingRight: 10,
+    }}
+  >
+    {m.mission_title}
+  </Text>
 
-        <Text style={{ color: theme.colors.text2, marginTop: 8, lineHeight: 20 }}>
-          {m.objective_line}
-        </Text>
+  <View
+    style={{
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: 999,
+      backgroundColor: disabled ? AMBER_SOFT : OLIVE_SOFT,
+      borderWidth: 1,
+      borderColor: disabled ? AMBER_BORDER : OLIVE_BORDER,
+    }}
+  >
+    <Text
+      style={{
+        color: disabled ? EVENT_BROWN : OLIVE,
+        fontWeight: "900",
+        fontSize: 11,
+      }}
+    >
+      {disabled ? "Completed" : "Practice"}
+    </Text>
+  </View>
+</View>
 
-        <Text style={{ color: theme.colors.muted, marginTop: 6, fontSize: 12, fontWeight: "700" }}>
-          Reward: +{base} base +{bonus} streak
-        </Text>
+<Text style={{ color: theme.colors.text2, marginTop: 8, lineHeight: 20 }}>
+  {m.objective_line}
+</Text>
 
         <Pressable
           onPress={() => setOpenMissionId(isMissionOpen ? null : m.id)}
@@ -1800,7 +2270,7 @@ useEffect(() => {
 
         <Pressable
           onPress={() => startCompleteMission(m)}
-          disabled={disabled}
+          disabled={disabled || savingComplete}
           style={{
             marginTop: 12,
             backgroundColor: disabled ? theme.colors.divider : theme.colors.gold,
@@ -1811,172 +2281,256 @@ useEffect(() => {
           }}
         >
           <Text style={{ color: theme.colors.text, textAlign: "center", fontWeight: "900" }}>
-            {disabled ? "Completed for this discipline ✅" : "Claim reward (complete)"}
+            {disabled
+  ? "Completed for this discipline ✅"
+  : savingComplete
+    ? "Marking complete..."
+    : "Mark Practice Complete"}
           </Text>
         </Pressable>
       </View>
     );
   };
 
-    function DailyStatTile({ icon, label, value, subtext }) {
-    return (
+    function DailyStatTile({ icon, label, value, subtext, tint = "amber" }) {
+  const isOlive = tint === "olive";
+  const accent = isOlive ? OLIVE : EVENT_AMBER;
+  const bg = isOlive ? OLIVE_SOFT : AMBER_SOFT;
+  const border = isOlive ? OLIVE_BORDER : AMBER_BORDER;
+
+  return (
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: SURFACE,
+        borderRadius: 22,
+        padding: 12,
+        borderWidth: 1,
+        borderColor: CARD_BORDER,
+        shadowColor: SHADOW,
+        shadowOpacity: 0.08,
+        shadowRadius: 9,
+        shadowOffset: { width: 0, height: 4 },
+        elevation: 2,
+      }}
+    >
       <View
         style={{
-          flex: 1,
-          backgroundColor: theme.colors.surface,
-          borderRadius: 18,
-          padding: 12,
+          width: 34,
+          height: 34,
+          borderRadius: 17,
+          backgroundColor: bg,
           borderWidth: 1,
-          borderColor: NEUTRAL_BORDER,
-          shadowColor: NEUTRAL_SHADOW,
-          shadowOpacity: 0.12,
-          shadowRadius: 12,
-          shadowOffset: { width: 0, height: 6 },
-          elevation: 2,
+          borderColor: border,
+          alignItems: "center",
+          justifyContent: "center",
+          marginBottom: 9,
         }}
       >
-        <Text style={{ fontSize: 20 }}>{icon}</Text>
+        <Ionicons name={icon} size={17} color={accent} />
+      </View>
+
+      <Text
+        style={{
+          color: MUTED,
+          fontWeight: "900",
+          fontSize: 10.5,
+          textTransform: "uppercase",
+          letterSpacing: 0.35,
+        }}
+        numberOfLines={1}
+      >
+        {label}
+      </Text>
+
+      <Text
+        style={{
+          color: TEXT,
+          fontWeight: "900",
+          fontSize: 20,
+          marginTop: 3,
+        }}
+        numberOfLines={1}
+      >
+        {value}
+      </Text>
+
+      {!!subtext ? (
         <Text
           style={{
-            color: theme.colors.muted,
-            fontWeight: "900",
-            fontSize: 11,
-            marginTop: 8,
-            textTransform: "uppercase",
-            letterSpacing: 0.4,
+            color: MUTED,
+            fontWeight: "700",
+            fontSize: 10.5,
+            marginTop: 2,
           }}
           numberOfLines={1}
         >
-          {label}
+          {subtext}
         </Text>
+      ) : null}
+    </View>
+  );
+}
+
+function SectionTitle({ title, subtitle, icon = "sparkles-outline", amber = true }) {
+  const accent = amber ? EVENT_AMBER : OLIVE;
+  const bg = amber ? AMBER_SOFT : OLIVE_SOFT;
+  const border = amber ? AMBER_BORDER : OLIVE_BORDER;
+
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        marginBottom: 12,
+      }}
+    >
+      <View
+        style={{
+          width: 40,
+          height: 40,
+          borderRadius: 20,
+          backgroundColor: bg,
+          borderWidth: 1,
+          borderColor: border,
+          alignItems: "center",
+          justifyContent: "center",
+          marginRight: 10,
+        }}
+      >
+        <Ionicons name={icon} size={19} color={accent} />
+      </View>
+
+      <View style={{ flex: 1, minWidth: 0 }}>
         <Text
           style={{
-            color: theme.colors.text,
-            fontWeight: "900",
+            ...serifHeading,
             fontSize: 20,
-            marginTop: 4,
+            lineHeight: 25,
           }}
           numberOfLines={1}
         >
-          {value}
+          {title}
         </Text>
-        {!!subtext && (
+
+        {!!subtitle ? (
           <Text
             style={{
-              color: theme.colors.text2,
+              color: MUTED,
+              fontSize: 12.5,
               fontWeight: "700",
-              fontSize: 11,
-              marginTop: 2,
+              lineHeight: 17,
+              marginTop: 1,
             }}
-            numberOfLines={1}
+            numberOfLines={2}
           >
-            {subtext}
-          </Text>
-        )}
-      </View>
-    );
-  }
-
-  function SectionTitle({ title, subtitle }) {
-    return (
-      <View style={{ marginBottom: 10 }}>
-        <Text style={[theme.text.h2, { fontSize: 18 }]}>{title}</Text>
-        {!!subtitle && (
-          <Text style={{ color: theme.colors.text2, marginTop: 4, lineHeight: 20 }}>
             {subtitle}
           </Text>
-        )}
+        ) : null}
       </View>
-    );
-  }
+    </View>
+  );
+}
 
-  function TodayPathTile({ icon, title, description, onPress }) {
-    return (
-      <Pressable
-        onPress={onPress}
-        style={({ pressed }) => ({
-          backgroundColor: pressed ? theme.colors.surfaceAlt : theme.colors.surface,
-          borderRadius: 18,
-          padding: 14,
-          borderWidth: 1,
-          borderColor: NEUTRAL_BORDER,
-          shadowColor: NEUTRAL_SHADOW,
-          shadowOpacity: 0.1,
-          shadowRadius: 10,
-          shadowOffset: { width: 0, height: 5 },
-          elevation: 2,
-          marginBottom: 10,
-        })}
-      >
-        <View style={{ flexDirection: "row", alignItems: "center" }}>
-          <View
-            style={{
-              width: 42,
-              height: 42,
-              borderRadius: 21,
-              backgroundColor: theme.colors.goldHalo,
-              borderWidth: 1,
-              borderColor: theme.colors.goldOutline,
-              alignItems: "center",
-              justifyContent: "center",
-              marginRight: 12,
-            }}
-          >
-            <Text style={{ fontSize: 20 }}>{icon}</Text>
-          </View>
+function TodayPathTile({ icon, title, description, onPress, tint = "amber" }) {
+  const isOlive = tint === "olive";
+  const accent = isOlive ? OLIVE : EVENT_AMBER;
+  const bg = isOlive ? OLIVE_SOFT : AMBER_SOFT;
+  const border = isOlive ? OLIVE_BORDER : AMBER_BORDER;
 
-          <View style={{ flex: 1 }}>
-            <Text style={{ color: theme.colors.text, fontWeight: "900", fontSize: 15 }}>
-              {title}
-            </Text>
-            <Text style={{ color: theme.colors.text2, marginTop: 3, lineHeight: 18 }}>
-              {description}
-            </Text>
-          </View>
-
-          <Text style={{ color: theme.colors.sage, fontWeight: "900", fontSize: 18 }}>
-            ›
-          </Text>
-        </View>
-      </Pressable>
-    );
-  }
-
- function UpcomingEventsMiniCard() {
   return (
-    <GlowCard innerStyle={{ padding: 14 }}>
-      <View style={{ flexDirection: "row", alignItems: "center" }}>
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => ({
+        backgroundColor: SURFACE,
+        borderRadius: 20,
+        padding: 14,
+        borderWidth: 1,
+        borderColor: CARD_BORDER,
+        shadowColor: SHADOW,
+        shadowOpacity: pressed ? 0.04 : 0.08,
+        shadowRadius: 8,
+        shadowOffset: { width: 0, height: 3 },
+        elevation: pressed ? 1 : 2,
+        marginBottom: 10,
+        transform: [{ scale: pressed ? 0.99 : 1 }],
+      })}
+    >
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
         <View
           style={{
             width: 42,
             height: 42,
             borderRadius: 21,
-            backgroundColor: theme.colors.sageTint || "rgba(125, 160, 120, 0.12)",
+            backgroundColor: bg,
             borderWidth: 1,
-            borderColor: theme.colors.sageOutline || "rgba(125, 160, 120, 0.28)",
+            borderColor: border,
             alignItems: "center",
             justifyContent: "center",
-            marginRight: 12,
           }}
         >
-          <Text style={{ fontSize: 20 }}>📅</Text>
+          <Ionicons name={icon} size={21} color={accent} />
         </View>
 
-        <View style={{ flex: 1 }}>
-          <Text style={{ color: theme.colors.text, fontWeight: "900", fontSize: 15 }}>
-            Upcoming Events
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text
+            style={{
+              color: TEXT,
+              fontWeight: "900",
+              fontSize: 15,
+            }}
+            numberOfLines={1}
+          >
+            {title}
           </Text>
-          <Text style={{ color: theme.colors.text2, marginTop: 4, lineHeight: 18 }}>
-            Bible studies, worship nights, prayer walks and church gatherings.
+
+          <Text
+            style={{
+              color: MUTED,
+              marginTop: 3,
+              lineHeight: 18,
+              fontWeight: "700",
+              fontSize: 12.5,
+            }}
+            numberOfLines={2}
+          >
+            {description}
           </Text>
         </View>
+
+        <Ionicons name="chevron-forward" size={18} color={accent} />
       </View>
+    </Pressable>
+  );
+}
 
-      <View style={{ marginTop: 12 }}>
+function UpcomingEventsMiniCard() {
+  return (
+    <View
+      style={{
+        ...premiumCardStyle,
+        padding: 16,
+      }}
+    >
+      <SectionTitle
+        title="Upcoming Events"
+        subtitle="Gatherings, prayer, worship and church life"
+        icon="calendar-outline"
+        amber={false}
+      />
+
+      <View style={{ marginTop: 2 }}>
         {dailyEventsLoading ? (
           <View style={{ paddingVertical: 10, alignItems: "center" }}>
-            <ActivityIndicator color={theme.colors.gold} />
-            <Text style={{ color: theme.colors.muted, marginTop: 6, fontWeight: "700" }}>
+            <ActivityIndicator color={EVENT_AMBER} />
+
+            <Text
+              style={{
+                color: MUTED,
+                marginTop: 6,
+                fontWeight: "800",
+              }}
+            >
               Loading events…
             </Text>
           </View>
@@ -1986,17 +2540,21 @@ useEffect(() => {
               key={event.id}
               onPress={() => navigation.navigate("EventDetails", { eventId: event.id })}
               style={({ pressed }) => ({
-                paddingVertical: 10,
-                paddingHorizontal: 10,
-                borderRadius: 14,
-                backgroundColor: pressed ? theme.colors.surfaceAlt : theme.colors.surface,
+                paddingVertical: 11,
+                paddingHorizontal: 11,
+                borderRadius: 16,
+                backgroundColor: pressed ? OLIVE_SOFT : SURFACE,
                 borderWidth: 1,
-                borderColor: NEUTRAL_BORDER,
+                borderColor: CARD_BORDER,
                 marginBottom: 8,
               })}
             >
               <Text
-                style={{ color: theme.colors.text, fontWeight: "900" }}
+                style={{
+                  color: TEXT,
+                  fontWeight: "900",
+                  fontSize: 14,
+                }}
                 numberOfLines={1}
               >
                 {event.title || "Untitled event"}
@@ -2004,9 +2562,9 @@ useEffect(() => {
 
               <Text
                 style={{
-                  color: theme.colors.text2,
+                  color: EVENT_BROWN,
                   marginTop: 4,
-                  fontWeight: "700",
+                  fontWeight: "900",
                   fontSize: 12,
                 }}
                 numberOfLines={1}
@@ -2014,10 +2572,10 @@ useEffect(() => {
                 {formatEventDateTime(event.start_at, event.end_at)}
               </Text>
 
-              {!!(event.location_name || event.location_address || event.online_url) && (
+              {!!(event.location_name || event.location_address || event.online_url) ? (
                 <Text
                   style={{
-                    color: theme.colors.muted,
+                    color: MUTED,
                     marginTop: 3,
                     fontWeight: "700",
                     fontSize: 12,
@@ -2028,295 +2586,861 @@ useEffect(() => {
                     event.location_address ||
                     (event.online_url ? "Online" : "")}
                 </Text>
-              )}
+              ) : null}
             </Pressable>
           ))
         ) : (
-          <Text style={{ color: theme.colors.muted, lineHeight: 20 }}>
+          <Text
+            style={{
+              color: MUTED,
+              lineHeight: 20,
+              fontWeight: "700",
+            }}
+          >
             No upcoming events yet.
           </Text>
         )}
       </View>
 
-      <View style={{ marginTop: 10 }}>
-        <GlowButton
-          title="View Events"
-          variant="outline"
-          onPress={() => navigation.navigate("Events")}
-        />
-      </View>
-    </GlowCard>
+      <Pressable
+        onPress={() => navigation.navigate("Events")}
+        style={({ pressed }) => ({
+          marginTop: 10,
+          borderRadius: 999,
+          paddingVertical: 11,
+          paddingHorizontal: 14,
+          backgroundColor: pressed ? "rgba(79, 99, 59, 0.14)" : OLIVE_SOFT,
+          borderWidth: 1,
+          borderColor: OLIVE_BORDER,
+          alignItems: "center",
+        })}
+      >
+        <Text
+          style={{
+            color: OLIVE,
+            fontWeight: "900",
+            fontSize: 13,
+          }}
+        >
+          View Events
+        </Text>
+      </Pressable>
+    </View>
   );
 }
   const renderDisciplineCard = ({ item: d, index }) => {
-    const meta = DISCIPLINE_META[d];
-    const completed = !!completedByDisciplineLocal?.[d];
-    const options = missionsByDisciplineLocal?.[d] || [];
+  const meta = DISCIPLINE_META[d];
+  const completed = !!completedByDisciplineLocal?.[d];
+  const options = missionsByDisciplineLocal?.[d] || [];
+  const primaryMission = options[0] || null;
 
-    // ✅ thick silver when incomplete; thick gold when complete
-    const ringColor = completed ? theme.colors.gold : SILVER;
+  const inputRange = [(index - 1) * ITEM_SIZE, index * ITEM_SIZE, (index + 1) * ITEM_SIZE];
 
-    // ✅ glow as you swipe into the card (continuous)
-    const inputRange = [(index - 1) * ITEM_SIZE, index * ITEM_SIZE, (index + 1) * ITEM_SIZE];
+  const baseScale = scrollX.interpolate({
+    inputRange,
+    outputRange: [0.95, 1, 0.95],
+    extrapolate: "clamp",
+  });
 
-    const baseScale = scrollX.interpolate({
-      inputRange,
-      outputRange: [0.94, 1, 0.94],
-      extrapolate: "clamp",
-    });
+  const translateY = scrollX.interpolate({
+    inputRange,
+    outputRange: [8, 0, 8],
+    extrapolate: "clamp",
+  });
 
-    const translateY = scrollX.interpolate({
-      inputRange,
-      outputRange: [10, 0, 10],
-      extrapolate: "clamp",
-    });
+  const opacity = scrollX.interpolate({
+    inputRange,
+    outputRange: [0.9, 1, 0.9],
+    extrapolate: "clamp",
+  });
 
-    const opacity = scrollX.interpolate({
-      inputRange,
-      outputRange: [0.88, 1, 0.88],
-      extrapolate: "clamp",
-    });
+  const focusOpacity = scrollX.interpolate({
+    inputRange,
+    outputRange: [0.1, 1, 0.1],
+    extrapolate: "clamp",
+  });
 
-    // Preselect ring appears BEFORE snap settles
-    const preselect = scrollX.interpolate({
-      inputRange,
-      outputRange: [0.15, 1, 0.15],
-      extrapolate: "clamp",
-    });
+  const isActive = index === activeIndex;
+  const isPressed = pressedIndex === index;
+  const pressedBump = isActive && isPressed ? 1.015 : 1;
 
-    // Continuous "focus glow" based on proximity to centre card
-    const focusGlowOpacity = scrollX.interpolate({
-      inputRange,
-      outputRange: [0.12, 0.62, 0.12],
-      extrapolate: "clamp",
-    });
+  const accent = completed ? EVENT_AMBER : OLIVE;
+  const accentSoft = completed ? AMBER_SOFT : OLIVE_SOFT;
+  const accentBorder = completed ? AMBER_BORDER : OLIVE_BORDER;
 
-    const isActive = index === activeIndex; // updates promptly during scroll
-    const isSettled = index === settledIndex; // used for pulse on settle only
-
-    const isPressed = pressedIndex === index;
-    const pressedBump = isActive && isPressed ? 1.03 : 1;
-
-    // Pulse overlay (extra kick on settle)
-    const pulseOpacity = isSettled ? glowPulse : 0;
-
-    return (
-      <Animated.View
-        style={{
-          width: ITEM_SIZE,
-          paddingRight: GAP,
-          opacity,
-          transform: [{ scale: baseScale }, { translateY }],
-        }}
-      >
-        <Animated.View style={{ width: CARD_WIDTH, transform: [{ scale: pressedBump }] }}>
-          <View
-            style={{
-              backgroundColor: theme.colors.surface,
-              borderRadius: 18,
-
-              // ✅ neutral structure border (gold saved for “meaning”)
-              borderWidth: 1,
-              borderColor: NEUTRAL_BORDER,
-
-              overflow: "hidden",
-              shadowColor: NEUTRAL_SHADOW,
-              shadowOpacity: 0.18,
-              shadowRadius: 16,
-              shadowOffset: { width: 0, height: 10 },
-              elevation: 4,
-            }}
-          >
-            {/* ✅ Thick “selected” ring that fades in early while swiping */}
-            <Animated.View
-              pointerEvents="none"
-              style={{
-                position: "absolute",
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                borderRadius: 18,
-                borderWidth: 4,
-                borderColor: ringColor,
-                opacity: preselect,
-              }}
-            />
-
-            {/* ✅ Continuous focus glow while swiping/selected */}
-            <Animated.View
-              pointerEvents="none"
-              style={{
-                position: "absolute",
-                top: -10,
-                left: -10,
-                right: -10,
-                bottom: -10,
-                borderRadius: 24,
-                borderWidth: 3,
-                borderColor: ringColor,
-                opacity: focusGlowOpacity,
-              }}
-            />
-            <Animated.View
-              pointerEvents="none"
-              style={{
-                position: "absolute",
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                backgroundColor: completed ? theme.colors.goldHalo : SILVER_HALO,
-                opacity: focusGlowOpacity,
-              }}
-            />
-
-            {/* Pulse overlay on settle */}
-            <Animated.View
-              pointerEvents="none"
-              style={{
-                position: "absolute",
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                borderRadius: 18,
-                borderWidth: 2,
-                borderColor: ringColor,
-                opacity: pulseOpacity,
-              }}
-            />
-
-            <Pressable
-              onPressIn={() => setPressedIndex(index)}
-              onPressOut={() => setPressedIndex(null)}
-              style={{ padding: 14 }}
-            >
-              <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    flex: 1,
-                    paddingRight: 10,
-                  }}
-                >
-                  <Text style={{ fontSize: 18, marginRight: 10 }}>{meta.icon}</Text>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ color: theme.colors.text, fontWeight: "900", fontSize: 16 }}>
-                      {meta.label}
-                    </Text>
-                    <Text style={{ color: theme.colors.text2, marginTop: 2 }}>{meta.blurb}</Text>
-                  </View>
-                </View>
-
-                <View
-                  style={{
-                    paddingHorizontal: 10,
-                    paddingVertical: 6,
-                    borderRadius: 999,
-                    backgroundColor: completed ? theme.colors.goldHalo : "rgba(201,206,216,0.10)",
-                    borderWidth: 2,
-                    borderColor: completed ? theme.colors.goldOutline : SILVER_DIM,
-                    alignSelf: "flex-start",
-                  }}
-                >
-                  <Text
-                    style={{
-                      color: completed ? theme.colors.goldPressed : SILVER,
-                      fontWeight: "900",
-                    }}
-                  >
-                    {completed ? "1/1" : "0/1"}
-                  </Text>
-                </View>
-              </View>
-
-              {isActive ? (
-                <Text style={{ color: theme.colors.sage, marginTop: 10, fontWeight: "900" }}>
-                  Active
-                </Text>
-              ) : (
-                <Text style={{ color: theme.colors.muted, marginTop: 10 }}>
-                  Swipe to bring forward
-                </Text>
-              )}
-            </Pressable>
-
-            <View style={{ paddingHorizontal: 14, paddingBottom: 14 }}>
-              {options.length === 0 ? (
-                <Text style={{ color: theme.colors.muted }}>No missions for this discipline yet.</Text>
-              ) : (
-                options.map((m) => renderMissionOption(m, completed))
-              )}
-            </View>
-          </View>
-        </Animated.View>
-      </Animated.View>
-    );
-  };
+  const disciplineLabel = completed ? "Completed" : "Practice";
 
   return (
-    <Screen padded>
-      {({ bottomPad }) => (
-        <>
-          <ScrollView
-  ref={scrollRef}
-  keyboardShouldPersistTaps="handled"
-  contentContainerStyle={{ paddingBottom: (bottomPad || 0) + 18 }}
+    <Animated.View
+      style={{
+        width: ITEM_SIZE,
+        paddingRight: GAP,
+        opacity,
+        transform: [{ scale: baseScale }, { translateY }],
+      }}
+    >
+      <Animated.View style={{ width: CARD_WIDTH, transform: [{ scale: pressedBump }] }}>
+        <Pressable
+          onPressIn={() => setPressedIndex(index)}
+          onPressOut={() => setPressedIndex(null)}
+          style={({ pressed }) => ({
+            backgroundColor: SURFACE,
+            borderRadius: 26,
+            borderWidth: 1,
+            borderColor: completed ? AMBER_BORDER : CARD_BORDER,
+            shadowColor: SHADOW,
+            shadowOpacity: pressed ? 0.08 : 0.12,
+            shadowRadius: 14,
+            shadowOffset: { width: 0, height: 6 },
+            elevation: 4,
+            overflow: "hidden",
+          })}
+        >
+          <Animated.View
+            pointerEvents="none"
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              borderRadius: 26,
+              borderWidth: 2,
+              borderColor: accentBorder,
+              opacity: focusOpacity,
+            }}
+          />
+
+          <View style={{ padding: 16 }}>
+            <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
+              <View
+                style={{
+                  width: 46,
+                  height: 46,
+                  borderRadius: 23,
+                  backgroundColor: accentSoft,
+                  borderWidth: 1,
+                  borderColor: accentBorder,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginRight: 11,
+                }}
+              >
+                <Text style={{ fontSize: 21 }}>{meta.icon}</Text>
+              </View>
+
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text
+                  style={{
+                    color: TEXT,
+                    fontWeight: "900",
+                    fontSize: 18,
+                    lineHeight: 23,
+                  }}
+                  numberOfLines={1}
+                >
+                  {meta.label}
+                </Text>
+
+                <Text
+                  style={{
+                    color: MUTED,
+                    marginTop: 3,
+                    fontWeight: "700",
+                    lineHeight: 18,
+                    fontSize: 12.5,
+                  }}
+                  numberOfLines={2}
+                >
+                  {meta.blurb}
+                </Text>
+              </View>
+
+              <View
+                style={{
+                  paddingHorizontal: 9,
+                  paddingVertical: 6,
+                  borderRadius: 999,
+                  backgroundColor: completed ? AMBER_SOFT : OLIVE_SOFT,
+                  borderWidth: 1,
+                  borderColor: completed ? AMBER_BORDER : OLIVE_BORDER,
+                  marginLeft: 8,
+                }}
+              >
+                <Text
+                  style={{
+                    color: completed ? EVENT_AMBER : OLIVE,
+                    fontWeight: "900",
+                    fontSize: 11.5,
+                  }}
+                >
+                  {completed ? "Done" : "Open"}
+                </Text>
+              </View>
+            </View>
+
+            <View
+              style={{
+                marginTop: 15,
+                borderRadius: 20,
+                padding: 14,
+                backgroundColor: completed ? AMBER_SOFT : PREMIUM_CREAM,
+                borderWidth: 1,
+                borderColor: completed ? AMBER_BORDER : CARD_BORDER,
+              }}
+            >
+              <Text
+                style={{
+                  color: EVENT_BROWN,
+                  fontWeight: "900",
+                  fontSize: 11,
+                  letterSpacing: 0.35,
+                  textTransform: "uppercase",
+                }}
+              >
+                Today’s mission
+              </Text>
+
+              {primaryMission ? (
+                <>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      justifyContent: "space-between",
+                      alignItems: "flex-start",
+                      marginTop: 7,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: TEXT,
+                        fontWeight: "900",
+                        fontSize: 16,
+                        lineHeight: 21,
+                        flex: 1,
+                        paddingRight: 10,
+                      }}
+                      numberOfLines={openMissionId === primaryMission.id ? undefined : 2}
+                    >
+                      {primaryMission.mission_title}
+                    </Text>
+
+                    <View
+  style={{
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: completed ? AMBER_SOFT : OLIVE_SOFT,
+    borderWidth: 1,
+    borderColor: completed ? AMBER_BORDER : OLIVE_BORDER,
+  }}
 >
-
-            {/* Daily Dashboard Header */}
-<View style={{ marginBottom: 16 }}>
-  <View style={{ marginBottom: 12 }}>
-    <Text style={[theme.text.h1, { fontSize: 24 }]}>Daily</Text>
-    <Text style={[theme.text.sub, { marginTop: 4 }]}>
-      Your walk today — Scripture, formation, and progress.
-    </Text>
-  </View>
-
-  <View style={{ flexDirection: "row", gap: 10 }}>
-    <DailyStatTile
-      icon="🔥"
-      label="Streak"
-      value={`${streak}`}
-      subtext="days"
-    />
-
-    <DailyStatTile
-      icon="✨"
-      label="Light Points"
-      value={`${monthLP}`}
-      subtext="this month"
-    />
-
-    <DailyStatTile
-      icon="✅"
-      label="Today"
-      value={`${completedCount}/5`}
-      subtext={`+${earnedPointsToday} earned`}
-    />
-  </View>
-
   <Text
     style={{
-      color: theme.colors.muted,
-      marginTop: 10,
-      fontSize: 12,
-      fontWeight: "700",
-      lineHeight: 18,
+      color: completed ? EVENT_AMBER : OLIVE,
+      fontWeight: "900",
+      fontSize: 11.5,
     }}
   >
-    Streak bonus: +{streakBonusPerMission}/mission, capped at {STREAK_BONUS_CAP}.
+    {disciplineLabel}
   </Text>
+</View>
+                  </View>
+
+                 <Text
+  style={{
+    color: MUTED,
+    marginTop: 7,
+    fontWeight: "700",
+    lineHeight: 20,
+    fontSize: 13.5,
+  }}
+  numberOfLines={openMissionId === primaryMission.id ? undefined : 3}
+>
+  {primaryMission.objective_line}
+</Text>
+
+                  {openMissionId === primaryMission.id ? (
+                    <View style={{ marginTop: 12 }}>
+                      {!!primaryMission.why_short ? (
+                        <>
+                          <Text
+                            style={{
+                              color: TEXT,
+                              fontWeight: "900",
+                              fontSize: 13,
+                            }}
+                          >
+                            Why this matters
+                          </Text>
+
+                          <Text
+                            style={{
+                              color: MUTED,
+                              marginTop: 5,
+                              lineHeight: 19,
+                              fontWeight: "700",
+                              fontSize: 12.5,
+                            }}
+                          >
+                            {primaryMission.why_short}
+                          </Text>
+                        </>
+                      ) : null}
+
+                      {Array.isArray(primaryMission.steps) && primaryMission.steps.length ? (
+                        <View style={{ marginTop: 10 }}>
+                          <Text
+                            style={{
+                              color: TEXT,
+                              fontWeight: "900",
+                              fontSize: 13,
+                            }}
+                          >
+                            How to do it
+                          </Text>
+
+                          {primaryMission.steps.map((s, idx) => (
+                            <Text
+                              key={`${primaryMission.id}-step-${idx}`}
+                              style={{
+                                color: MUTED,
+                                marginTop: 4,
+                                lineHeight: 18,
+                                fontWeight: "700",
+                                fontSize: 12.5,
+                              }}
+                            >
+                              • {s}
+                            </Text>
+                          ))}
+                        </View>
+                      ) : null}
+
+                      {Array.isArray(primaryMission.scripture_refs) &&
+                      primaryMission.scripture_refs.length ? (
+                        <View style={{ marginTop: 10, flexDirection: "row", flexWrap: "wrap" }}>
+                          {primaryMission.scripture_refs.slice(0, 2).map((r) => (
+                            <Pressable
+                              key={`${primaryMission.id}-ref-${r}`}
+                              onPress={() => openScripture(r)}
+                              style={({ pressed }) => ({
+                                marginRight: 7,
+                                marginBottom: 7,
+                                borderRadius: 999,
+                                paddingHorizontal: 10,
+                                paddingVertical: 7,
+                                backgroundColor: pressed ? AMBER_SOFT : SURFACE,
+                                borderWidth: 1,
+                                borderColor: AMBER_BORDER,
+                              })}
+                            >
+                              <Text
+                                style={{
+                                  color: EVENT_BROWN,
+                                  fontWeight: "900",
+                                  fontSize: 11.5,
+                                }}
+                              >
+                                {r}
+                              </Text>
+                            </Pressable>
+                          ))}
+                        </View>
+                      ) : null}
+                    </View>
+                  ) : null}
+
+                  <View style={{ flexDirection: "row", gap: 8, marginTop: 13 }}>
+                    <Pressable
+                      onPress={() =>
+                        setOpenMissionId(
+                          openMissionId === primaryMission.id ? null : primaryMission.id
+                        )
+                      }
+                      style={({ pressed }) => ({
+                        flex: 1,
+                        borderRadius: 999,
+                        paddingVertical: 10,
+                        alignItems: "center",
+                        backgroundColor: pressed ? OLIVE_SOFT : SURFACE,
+                        borderWidth: 1,
+                        borderColor: OLIVE_BORDER,
+                      })}
+                    >
+                      <Text
+                        style={{
+                          color: OLIVE,
+                          fontWeight: "900",
+                          fontSize: 12,
+                        }}
+                      >
+                        {openMissionId === primaryMission.id ? "Hide Details" : "Details"}
+                      </Text>
+                    </Pressable>
+
+                    <Pressable
+                      onPress={() => startCompleteMission(primaryMission)}
+                      disabled={completed}
+                      style={({ pressed }) => ({
+                        flex: 1.2,
+                        borderRadius: 999,
+                        paddingVertical: 10,
+                        alignItems: "center",
+                        backgroundColor: completed
+                          ? "rgba(107, 114, 128, 0.12)"
+                          : pressed
+                          ? "rgba(180, 83, 9, 0.88)"
+                          : EVENT_AMBER,
+                        borderWidth: 1,
+                        borderColor: completed ? CARD_BORDER : EVENT_AMBER,
+                      })}
+                    >
+                      <Text
+                        style={{
+                          color: completed ? MUTED : SURFACE,
+                          fontWeight: "900",
+                          fontSize: 12,
+                        }}
+                      >
+                        {completed ? "Completed" : "Mark Complete"}
+                      </Text>
+                    </Pressable>
+                  </View>
+                </>
+              ) : (
+                <Text
+                  style={{
+                    color: MUTED,
+                    marginTop: 8,
+                    fontWeight: "700",
+                    lineHeight: 20,
+                  }}
+                >
+                  No mission has been added for this discipline yet.
+                </Text>
+              )}
+            </View>
+
+            {options.length > 1 ? (
+              <Text
+                style={{
+                  color: MUTED,
+                  marginTop: 10,
+                  fontWeight: "700",
+                  fontSize: 11.5,
+                  textAlign: "center",
+                }}
+              >
+                Showing today’s primary mission
+              </Text>
+            ) : null}
+          </View>
+        </Pressable>
+      </Animated.View>
+    </Animated.View>
+  );
+};
+
+  return (
+  <Screen backgroundColor={PREMIUM_CREAM} padded>
+      {({ bottomPad }) => (
+        <>
+      <ScrollView
+  ref={scrollRef}
+  keyboardShouldPersistTaps="handled"
+  showsVerticalScrollIndicator={false}
+  contentContainerStyle={{
+    paddingBottom: (bottomPad || 0) + 22,
+  }}
+>
+
+{/* Daily Dashboard Header */}
+<View
+  style={{
+    marginBottom: 18,
+  }}
+>
+  <View
+    style={{
+      flexDirection: "row",
+      alignItems: "flex-start",
+      justifyContent: "space-between",
+    }}
+  >
+    <View style={{ flex: 1, minWidth: 0, paddingRight: 12 }}>
+      <Text
+        style={{
+          ...serifHeading,
+          fontSize: 36,
+          lineHeight: 41,
+        }}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.78}
+      >
+        Daily
+      </Text>
+
+      <Text
+        style={{
+          color: MUTED,
+          fontSize: 14,
+          fontWeight: "700",
+          lineHeight: 20,
+          marginTop: 3,
+        }}
+        numberOfLines={2}
+      >
+        Scripture, formation and your walk with God today.
+      </Text>
+    </View>
+
+    <Pressable
+  onLongPress={() => {
+    if (__DEV__) setDailyPreviewOpen((v) => !v);
+  }}
+  delayLongPress={700}
+  style={{
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: AMBER_SOFT,
+    borderWidth: 1,
+    borderColor: AMBER_BORDER,
+    alignItems: "center",
+    justifyContent: "center",
+  }}
+>
+  <Ionicons name="sunny-outline" size={23} color={EVENT_AMBER} />
+</Pressable>
+  </View>
+</View>
+
+<DevDaySwitcher />
+
+{/* ========================= */}
+{/* Scripture “Hero” Section  */}
+{/* ========================= */}
+<View
+  onLayout={(e) => {
+    setScriptureY(e.nativeEvent.layout.y);
+  }}
+  style={{ marginTop: 0, marginBottom: 16 }}
+>
+  <View
+    style={{
+      borderRadius: 28,
+      overflow: "hidden",
+      borderWidth: 1,
+      borderColor: AMBER_BORDER,
+      shadowColor: SHADOW,
+      shadowOpacity: 0.16,
+      shadowRadius: 18,
+      shadowOffset: { width: 0, height: 8 },
+      elevation: 5,
+      backgroundColor: EVENT_BROWN,
+    }}
+  >
+    {scriptureImageForToday() ? (
+      <ImageBackground
+        source={scriptureImageForToday()}
+        resizeMode="cover"
+        style={{
+          minHeight: 260,
+        }}
+      >
+        <View
+          style={{
+            flex: 1,
+            minHeight: 260,
+            padding: 18,
+            backgroundColor: "rgba(31, 41, 51, 0.22)",
+          }}
+        >
+          <View
+            style={{
+              alignSelf: "flex-start",
+              paddingHorizontal: 10,
+              paddingVertical: 6,
+              borderRadius: 999,
+              backgroundColor: "rgba(255, 252, 245, 0.92)",
+              borderWidth: 1,
+              borderColor: "rgba(255, 252, 245, 0.35)",
+            }}
+          >
+            <Text
+              style={{
+                color: EVENT_BROWN,
+                fontSize: 11,
+                fontWeight: "900",
+                letterSpacing: 0.25,
+              }}
+            >
+              TODAY’S SCRIPTURE
+            </Text>
+          </View>
+
+          <View style={{ flex: 1, justifyContent: "flex-end" }}>
+            <Text
+              style={{
+                color: SURFACE,
+                fontSize: 12.5,
+                fontWeight: "800",
+                marginBottom: 8,
+              }}
+            >
+              {dateLabel}
+            </Text>
+
+            <Text
+              style={{
+                fontFamily: displayFont,
+                color: SURFACE,
+                fontSize: 28,
+                lineHeight: 34,
+                fontWeight: "900",
+                letterSpacing: -0.45,
+              }}
+              numberOfLines={2}
+              adjustsFontSizeToFit
+              minimumFontScale={0.82}
+            >
+              {scriptureTitle}
+            </Text>
+
+            <Text
+              style={{
+                color: "rgba(255, 252, 245, 0.94)",
+                fontSize: 15,
+                lineHeight: 24,
+                fontWeight: "700",
+                marginTop: 12,
+              }}
+              numberOfLines={4}
+            >
+              “{verse.text ?? "—"}”
+            </Text>
+
+            <Pressable
+              onPress={() => openScripture(verse.ref)}
+              disabled={!verse?.ref}
+              style={({ pressed }) => ({
+                alignSelf: "flex-start",
+                marginTop: 12,
+                borderRadius: 999,
+                paddingHorizontal: 12,
+                paddingVertical: 7,
+                backgroundColor: pressed
+                  ? "rgba(255, 252, 245, 0.82)"
+                  : "rgba(255, 252, 245, 0.94)",
+              })}
+            >
+              <Text
+                style={{
+                  color: EVENT_BROWN,
+                  fontSize: 12,
+                  fontWeight: "900",
+                }}
+              >
+                {verse.ref ?? "—"} {verse.translation ? `(${verse.translation})` : ""}
+              </Text>
+            </Pressable>
+
+            <Pressable
+              onPress={openCoach}
+              style={({ pressed }) => ({
+                alignSelf: "flex-start",
+                marginTop: 14,
+                borderRadius: 999,
+                paddingHorizontal: 14,
+                paddingVertical: 9,
+                backgroundColor: pressed ? "rgba(180, 83, 9, 0.86)" : EVENT_AMBER,
+                borderWidth: 1,
+                borderColor: "rgba(255, 252, 245, 0.32)",
+              })}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <Ionicons name="sparkles-outline" size={15} color={SURFACE} />
+
+                <Text
+                  style={{
+                    color: SURFACE,
+                    fontSize: 12.5,
+                    fontWeight: "900",
+                    marginLeft: 6,
+                  }}
+                >
+                  Faith Coach
+                </Text>
+              </View>
+            </Pressable>
+          </View>
+        </View>
+      </ImageBackground>
+    ) : (
+      <View
+        style={{
+          minHeight: 260,
+          padding: 18,
+          backgroundColor: EVENT_BROWN,
+        }}
+      >
+        <View
+          style={{
+            position: "absolute",
+            top: -50,
+            right: -40,
+            width: 160,
+            height: 160,
+            borderRadius: 80,
+            backgroundColor: "rgba(180, 83, 9, 0.34)",
+          }}
+        />
+
+        <View
+          style={{
+            position: "absolute",
+            bottom: -65,
+            left: -55,
+            width: 190,
+            height: 190,
+            borderRadius: 95,
+            backgroundColor: "rgba(255, 252, 245, 0.10)",
+          }}
+        />
+
+        <View
+          style={{
+            alignSelf: "flex-start",
+            paddingHorizontal: 10,
+            paddingVertical: 6,
+            borderRadius: 999,
+            backgroundColor: "rgba(255, 252, 245, 0.92)",
+            borderWidth: 1,
+            borderColor: "rgba(255, 252, 245, 0.35)",
+          }}
+        >
+          <Text
+            style={{
+              color: EVENT_BROWN,
+              fontSize: 11,
+              fontWeight: "900",
+              letterSpacing: 0.25,
+            }}
+          >
+            TODAY’S SCRIPTURE
+          </Text>
+        </View>
+
+        <View style={{ flex: 1, justifyContent: "flex-end", marginTop: 46 }}>
+          <Text
+            style={{
+              color: "rgba(255, 252, 245, 0.84)",
+              fontSize: 12.5,
+              fontWeight: "800",
+              marginBottom: 8,
+            }}
+          >
+            {dateLabel}
+          </Text>
+
+          <Text
+            style={{
+              fontFamily: displayFont,
+              color: SURFACE,
+              fontSize: 28,
+              lineHeight: 34,
+              fontWeight: "900",
+              letterSpacing: -0.45,
+            }}
+            numberOfLines={2}
+            adjustsFontSizeToFit
+            minimumFontScale={0.82}
+          >
+            {scriptureTitle}
+          </Text>
+
+          <Text
+            style={{
+              color: "rgba(255, 252, 245, 0.94)",
+              fontSize: 15,
+              lineHeight: 24,
+              fontWeight: "700",
+              marginTop: 12,
+            }}
+            numberOfLines={4}
+          >
+            “{verse.text ?? "—"}”
+          </Text>
+
+          <Pressable
+            onPress={() => openScripture(verse.ref)}
+            disabled={!verse?.ref}
+            style={({ pressed }) => ({
+              alignSelf: "flex-start",
+              marginTop: 12,
+              borderRadius: 999,
+              paddingHorizontal: 12,
+              paddingVertical: 7,
+              backgroundColor: pressed
+                ? "rgba(255, 252, 245, 0.82)"
+                : "rgba(255, 252, 245, 0.94)",
+            })}
+          >
+            <Text
+              style={{
+                color: EVENT_BROWN,
+                fontSize: 12,
+                fontWeight: "900",
+              }}
+            >
+              {verse.ref ?? "—"} {verse.translation ? `(${verse.translation})` : ""}
+            </Text>
+          </Pressable>
+
+          <Pressable
+            onPress={openCoach}
+            style={({ pressed }) => ({
+              alignSelf: "flex-start",
+              marginTop: 14,
+              borderRadius: 999,
+              paddingHorizontal: 14,
+              paddingVertical: 9,
+              backgroundColor: pressed ? "rgba(180, 83, 9, 0.86)" : EVENT_AMBER,
+              borderWidth: 1,
+              borderColor: "rgba(255, 252, 245, 0.32)",
+            })}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <Ionicons name="sparkles-outline" size={15} color={SURFACE} />
+
+              <Text
+                style={{
+                  color: SURFACE,
+                  fontSize: 12.5,
+                  fontWeight: "900",
+                  marginLeft: 6,
+                }}
+              >
+                Faith Coach
+              </Text>
+            </View>
+          </Pressable>
+        </View>
+      </View>
+    )}
+  </View>
 </View>
 
 {/* This Week */}
 <View style={{ marginBottom: 16 }}>
-  <SectionTitle
-    title="This Week"
-    subtitle="Encouragement, challenge, and gatherings connected to your walk."
-  />
+ <SectionTitle
+  title="Church This Week"
+  subtitle="Your church message, challenge and upcoming gatherings"
+  icon="calendar-clear-outline"
+  amber
+/>
 
   {/* Weekly Message (Mon–Sun encouragement) */}
   <View style={{ marginTop: 6 }}>
@@ -2413,321 +3537,508 @@ messageTitle={weeklyMsg.title || null}
   </View>
 </View>
 
-{/* Today’s Path */}
-<View style={{ marginBottom: 16 }}>
-  <SectionTitle
-    title="Today’s Path"
-    subtitle="Choose what you want to focus on next."
-  />
 
-  <TodayPathTile
-    icon="📖"
-    title="Daily Bible Verse"
-    description="Read today’s verse, open the full passage, and ask Faith Coach."
-    onPress={scrollToScripture}
-  />
-
-  <TodayPathTile
-    icon="🛡️"
-    title="Today’s Formation"
-    description="Complete today’s disciplines and claim your progress."
-    onPress={scrollToFormation}
-  />
-</View>
-            {/* ========================= */}
-            {/* Scripture “Hero” Section  */}
-            {/* ========================= */}
-            <View
-  onLayout={(e) => {
-    setScriptureY(e.nativeEvent.layout.y);
-  }}
-  style={{ marginTop: 14 }}
->
-              <View
-                style={{
-                  marginHorizontal: -16,
-                  backgroundColor: PARCHMENT,
-                  borderTopWidth: 1,
-                  borderBottomWidth: 1,
-                  borderColor: NEUTRAL_BORDER,
-                }}
-              >
-                <View style={{ paddingHorizontal: 16, paddingVertical: 16 }}>
-                  {/* Meta bar */}
-                  <View
-                    style={{
-                      backgroundColor: theme.colors.surface,
-                      borderRadius: 16,
-                      padding: 14,
-                      borderWidth: 1,
-                      borderColor: NEUTRAL_BORDER,
-                      shadowColor: NEUTRAL_SHADOW,
-                      shadowOpacity: 0.12,
-                      shadowRadius: 12,
-                      shadowOffset: { width: 0, height: 6 },
-                      elevation: 2,
-                    }}
-                  >
-                    <Text style={{ color: theme.colors.text2, fontSize: 12, fontWeight: "800" }}>
-                      {dateLabel}
-                    </Text>
-
-                    <Text
-                      style={{
-                        color: theme.colors.text,
-                        fontWeight: "900",
-                        fontSize: 20,
-                        textAlign: "center",
-                        marginTop: 8,
-                        letterSpacing: 0.3,
-                        fontFamily: Platform.select({
-                          ios: "Georgia",
-                          android: "serif",
-                          default: "serif",
-                        }),
-                      }}
-                    >
-                      {scriptureTitle}
-                    </Text>
-
-                    <Text
-                      style={{
-                        color: theme.colors.muted,
-                        fontSize: 12,
-                        fontWeight: "800",
-                        marginTop: 10,
-                        textAlign: "center",
-                      }}
-                    >
-                      Tap the reference to read the full passage
-                    </Text>
-                  </View>
-
-                  {/* Verse body (clearer hierarchy + more “air”) */}
-                  <View style={{ marginTop: 14 }}>
-                    <View
-                      style={{
-                        paddingLeft: 12,
-                        borderLeftWidth: 3,
-                        borderLeftColor: theme.colors.goldOutline,
-                      }}
-                    >
-                      <Text
-                        style={{
-                          color: theme.colors.text,
-                          fontSize: 16,
-                          lineHeight: 26,
-                        }}
-                      >
-                        {verse.text ?? "—"}
-                      </Text>
-                    </View>
-
-                    <Pressable
-                      onPress={() => openScripture(verse.ref)}
-                      disabled={!verse?.ref}
-                      style={{ marginTop: 12 }}
-                    >
-                      <Text
-                        style={{
-                          color: theme.colors.goldPressed,
-                          fontWeight: "900",
-                        }}
-                      >
-                        — {verse.ref ?? "—"} {verse.translation ? `(${verse.translation})` : ""}
-                      </Text>
-                    </Pressable>
-                  </View>
-
-                  <View style={{ flexDirection: "row", marginTop: 14 }}>
-                    <View style={{ flex: 1, marginRight: 8 }}>
-                      <GlowButton title="Faith Coach" onPress={openCoach} variant="primary" />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <GlowButton title="Share progress" onPress={openShare} variant="outline" />
-                    </View>
-                  </View>
-                </View>
-              </View>
-            </View>
-
-           {/* Formation Section (clear chapter) */}
+{/* Today’s Formation */}
 <View
   onLayout={(e) => {
     setFormationY(e.nativeEvent.layout.y);
   }}
-  style={{ marginTop: SECTION_GAP }}
+  style={{ marginTop: 18 }}
 >
+  <View
+    style={{
+      ...premiumCardStyle,
+      paddingVertical: 16,
+      marginBottom: 16,
+    }}
+  >
+    <View style={{ paddingHorizontal: 16 }}>
+      <SectionTitle
+        title="Today’s Formation"
+        subtitle="Choose one discipline to practise today"
+        icon="shield-checkmark-outline"
+        amber={false}
+      />
 
-              <View
-                style={{
-                  marginHorizontal: -16,
-                  backgroundColor: SAGE_BAND,
-                  borderTopWidth: 1,
-                  borderBottomWidth: 1,
-                  borderColor: NEUTRAL_BORDER,
-                }}
-              >
-                <View style={{ paddingHorizontal: 16, paddingVertical: 16 }}>
-                  <Text style={[theme.text.h2, { fontSize: 18 }]}>Today’s Formation</Text>
-                  <Text style={{ color: theme.colors.text2, marginTop: 6, lineHeight: 20 }}>
-                    This is your daily training plan. Each card is one discipline that strengthens you
-                    as a Christian. Bring a discipline to the centre, choose one mission, and complete
-                    it to grow your consistency.
-                  </Text>
-                  <Text style={{ color: theme.colors.muted, marginTop: 6, lineHeight: 20 }}>
-                    Incomplete missions are marked with a silver ring. When completed, the ring turns
-                    gold.
-                  </Text>
+      <Text
+        style={{
+          color: MUTED,
+          fontSize: 13,
+          fontWeight: "700",
+          lineHeight: 20,
+          marginBottom: 4,
+        }}
+      >
+        Swipe through Scripture, Prayer, Obedience, Service and Renunciation.
+      </Text>
+    </View>
 
-                  <View
-                    onLayout={(e) => {
-                      const w = Math.round(e.nativeEvent.layout.width);
-                      if (w && w !== carouselW) setCarouselW(w);
-                    }}
-                    style={{ marginTop: 14, overflow: "visible" }}
-                  >
-                    {!carouselW ? (
-                      <View style={{ height: 220, justifyContent: "center", alignItems: "center" }}>
-                        <ActivityIndicator color={theme.colors.gold} />
-                      </View>
-                    ) : (
-                      <Animated.FlatList
-                        ref={listRef}
-                        horizontal
-                        data={loopData}
-                        keyExtractor={(d, i) => `${d}-${i}`}
-                        renderItem={renderDisciplineCard}
-                        showsHorizontalScrollIndicator={false}
-                        decelerationRate="fast"
-                        snapToInterval={ITEM_SIZE}
-                        snapToAlignment="start"
-                        disableIntervalMomentum
-                        bounces={false}
-                        removeClippedSubviews={false}
-                        style={{ width: carouselW, overflow: "visible" }}
-                        contentContainerStyle={{
-                          paddingHorizontal: SIDE_SPACING,
-                          paddingVertical: 2,
-                          overflow: "visible",
-                        }}
-                        getItemLayout={(_, index) => ({
-                          length: ITEM_SIZE,
-                          offset: ITEM_SIZE * index,
-                          index,
-                        })}
-                        onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], {
-                          useNativeDriver: true,
-                          listener: (e) => {
-                            const x = e?.nativeEvent?.contentOffset?.x ?? 0;
-                            const idx = Math.round(x / ITEM_SIZE);
-                            if (idx !== activeIndexRef.current) {
-                              activeIndexRef.current = idx;
-                              setActiveIndex(idx);
-                            }
-                          },
-                        })}
-                        scrollEventThrottle={16}
-                        onMomentumScrollEnd={onMomentumScrollEnd}
-                        onScrollBeginDrag={() => setOpenMissionId(null)}
-                      />
-                    )}
-                  </View>
-                </View>
-              </View>
-            </View>
+    <View
+      onLayout={(e) => {
+        const w = Math.round(e.nativeEvent.layout.width);
+        if (w && w !== carouselW) setCarouselW(w);
+      }}
+      style={{ marginTop: 12, overflow: "visible" }}
+    >
+      {!carouselW ? (
+        <View style={{ height: 220, justifyContent: "center", alignItems: "center" }}>
+          <ActivityIndicator color={EVENT_AMBER} />
+        </View>
+      ) : (
+        <Animated.FlatList
+          ref={listRef}
+          horizontal
+          data={loopData}
+          keyExtractor={(d, i) => `${d}-${i}`}
+          renderItem={renderDisciplineCard}
+          showsHorizontalScrollIndicator={false}
+          decelerationRate="fast"
+          snapToInterval={ITEM_SIZE}
+          snapToAlignment="start"
+          disableIntervalMomentum
+          bounces={false}
+          removeClippedSubviews={false}
+          style={{ width: carouselW, overflow: "visible" }}
+          contentContainerStyle={{
+            paddingHorizontal: SIDE_SPACING,
+            paddingVertical: 4,
+            overflow: "visible",
+          }}
+          getItemLayout={(_, index) => ({
+            length: ITEM_SIZE,
+            offset: ITEM_SIZE * index,
+            index,
+          })}
+          onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], {
+            useNativeDriver: true,
+            listener: (e) => {
+              const x = e?.nativeEvent?.contentOffset?.x ?? 0;
+              const idx = Math.round(x / ITEM_SIZE);
+              if (idx !== activeIndexRef.current) {
+                activeIndexRef.current = idx;
+                setActiveIndex(idx);
+              }
+            },
+          })}
+          scrollEventThrottle={16}
+          onMomentumScrollEnd={onMomentumScrollEnd}
+          onScrollBeginDrag={() => setOpenMissionId(null)}
+        />
+      )}
+    </View>
+  </View>
+</View>
 
             {/* Apologetics Arena hidden from Daily for now. Logic kept above for safe rollback. */}
 
-            {/* Victory Modal (themed) */}
-            <Modal
-              visible={victoryOpen}
-              transparent
-              animationType="slide"
-              onRequestClose={() => setVictoryOpen(false)}
-            >
-              <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end" }}>
-                <View
-                  style={{
-                    backgroundColor: theme.colors.surface,
-                    borderTopLeftRadius: 18,
-                    borderTopRightRadius: 18,
-                    padding: 16,
-                    borderTopWidth: 1,
-                    borderColor: theme.colors.goldOutline,
-                  }}
-                >
-                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                    <Text style={{ color: theme.colors.text, fontSize: 18, fontWeight: "900" }}>
-                      Victory check-in
-                    </Text>
-                    <Pressable onPress={() => setVictoryOpen(false)}>
-                      <Text style={{ color: theme.colors.sage, fontWeight: "900" }}>Close</Text>
-                    </Pressable>
-                  </View>
+            {/* Formation Celebration Modal */}
+<Modal
+  visible={formationCelebrationOpen}
+  transparent
+  animationType="fade"
+  onRequestClose={() => setFormationCelebrationOpen(false)}
+>
+  <View
+    style={{
+      flex: 1,
+      backgroundColor: "rgba(15, 23, 42, 0.42)",
+      justifyContent: "center",
+      alignItems: "center",
+      padding: 20,
+    }}
+  >
+    <Reanimated.View
+      style={[
+        {
+          width: "100%",
+          maxWidth: 420,
+          backgroundColor: SURFACE,
+          borderRadius: 30,
+          padding: 22,
+          borderWidth: 1,
+          borderColor: AMBER_BORDER,
+          shadowColor: SHADOW,
+          shadowOpacity: 0.18,
+          shadowRadius: 24,
+          shadowOffset: { width: 0, height: 12 },
+          elevation: 8,
+          overflow: "hidden",
+        },
+        animatedCelebrationCardStyle,
+      ]}
+    >
 
-                  <Text style={{ color: theme.colors.goldPressed, marginTop: 10, fontWeight: "900" }}>
-                    +{Number(victoryMission?.reward_points || 0) + streakBonusPerMission} points
-                  </Text>
+      <LottieView
+  key={`formation-confetti-${formationCelebrationCount}-${formationCelebrationMission?.id || "none"}`}
+  source={formationConfetti}
+  autoPlay
+  loop={false}
+  pointerEvents="none"
+  style={{
+    position: "absolute",
+    top: -20,
+    left: 0,
+    right: 0,
+    height: 300,
+    zIndex: 30,
+  }}
+/>
 
-                  <Text style={{ color: theme.colors.text2, marginTop: 6 }}>
-                    Base +{Number(victoryMission?.reward_points || 0)} • Streak bonus +{streakBonusPerMission} (cap{" "}
-                    {STREAK_BONUS_CAP})
-                  </Text>
+      <View
+        pointerEvents="none"
+        style={{
+          position: "absolute",
+          top: -70,
+          right: -45,
+          width: 190,
+          height: 190,
+          borderRadius: 999,
+          backgroundColor: "rgba(180, 83, 9, 0.06)",
+        }}
+      />
 
-                  <Text style={{ color: theme.colors.text, marginTop: 10, lineHeight: 20 }}>
-                    {victoryMission?.mission_title || "—"}
-                  </Text>
+      <View
+        pointerEvents="none"
+        style={{
+          position: "absolute",
+          bottom: -80,
+          left: -60,
+          width: 180,
+          height: 180,
+          borderRadius: 999,
+          backgroundColor: "rgba(79, 99, 59, 0.06)",
+        }}
+      />
 
-                  {victoryMission?.discipline === "service" && victoryMission?.allows_unseen_act ? (
-                    <Pressable
-                      onPress={() => setVictoryUnseen((v) => !v)}
-                      style={{
-                        marginTop: 12,
-                        padding: 12,
-                        borderRadius: 12,
-                        backgroundColor: victoryUnseen ? theme.colors.sageTint : theme.colors.surfaceAlt,
-                        borderWidth: 1,
-                        borderColor: victoryUnseen ? theme.colors.sageOutline : NEUTRAL_BORDER,
-                      }}
-                    >
-                      <Text style={{ color: theme.colors.text, fontWeight: "900" }}>
-                        {victoryUnseen ? "Unseen Act: ON (private)" : "Unseen Act: OFF"}
-                      </Text>
-                      <Text style={{ color: theme.colors.text2, marginTop: 6 }}>
-                        If you served quietly, keep it unseen.
-                      </Text>
-                    </Pressable>
-                  ) : null}
+      <View style={{ alignItems: "center", marginBottom: 16, zIndex: 40 }}>
+        <Reanimated.View
+          style={[
+            {
+              position: "absolute",
+              width: 120,
+              height: 120,
+              borderRadius: 999,
+              backgroundColor:
+                formationCelebrationCount >= 5
+                  ? "rgba(180, 83, 9, 0.18)"
+                  : "rgba(212, 175, 55, 0.14)",
+              borderWidth: 1,
+              borderColor: "rgba(212, 175, 55, 0.28)",
+              top: 2,
+            },
+            animatedCelebrationGlowStyle,
+          ]}
+        />
 
-                  <Text style={{ color: theme.colors.text, fontWeight: "900", marginTop: 14 }}>
-                    Optional: one-line note (for you)
-                  </Text>
+        <Reanimated.View
+          style={[
+            {
+              width: 108,
+              height: 108,
+              alignItems: "center",
+              justifyContent: "center",
+            },
+            animatedCelebrationDoveStyle,
+          ]}
+        >
+<LottieView
+  source={formationDove}
+  autoPlay
+  loop
+  style={{
+    width: 150,
+    height: 150,
+  }}
+/>
+        </Reanimated.View>
+      </View>
 
-                  <TextInput
-                    value={victoryNote}
-                    onChangeText={setVictoryNote}
-                    placeholder="Example: I chose peace over panic."
-                    placeholderTextColor={theme.colors.muted}
-                    style={[
-                      theme.input.box,
-                      {
-                        marginTop: 8,
-                      },
-                    ]}
-                  />
+      <Text
+        style={{
+          ...serifHeading,
+          fontSize: 28,
+          lineHeight: 34,
+          color: EVENT_BROWN,
+          textAlign: "center",
+        }}
+      >
+        {getFormationCelebrationTitle(formationCelebrationCount)}
+      </Text>
 
-                  <View style={{ marginTop: 14 }}>
-                    <GlowButton
-                      title={savingComplete ? "Saving..." : "Complete mission"}
-                      onPress={confirmCompleteMission}
-                      disabled={savingComplete}
-                      variant="primary"
-                    />
-                  </View>
-                </View>
-              </View>
-            </Modal>
+      <Text
+        style={{
+          color: MUTED,
+          fontSize: 13,
+          fontWeight: "800",
+          lineHeight: 19,
+          textAlign: "center",
+          marginTop: 8,
+        }}
+      >
+        {formationCelebrationMission?.discipline
+          ? `${
+              DISCIPLINE_META?.[formationCelebrationMission.discipline]?.label ||
+              "Formation"
+            } practice completed`
+          : "Formation practice completed"}
+      </Text>
+
+      <View
+        style={{
+          marginTop: 18,
+          padding: 14,
+          borderRadius: 22,
+          backgroundColor: PREMIUM_CREAM,
+          borderWidth: 1,
+          borderColor: CARD_BORDER,
+        }}
+      >
+        <View
+          style={{
+            flexDirection: "row",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: 10,
+          }}
+        >
+          <Text
+            style={{
+              color: TEXT,
+              fontSize: 13,
+              fontWeight: "900",
+            }}
+          >
+            Today’s formation
+          </Text>
+
+          <Text
+            style={{
+              color: EVENT_BROWN,
+              fontSize: 13,
+              fontWeight: "900",
+            }}
+          >
+            {formationCelebrationCount}/5
+          </Text>
+        </View>
+
+        <View
+          style={{
+            height: 10,
+            borderRadius: 999,
+            backgroundColor: "rgba(15, 23, 42, 0.08)",
+            overflow: "hidden",
+          }}
+        >
+          <Reanimated.View
+            style={[
+              {
+                height: "100%",
+                borderRadius: 999,
+                backgroundColor: EVENT_AMBER,
+              },
+              animatedCelebrationProgressStyle,
+            ]}
+          />
+        </View>
+
+        <View
+          style={{
+            flexDirection: "row",
+            justifyContent: "space-between",
+            marginTop: 12,
+          }}
+        >
+         {[1, 2, 3, 4, 5].map((n) => {
+  const active = formationCelebrationCount >= n;
+  const isCurrentMilestone = formationCelebrationCount === n;
+
+  return (
+    <Reanimated.View
+      key={n}
+      style={{
+        width: 24,
+        height: 24,
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      {isCurrentMilestone ? (
+        <Reanimated.View
+          pointerEvents="none"
+          style={[
+            {
+              position: "absolute",
+              width: 18,
+              height: 18,
+              borderRadius: 999,
+              backgroundColor:
+                formationCelebrationCount >= 5
+                  ? "rgba(180, 83, 9, 0.22)"
+                  : "rgba(212, 175, 55, 0.22)",
+              borderWidth: 1,
+              borderColor:
+                formationCelebrationCount >= 5
+                  ? "rgba(180, 83, 9, 0.35)"
+                  : "rgba(212, 175, 55, 0.35)",
+            },
+            animatedCelebrationMilestoneStyle,
+          ]}
+        />
+      ) : null}
+
+      <View
+        style={{
+          width: 14,
+          height: 14,
+          borderRadius: 999,
+          backgroundColor: active
+            ? EVENT_AMBER
+            : "rgba(15, 23, 42, 0.10)",
+          borderWidth: 1,
+          borderColor: active ? EVENT_AMBER : CARD_BORDER,
+        }}
+      />
+    </Reanimated.View>
+  );
+})}
+        </View>
+
+        <Text
+          style={{
+            color: MUTED,
+            fontSize: 12.5,
+            fontWeight: "700",
+            lineHeight: 18,
+            marginTop: 12,
+            textAlign: "center",
+          }}
+        >
+          {getFormationCelebrationBody(formationCelebrationCount)}
+        </Text>
+      </View>
+
+      {!!formationCelebrationMission?.mission_title ? (
+        <View
+          style={{
+            marginTop: 14,
+            padding: 13,
+            borderRadius: 20,
+            backgroundColor: OLIVE_SOFT,
+            borderWidth: 1,
+            borderColor: OLIVE_BORDER,
+          }}
+        >
+          <Text
+            style={{
+              color: OLIVE,
+              fontSize: 11,
+              fontWeight: "900",
+              textTransform: "uppercase",
+              letterSpacing: 0.4,
+              marginBottom: 4,
+            }}
+          >
+            Completed practice
+          </Text>
+
+          <Text
+            style={{
+              color: TEXT,
+              fontSize: 14,
+              fontWeight: "900",
+              lineHeight: 19,
+            }}
+          >
+            {formationCelebrationMission.mission_title}
+          </Text>
+        </View>
+      ) : null}
+
+      {formationCelebrationCount >= 5 ? (
+  <View style={{ marginTop: 18, gap: 10 }}>
+    <Pressable
+      onPress={() => {
+        setFormationCelebrationOpen(false);
+
+        setTimeout(() => {
+          openShare();
+        }, 180);
+      }}
+      style={({ pressed }) => ({
+        backgroundColor: EVENT_AMBER,
+        borderRadius: 18,
+        paddingVertical: 14,
+        alignItems: "center",
+        borderWidth: 1,
+        borderColor: AMBER_BORDER,
+        transform: [{ scale: pressed ? 0.985 : 1 }],
+      })}
+    >
+      <Text
+        style={{
+          color: "#FFFFFF",
+          fontSize: 14,
+          fontWeight: "900",
+        }}
+      >
+        Share Formation
+      </Text>
+    </Pressable>
+
+    <Pressable
+      onPress={() => setFormationCelebrationOpen(false)}
+      style={({ pressed }) => ({
+        backgroundColor: "#FFFFFF",
+        borderRadius: 18,
+        paddingVertical: 14,
+        alignItems: "center",
+        borderWidth: 1,
+        borderColor: CARD_BORDER,
+        transform: [{ scale: pressed ? 0.985 : 1 }],
+      })}
+    >
+      <Text
+        style={{
+          color: TEXT,
+          fontSize: 14,
+          fontWeight: "900",
+        }}
+      >
+        Close
+      </Text>
+    </Pressable>
+  </View>
+) : (
+  <Pressable
+    onPress={() => setFormationCelebrationOpen(false)}
+    style={({ pressed }) => ({
+      marginTop: 18,
+      backgroundColor: EVENT_AMBER,
+      borderRadius: 18,
+      paddingVertical: 14,
+      alignItems: "center",
+      borderWidth: 1,
+      borderColor: AMBER_BORDER,
+      transform: [{ scale: pressed ? 0.985 : 1 }],
+    })}
+  >
+    <Text
+      style={{
+        color: "#FFFFFF",
+        fontSize: 14,
+        fontWeight: "900",
+      }}
+    >
+      Continue
+    </Text>
+  </Pressable>
+)}
+    </Reanimated.View>
+  </View>
+</Modal>
+
+  
 
        {/* Weekly Challenge Commitment Modal */}
 <Modal
@@ -2831,90 +4142,315 @@ messageTitle={weeklyMsg.title || null}
 </Modal>
 
 
-            {/* Share Modal (themed) */}
-            <Modal
-              visible={shareOpen}
-              transparent
-              animationType="slide"
-              onRequestClose={() => setShareOpen(false)}
+{/* Share Formation Composer - full screen */}
+<Modal
+  visible={shareOpen}
+  animationType="none"
+  presentationStyle="fullScreen"
+  onRequestClose={() => setShareOpen(false)}
+>
+  <KeyboardAvoidingView
+    behavior={Platform.OS === "ios" ? "padding" : undefined}
+    style={{ flex: 1, backgroundColor: PREMIUM_CREAM }}
+  >
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: PREMIUM_CREAM,
+        paddingTop: Platform.OS === "ios" ? 58 : 34,
+      }}
+    >
+      {/* Header */}
+      <View
+        style={{
+          paddingHorizontal: 18,
+          paddingBottom: 14,
+          borderBottomWidth: 1,
+          borderBottomColor: CARD_BORDER,
+          backgroundColor: PREMIUM_CREAM,
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+        }}
+      >
+        <Pressable
+          onPress={() => setShareOpen(false)}
+          hitSlop={10}
+          style={({ pressed }) => ({
+            width: 42,
+            height: 42,
+            borderRadius: 999,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: pressed ? OLIVE_SOFT : SURFACE,
+            borderWidth: 1,
+            borderColor: OLIVE_BORDER,
+            transform: [{ scale: pressed ? 0.96 : 1 }],
+          })}
+        >
+          <Ionicons name="close" size={21} color={OLIVE} />
+        </Pressable>
+
+        <View style={{ flex: 1 }}>
+          <Text
+            style={[
+              serifHeading,
+              {
+                fontSize: 22,
+                lineHeight: 26,
+                textAlign: "center",
+              },
+            ]}
+          >
+            Share Formation
+          </Text>
+
+          <Text
+            style={{
+              color: MUTED,
+              marginTop: 2,
+              fontSize: 12,
+              fontWeight: "800",
+              textAlign: "center",
+            }}
+          >
+            Visible to your fellowship
+          </Text>
+        </View>
+
+        <Pressable
+          onPress={saveShare}
+          disabled={shareSaving}
+          style={({ pressed }) => ({
+            paddingHorizontal: 15,
+            height: 42,
+            borderRadius: 999,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: shareSaving ? "rgba(180, 83, 9, 0.52)" : EVENT_AMBER,
+            borderWidth: 1,
+            borderColor: AMBER_BORDER,
+            shadowColor: EVENT_AMBER,
+            shadowOpacity: shareSaving ? 0 : 0.2,
+            shadowRadius: 10,
+            shadowOffset: { width: 0, height: 5 },
+            elevation: shareSaving ? 0 : 3,
+            transform: [{ scale: pressed && !shareSaving ? 0.96 : 1 }],
+          })}
+        >
+          <Text
+            style={{
+              color: "#FFFFFF",
+              fontSize: 13,
+              fontWeight: "900",
+            }}
+          >
+            {shareSaving ? "Sharing…" : "Share"}
+          </Text>
+        </Pressable>
+      </View>
+
+      <ScrollView
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{
+          paddingHorizontal: 18,
+          paddingTop: 18,
+          paddingBottom: Platform.OS === "android" ? 48 : 34,
+        }}
+      >
+        {/* Audience card */}
+        <View
+          style={{
+            padding: 14,
+            borderRadius: 24,
+            backgroundColor: SURFACE,
+            borderWidth: 1,
+            borderColor: CARD_BORDER,
+            shadowColor: SHADOW,
+            shadowOpacity: 0.07,
+            shadowRadius: 12,
+            shadowOffset: { width: 0, height: 5 },
+            elevation: 2,
+          }}
+        >
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 11,
+            }}
+          >
+            <View
+              style={{
+                width: 42,
+                height: 42,
+                borderRadius: 999,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: OLIVE_SOFT,
+                borderWidth: 1,
+                borderColor: OLIVE_BORDER,
+              }}
             >
-              <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end" }}>
-                <View
-                  style={{
-                    backgroundColor: theme.colors.surface,
-                    borderTopLeftRadius: 18,
-                    borderTopRightRadius: 18,
-                    padding: 16,
-                    borderTopWidth: 1,
-                    borderColor: theme.colors.goldOutline,
-                  }}
-                >
-                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                    <Text style={{ color: theme.colors.text, fontSize: 18, fontWeight: "900" }}>
-                      Share progress
-                    </Text>
-                    <Pressable onPress={() => setShareOpen(false)}>
-                      <Text style={{ color: theme.colors.sage, fontWeight: "900" }}>Close</Text>
-                    </Pressable>
-                  </View>
+              <Ionicons name="people-outline" size={20} color={OLIVE} />
+            </View>
 
-                  <Text style={{ color: theme.colors.text2, marginTop: 8, lineHeight: 20 }}>
-                    This saves a share draft for your Home feed integration step.
-                  </Text>
+            <View style={{ flex: 1 }}>
+              <Text
+                style={{
+                  color: TEXT,
+                  fontSize: 15,
+                  fontWeight: "900",
+                }}
+              >
+                Fellowship feed
+              </Text>
 
-                  <Text style={{ color: theme.colors.text, fontWeight: "900", marginTop: 12 }}>Visibility</Text>
-                  <View style={{ flexDirection: "row", marginTop: 10, flexWrap: "wrap" }}>
-                    {["public", "friends", "private"].map((v) => {
-                      const active = shareVisibility === v;
-                      return (
-                        <Pressable
-                          key={v}
-                          onPress={() => setShareVisibility(v)}
-                          style={{
-                            marginRight: 10,
-                            marginBottom: 10,
-                            paddingVertical: 10,
-                            paddingHorizontal: 12,
-                            borderRadius: 999,
-                            backgroundColor: active ? theme.colors.goldHalo : theme.colors.surface,
-                            borderWidth: 1,
-                            borderColor: active ? theme.colors.gold : NEUTRAL_BORDER,
-                          }}
-                        >
-                          <Text style={{ color: theme.colors.text, fontWeight: "900" }}>{v}</Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
+              <Text
+                style={{
+                  color: MUTED,
+                  marginTop: 3,
+                  fontSize: 13,
+                  lineHeight: 18,
+                  fontWeight: "700",
+                }}
+              >
+                Your Formation update will be shared with people connected to you in fellowship.
+              </Text>
+            </View>
+          </View>
+        </View>
 
-                  <Text style={{ color: theme.colors.text, fontWeight: "900", marginTop: 4 }}>
-                    Optional message
-                  </Text>
+        {/* Post preview card */}
+        <View
+          style={{
+            marginTop: 16,
+            padding: 16,
+            borderRadius: 26,
+            backgroundColor: SURFACE,
+            borderWidth: 1,
+            borderColor: AMBER_BORDER,
+            shadowColor: SHADOW,
+            shadowOpacity: 0.08,
+            shadowRadius: 14,
+            shadowOffset: { width: 0, height: 6 },
+            elevation: 3,
+          }}
+        >
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 10,
+              marginBottom: 14,
+            }}
+          >
+            <View
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 999,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: AMBER_SOFT,
+                borderWidth: 1,
+                borderColor: AMBER_BORDER,
+              }}
+            >
+              <Ionicons name="leaf-outline" size={19} color={EVENT_AMBER} />
+            </View>
 
-                  <TextInput
-                    value={shareText}
-                    onChangeText={setShareText}
-                    placeholder="Example: God met me today. I chose obedience."
-                    placeholderTextColor={theme.colors.muted}
-                    style={[
-                      theme.input.box,
-                      {
-                        marginTop: 8,
-                      },
-                    ]}
-                  />
+            <View style={{ flex: 1 }}>
+              <Text
+                style={{
+                  color: TEXT,
+                  fontSize: 14,
+                  fontWeight: "900",
+                }}
+              >
+                Daily Formation
+              </Text>
 
-                  <View style={{ marginTop: 14 }}>
-                    <GlowButton
-                      title={shareSaving ? "Saving..." : "Save share draft"}
-                      onPress={saveShare}
-                      disabled={shareSaving}
-                      variant="primary"
-                    />
-                  </View>
-                </View>
-              </View>
-            </Modal>
+              <Text
+                style={{
+                  color: MUTED,
+                  marginTop: 2,
+                  fontSize: 12,
+                  fontWeight: "800",
+                }}
+              >
+                {Math.min(5, Number(completedCount || 0))}/5 practices completed today
+              </Text>
+            </View>
+          </View>
+
+          <TextInput
+            value={shareText}
+            onChangeText={setShareText}
+            placeholder="Write something about what God is forming in you today..."
+            placeholderTextColor="rgba(107, 114, 128, 0.72)"
+            multiline
+            textAlignVertical="top"
+            autoFocus={false}
+            style={{
+              minHeight: 170,
+              color: TEXT,
+              fontSize: 17,
+              lineHeight: 25,
+              fontWeight: "700",
+              paddingTop: 2,
+            }}
+          />
+
+          <View
+            style={{
+              marginTop: 14,
+              paddingTop: 14,
+              borderTopWidth: 1,
+              borderTopColor: CARD_BORDER,
+            }}
+          >
+            <Text
+              style={{
+                color: EVENT_BROWN,
+                fontSize: 13,
+                fontWeight: "900",
+              }}
+            >
+              Formation summary
+            </Text>
+
+            <Text
+              style={{
+                color: MUTED,
+                marginTop: 6,
+                fontSize: 13,
+                lineHeight: 20,
+                fontWeight: "700",
+              }}
+            >
+              {Math.min(5, Number(completedCount || 0))}/5 practices completed • Scripture, prayer, obedience, service and renunciation.
+            </Text>
+          </View>
+        </View>
+
+        <Text
+          style={{
+            color: MUTED,
+            marginTop: 14,
+            fontSize: 12,
+            lineHeight: 18,
+            fontWeight: "700",
+            textAlign: "center",
+          }}
+        >
+          This will post directly to your Home feed for fellowship encouragement.
+        </Text>
+      </ScrollView>
+    </View>
+  </KeyboardAvoidingView>
+</Modal>
 
             {/* Faith Coach Modal (verse coach) - themed */}
             <Modal

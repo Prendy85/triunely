@@ -4,6 +4,21 @@ import { Audio, Video } from "expo-av";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AppState, Modal, Pressable, Text, View } from "react-native";
 
+const PREMIUM_CREAM = "#FFFCF5";
+const SURFACE = "#FFFFFF";
+const EVENT_AMBER = "#B45309";
+const EVENT_BROWN = "#7C2D12";
+const OLIVE = "#4F633B";
+const TEXT = "#1F2933";
+const MUTED = "#6B7280";
+
+const CARD_BORDER = "rgba(15, 23, 42, 0.08)";
+const AMBER_SOFT = "rgba(180, 83, 9, 0.10)";
+const AMBER_BORDER = "rgba(180, 83, 9, 0.18)";
+const OLIVE_SOFT = "rgba(79, 99, 59, 0.10)";
+const OLIVE_BORDER = "rgba(79, 99, 59, 0.18)";
+const SHADOW = "rgba(15, 23, 42, 0.10)";
+
 export default function WeeklyMessageCard({
   theme,
   messageTitle = null,
@@ -22,11 +37,8 @@ export default function WeeklyMessageCard({
   const [videoReady, setVideoReady] = useState(false);
   const [videoError, setVideoError] = useState(null);
 
-  // Track whether the app is truly foreground
   const appStateRef = useRef(AppState.currentState);
   const [appState, setAppState] = useState(AppState.currentState);
-
-  // If autoplay fails due to focus, we retry when app becomes active
   const pendingAutoplayRef = useRef(false);
 
   useEffect(() => {
@@ -47,7 +59,7 @@ export default function WeeklyMessageCard({
     if (weekLabel) return weekLabel;
 
     const now = new Date();
-    const day = now.getDay(); // Sun=0 ... Sat=6
+    const day = now.getDay();
     const diffToMonday = (day + 6) % 7;
 
     const monday = new Date(now);
@@ -65,7 +77,6 @@ export default function WeeklyMessageCard({
     return `${fmt(monday)} – ${fmt(sunday)}`;
   }, [weekLabel]);
 
-  // Reset playback when closing
   useEffect(() => {
     if (!open) {
       (async () => {
@@ -78,15 +89,12 @@ export default function WeeklyMessageCard({
             await videoRef.current.stopAsync();
             await videoRef.current.setPositionAsync(0);
           }
-        } catch (e) {
-          // ignore
-        }
+        } catch (e) {}
       })();
     }
   }, [open]);
 
   async function ensureAudioMode() {
-    // Safe defaults for “Instagram-like” playback
     try {
       await Audio.setAudioModeAsync({
         playsInSilentModeIOS: true,
@@ -97,15 +105,12 @@ export default function WeeklyMessageCard({
         staysActiveInBackground: false,
         playThroughEarpieceAndroid: false,
       });
-    } catch (e) {
-      // ignore
-    }
+    } catch (e) {}
   }
 
   async function tryAutoplay() {
     if (!open || !videoUrl || !videoReady) return;
 
-    // Critical: only try to play when app is actually foreground
     if (appStateRef.current !== "active") {
       pendingAutoplayRef.current = true;
       return;
@@ -133,7 +138,6 @@ export default function WeeklyMessageCard({
     }
   }
 
-  // Autoplay when modal is open and the video is loaded
   useEffect(() => {
     if (!open || !videoReady || !videoUrl) return;
 
@@ -145,7 +149,6 @@ export default function WeeklyMessageCard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, videoReady, videoUrl]);
 
-  // If we were pending autoplay and the app becomes active, try again immediately
   useEffect(() => {
     if (!open || !videoReady) return;
     if (appState !== "active") return;
@@ -158,64 +161,153 @@ export default function WeeklyMessageCard({
 
   return (
     <>
-      {/* CARD */}
       <View
         style={{
-          borderRadius: 18,
+          borderRadius: 24,
           overflow: "hidden",
-          backgroundColor: theme.colors.surface,
+          backgroundColor: SURFACE,
           borderWidth: 1,
-          borderColor: theme.colors.divider,
+          borderColor: CARD_BORDER,
           marginBottom: 12,
+          shadowColor: SHADOW,
+          shadowOpacity: 0.1,
+          shadowRadius: 12,
+          shadowOffset: { width: 0, height: 5 },
+          elevation: 3,
         }}
       >
-       {/* Header */}
-<View style={{ paddingHorizontal: 14, paddingTop: 14, paddingBottom: 10 }}>
-  <Text style={{ color: theme.colors.text, fontWeight: "900", fontSize: 16 }}>
-    Weekly Message
-  </Text>
-
-          {messageTitle ? (
-            <Text
+        <View style={{ padding: 14 }}>
+          <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
+            <View
               style={{
-                color: theme.colors.text,
-                marginTop: 6,
-                fontWeight: "900",
-                fontSize: 18,
-                lineHeight: 23,
+                width: 42,
+                height: 42,
+                borderRadius: 21,
+                backgroundColor: AMBER_SOFT,
+                borderWidth: 1,
+                borderColor: AMBER_BORDER,
+                alignItems: "center",
+                justifyContent: "center",
+                marginRight: 11,
               }}
-              numberOfLines={2}
             >
-              {messageTitle}
-            </Text>
-          ) : null}
+              <Ionicons name="play-circle-outline" size={22} color={EVENT_AMBER} />
+            </View>
 
-          <Text style={{ color: theme.colors.muted, marginTop: 5, fontWeight: "700" }}>
-            {subtitle}
-          </Text>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text
+                style={{
+                  color: EVENT_BROWN,
+                  fontWeight: "900",
+                  fontSize: 11,
+                  letterSpacing: 0.35,
+                  textTransform: "uppercase",
+                }}
+              >
+                Weekly Message
+              </Text>
 
-          <View style={{ flexDirection: "row", alignItems: "center", marginTop: 6, gap: 6 }}>
-            <Ionicons name="calendar-outline" size={14} color={theme.colors.sage} />
-            <Text style={{ color: theme.colors.sage, fontWeight: "800", fontSize: 12 }}>
-              {computedWeekLabel}
-            </Text>
+              <Text
+                style={{
+                  color: TEXT,
+                  marginTop: 4,
+                  fontWeight: "900",
+                  fontSize: 17,
+                  lineHeight: 22,
+                }}
+                numberOfLines={2}
+              >
+                {messageTitle || "This week’s message"}
+              </Text>
+
+              <Text
+                style={{
+                  color: MUTED,
+                  marginTop: 4,
+                  fontWeight: "700",
+                  fontSize: 12.5,
+                }}
+                numberOfLines={1}
+              >
+                {subtitle}
+              </Text>
+            </View>
+          </View>
+
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              marginTop: 11,
+              gap: 7,
+            }}
+          >
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                paddingHorizontal: 10,
+                paddingVertical: 6,
+                borderRadius: 999,
+                backgroundColor: OLIVE_SOFT,
+                borderWidth: 1,
+                borderColor: OLIVE_BORDER,
+              }}
+            >
+              <Ionicons name="calendar-outline" size={13} color={OLIVE} />
+              <Text
+                style={{
+                  color: OLIVE,
+                  fontWeight: "900",
+                  fontSize: 11.5,
+                  marginLeft: 5,
+                }}
+              >
+                {computedWeekLabel}
+              </Text>
+            </View>
+
+            {videoUrl ? (
+              <View
+                style={{
+                  paddingHorizontal: 10,
+                  paddingVertical: 6,
+                  borderRadius: 999,
+                  backgroundColor: AMBER_SOFT,
+                  borderWidth: 1,
+                  borderColor: AMBER_BORDER,
+                }}
+              >
+                <Text
+                  style={{
+                    color: EVENT_AMBER,
+                    fontWeight: "900",
+                    fontSize: 11.5,
+                  }}
+                >
+                  Video ready
+                </Text>
+              </View>
+            ) : null}
           </View>
         </View>
 
-        {/* Video preview */}
         <Pressable
           onPress={() => {
             if (!videoUrl) return;
             setOpen(true);
           }}
           style={({ pressed }) => ({
-            height: 190,
-            backgroundColor: theme.colors.surfaceAlt,
-            borderTopWidth: 1,
-            borderTopColor: theme.colors.divider,
+            marginHorizontal: 14,
+            marginBottom: 14,
+            height: 112,
+            borderRadius: 20,
+            backgroundColor: videoUrl ? EVENT_BROWN : PREMIUM_CREAM,
+            borderWidth: 1,
+            borderColor: videoUrl ? AMBER_BORDER : CARD_BORDER,
             alignItems: "center",
             justifyContent: "center",
-            opacity: pressed ? 0.92 : 1,
+            opacity: pressed ? 0.94 : 1,
             overflow: "hidden",
           })}
         >
@@ -248,81 +340,96 @@ export default function WeeklyMessageCard({
               left: 0,
               right: 0,
               bottom: 0,
-              backgroundColor: "rgba(0,0,0,0.28)",
+              backgroundColor: videoUrl
+                ? "rgba(31, 41, 51, 0.28)"
+                : "rgba(180, 83, 9, 0.07)",
             }}
           />
 
           <View
             style={{
-              width: 56,
-              height: 56,
-              borderRadius: 28,
-              backgroundColor: "rgba(255,255,255,0.16)",
+              width: 48,
+              height: 48,
+              borderRadius: 24,
+              backgroundColor: videoUrl ? "rgba(255,255,255,0.18)" : SURFACE,
               borderWidth: 1,
-              borderColor: "rgba(255,255,255,0.22)",
+              borderColor: videoUrl ? "rgba(255,255,255,0.26)" : AMBER_BORDER,
               alignItems: "center",
               justifyContent: "center",
             }}
           >
-            <Ionicons name="play" size={26} color="#fff" />
+            <Ionicons
+              name={videoUrl ? "play" : "videocam-outline"}
+              size={videoUrl ? 23 : 21}
+              color={videoUrl ? "#fff" : EVENT_AMBER}
+            />
           </View>
 
-          <Text style={{ color: "#fff", fontWeight: "900", marginTop: 10 }}>
+          <Text
+            style={{
+              color: videoUrl ? "#fff" : MUTED,
+              fontWeight: "900",
+              marginTop: 8,
+              fontSize: 12.5,
+            }}
+          >
             {videoUrl ? "Tap to watch" : "No video set yet"}
           </Text>
         </Pressable>
 
-        {/* Actions */}
-        <View style={{ padding: 12, gap: 10 }}>
-          <Pressable
-            onPress={onPressChallenges}
-            style={({ pressed }) => ({
-              paddingVertical: 12,
-              borderRadius: 999,
-              alignItems: "center",
-              backgroundColor: pressed ? theme.colors.goldPressed : theme.colors.gold,
-            })}
-          >
-            <Text style={{ color: theme.colors.text, fontWeight: "900" }}>
-              View Challenges
-            </Text>
-          </Pressable>
+        <View style={{ paddingHorizontal: 14, paddingBottom: 14 }}>
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            <Pressable
+              onPress={onPressChallenges}
+              style={({ pressed }) => ({
+                flex: 1,
+                paddingVertical: 10,
+                borderRadius: 999,
+                alignItems: "center",
+                backgroundColor: pressed ? "rgba(180, 83, 9, 0.88)" : EVENT_AMBER,
+                borderWidth: 1,
+                borderColor: EVENT_AMBER,
+              })}
+            >
+              <Text style={{ color: SURFACE, fontWeight: "900", fontSize: 12.5 }}>
+                Challenges
+              </Text>
+            </Pressable>
 
-          <View style={{ flexDirection: "row", gap: 10 }}>
             <Pressable
               onPress={onPressNoticeboard}
               style={({ pressed }) => ({
                 flex: 1,
-                paddingVertical: 12,
+                paddingVertical: 10,
                 borderRadius: 999,
                 alignItems: "center",
-                backgroundColor: pressed ? theme.colors.surfaceAlt : "transparent",
+                backgroundColor: pressed ? OLIVE_SOFT : SURFACE,
                 borderWidth: 1,
-                borderColor: theme.colors.divider,
+                borderColor: OLIVE_BORDER,
               })}
             >
               <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                <Text style={{ color: theme.colors.text2, fontWeight: "900" }}>
+                <Text style={{ color: OLIVE, fontWeight: "900", fontSize: 12.5 }}>
                   Noticeboard
                 </Text>
 
                 {Number(noticeboardUnreadCount || 0) > 0 ? (
                   <View
                     style={{
-                      minWidth: 20,
-                      height: 20,
-                      borderRadius: 10,
-                      paddingHorizontal: 6,
-                      backgroundColor: theme.colors.gold,
+                      minWidth: 19,
+                      height: 19,
+                      borderRadius: 9.5,
+                      paddingHorizontal: 5,
+                      backgroundColor: EVENT_AMBER,
                       alignItems: "center",
                       justifyContent: "center",
                     }}
                   >
                     <Text
                       style={{
-                        color: theme.colors.text,
+                        color: SURFACE,
                         fontWeight: "900",
-                        fontSize: 11,
+                        fontSize: 10.5,
                       }}
                     >
                       {Number(noticeboardUnreadCount) > 9
@@ -333,31 +440,29 @@ export default function WeeklyMessageCard({
                 ) : null}
               </View>
             </Pressable>
-
-            <Pressable
-              onPress={onPressChurchProfile}
-              style={({ pressed }) => ({
-                flex: 1,
-                paddingVertical: 12,
-                borderRadius: 999,
-                alignItems: "center",
-                backgroundColor: pressed ? theme.colors.surfaceAlt : "transparent",
-                borderWidth: 1,
-                borderColor: theme.colors.divider,
-              })}
-            >
-              <Text style={{ color: theme.colors.text2, fontWeight: "900" }}>
-                Church Profile
-              </Text>
-            </Pressable>
           </View>
+
+          <Pressable
+            onPress={onPressChurchProfile}
+            style={({ pressed }) => ({
+              marginTop: 8,
+              paddingVertical: 10,
+              borderRadius: 999,
+              alignItems: "center",
+              backgroundColor: pressed ? AMBER_SOFT : SURFACE,
+              borderWidth: 1,
+              borderColor: AMBER_BORDER,
+            })}
+          >
+            <Text style={{ color: EVENT_BROWN, fontWeight: "900", fontSize: 12.5 }}>
+              Church Profile
+            </Text>
+          </Pressable>
         </View>
       </View>
 
-      {/* MODAL PLAYER */}
       <Modal visible={open} animationType="fade" transparent onRequestClose={() => setOpen(false)}>
         <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.92)" }}>
-          {/* Top bar */}
           <View
             style={{
               paddingTop: 18,
@@ -417,7 +522,6 @@ export default function WeeklyMessageCard({
             </Pressable>
           </View>
 
-          {/* Player */}
           <View style={{ flex: 1, paddingHorizontal: 12, paddingBottom: 18 }}>
             <View
               style={{
