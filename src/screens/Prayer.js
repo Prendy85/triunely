@@ -587,7 +587,13 @@ export default function Prayer({ navigation }) {
   const [bookmarkedById, setBookmarkedById] = useState({});
   const [bookmarksLoaded, setBookmarksLoaded] = useState(false);
 
-  const [prayedThisSessionById, setPrayedThisSessionById] = useState({});
+const [prayedById, setPrayedById] = useState({});
+const [prayedPeopleVisible, setPrayedPeopleVisible] = useState(false);
+const [prayedPeopleLoading, setPrayedPeopleLoading] = useState(false);
+const [prayedPeopleTitle, setPrayedPeopleTitle] = useState("");
+const [prayedPeopleRows, setPrayedPeopleRows] = useState([]);
+const [prayerActionMenuVisible, setPrayerActionMenuVisible] = useState(false);
+const [selectedPrayerForActions, setSelectedPrayerForActions] = useState(null);
 
   const swipeRefs = useRef({});
 
@@ -793,25 +799,48 @@ const [creatingGroup, setCreatingGroup] = useState(false);
     return () => clearTimeout(t);
   }, [activeFilter, loading]);
 
-  async function fetchMyGroups() {
-    try {
-      setGroupsLoading(true);
+async function fetchMyGroups() {
+  try {
+    setGroupsLoading(true);
 
-      const { data, error } = await supabase
-        .from("prayer_groups")
-        .select("id, name, description, privacy, group_type, created_at")
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
-
-      setMyGroups(data || []);
-    } catch (e) {
-      console.log("Error loading prayer groups", e);
+    const userId = await ensureUserIdOrAlert();
+    if (!userId) {
       setMyGroups([]);
-    } finally {
-      setGroupsLoading(false);
+      return;
     }
+
+    const { data: memberships, error: membershipError } = await supabase
+      .from("prayer_group_members")
+      .select("group_id")
+      .eq("user_id", userId);
+
+    if (membershipError) throw membershipError;
+
+    const groupIds = (memberships || [])
+      .map((row) => row.group_id)
+      .filter(Boolean);
+
+    if (groupIds.length === 0) {
+      setMyGroups([]);
+      return;
+    }
+
+    const { data: groups, error: groupsError } = await supabase
+      .from("prayer_groups")
+      .select("id, name, description, privacy, group_type, created_at")
+      .in("id", groupIds)
+      .order("created_at", { ascending: false });
+
+    if (groupsError) throw groupsError;
+
+    setMyGroups(groups || []);
+  } catch (e) {
+    console.log("Error loading prayer groups", e);
+    setMyGroups([]);
+  } finally {
+    setGroupsLoading(false);
   }
+}
 
   async function fetchBookmarks(userId) {
     try {
@@ -837,6 +866,40 @@ const [creatingGroup, setCreatingGroup] = useState(false);
       setBookmarksLoaded(true);
     }
   }
+
+  async function fetchPrayedMarks(userId, requestRows) {
+  if (!userId) {
+    setPrayedById({});
+    return;
+  }
+
+  const prayerIds = (requestRows || []).map((row) => row.id).filter(Boolean);
+
+  if (prayerIds.length === 0) {
+    setPrayedById({});
+    return;
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from("prayer_request_prayers")
+      .select("prayer_id")
+      .eq("user_id", userId)
+      .in("prayer_id", prayerIds);
+
+    if (error) throw error;
+
+    const map = {};
+    (data || []).forEach((row) => {
+      if (row?.prayer_id) map[row.prayer_id] = true;
+    });
+
+    setPrayedById(map);
+  } catch (e) {
+    console.log("Error loading prayed marks", e);
+    setPrayedById({});
+  }
+}
 
   async function fetchProfilesForRequests(requestRows) {
     try {
@@ -888,22 +951,34 @@ const [creatingGroup, setCreatingGroup] = useState(false);
     setError(null);
 
     try {
-      const { data, error: err } = await supabase
-        .from("prayer_requests")
-        .select(
-          "id, title, body, is_anonymous, prayed_count, created_at, user_id, visibility, group_id"
-        )
-        .eq("community_id", GLOBAL_COMMUNITY_ID)
-        .eq("status", "open")
-        .order("created_at", { ascending: false })
-        .limit(PAGE_LIMIT);
+const { data, error: err } = await supabase
+  .from("prayer_requests")
+  .select(
+    "id, title, body, is_anonymous, prayed_count, created_at, user_id, visibility, group_id, allow_reshare"
+  )
+  .eq("community_id", GLOBAL_COMMUNITY_ID)
+  .eq("status", "open")
+  .eq("visibility", "fellowship")
+  .is("group_id", null)
+  .order("created_at", { ascending: false })
+  .limit(PAGE_LIMIT);
 
       if (err) throw err;
 
       const rows = data || [];
-      setRequests(rows);
+setRequests(rows);
 
-      fetchProfilesForRequests(rows);
+fetchProfilesForRequests(rows);
+
+const { data: sessionData } = await supabase.auth.getSession();
+const userId = sessionData?.session?.user?.id ?? null;
+
+if (userId) {
+  setCurrentUserId(userId);
+  await fetchPrayedMarks(userId, rows);
+} else {
+  setPrayedById({});
+}
     } catch (e) {
       console.log("Error loading prayer requests", e);
       setError("Could not load prayer requests right now.");
@@ -989,126 +1064,378 @@ const [creatingGroup, setCreatingGroup] = useState(false);
     }
   }
 
-  async function handlePrayedForPrayer(prayerId) {
-    if (prayedThisSessionById[prayerId]) {
-      showToast("Already marked as prayed");
-      return;
-    }
+async function handlePrayedForPrayer(prayerId) {
+  if (!prayerId) return;
 
-    const res = awardPrayerPoint?.();
-
-    if (res && !res.granted && !DISABLE_DAILY_PRAYER_CAP_FOR_TESTING) {
-      showToast("Daily cap reached");
-      return;
-    }
-
-    setPrayedThisSessionById((prev) => ({ ...prev, [prayerId]: true }));
-
-    const toastLine = res?.granted
-      ? `I prayed · +1 Light Point (${res.remaining ?? 4} left)`
-      : "I prayed · +1 Light Point";
-
-    showToast(toastLine);
-    animateLightToPoints();
-
-    setRequests((prev) =>
-      prev.map((r) =>
-        r.id === prayerId
-          ? { ...r, prayed_count: (r.prayed_count || 0) + 1 }
-          : r
-      )
-    );
-
-    try {
-      const { data, error } = await supabase.rpc("increment_prayed_count", {
-        prayer_id: prayerId,
-      });
-
-      if (error) throw error;
-
-      if (typeof data === "number") {
-        setRequests((prev) =>
-          prev.map((r) =>
-            r.id === prayerId ? { ...r, prayed_count: data } : r
-          )
-        );
-      }
-    } catch (e) {
-      console.log("Error incrementing prayed_count", e);
-    }
+  if (prayedById[prayerId]) {
+    showToast("Already marked as prayed");
+    return;
   }
 
-  async function handleCreateRequest(
-    title,
-    body,
-    isAnonymous,
-    visibility,
-    groupId
-  ) {
-    if (!title) {
-      Alert.alert("Title required", "Please add a short title to your request.");
+  const userId = await ensureUserIdOrAlert();
+  if (!userId) return;
+
+  // Instant UI response first
+  setPrayedById((prev) => ({ ...prev, [prayerId]: true }));
+
+  setRequests((prev) =>
+    prev.map((r) =>
+      r.id === prayerId
+        ? { ...r, prayed_count: (r.prayed_count || 0) + 1 }
+        : r
+    )
+  );
+
+  const res = awardPrayerPoint?.();
+
+  const toastLine = res?.granted
+    ? `Prayed · +1 Light Point (${res.remaining ?? 4} left)`
+    : "Prayed · +1 Light Point";
+
+  showToast(toastLine);
+  animateLightToPoints();
+
+  try {
+    const { data: insertedRows, error: insertError } = await supabase
+      .from("prayer_request_prayers")
+      .upsert(
+        {
+          prayer_id: prayerId,
+          user_id: userId,
+        },
+        {
+          onConflict: "prayer_id,user_id",
+          ignoreDuplicates: true,
+        }
+      )
+      .select("id");
+
+    if (insertError) throw insertError;
+
+    // If Supabase ignored the insert because it already existed,
+    // do not increment the public prayed_count again.
+    if (!insertedRows || insertedRows.length === 0) {
+      await fetchRequests(true);
       return;
     }
 
-    try {
-      setPosting(true);
+    const { data, error } = await supabase.rpc("increment_prayed_count", {
+      prayer_id: prayerId,
+    });
 
-      const { data: sessionData, error: sessionError } =
-        await supabase.auth.getSession();
+    if (error) throw error;
 
-      if (sessionError) throw sessionError;
+    if (typeof data === "number") {
+      setRequests((prev) =>
+        prev.map((r) =>
+          r.id === prayerId ? { ...r, prayed_count: data } : r
+        )
+      );
+    }
+  } catch (e) {
+    console.log("Error marking prayer as prayed", e);
 
-      const userId = sessionData?.session?.user?.id;
+    // Roll back local UI if the database actually fails
+    setPrayedById((prev) => {
+      const next = { ...prev };
+      delete next[prayerId];
+      return next;
+    });
 
-      if (!userId) {
-        Alert.alert(
-          "Not signed in",
-          "Please sign in again before posting a prayer request."
-        );
+    await fetchRequests(true);
+
+    Alert.alert(
+      "Could not mark as prayed",
+      e?.message || "Please try again in a moment."
+    );
+  }
+}
+
+function openPrayerActionMenu(prayer) {
+  if (!prayer?.id) return;
+
+  setSelectedPrayerForActions(prayer);
+  setPrayerActionMenuVisible(true);
+}
+
+function closePrayerActionMenu() {
+  setPrayerActionMenuVisible(false);
+  setSelectedPrayerForActions(null);
+}
+
+async function handleDeletePrayerRequest(prayer) {
+  if (!prayer?.id) return;
+
+  const userId = await ensureUserIdOrAlert();
+  if (!userId) return;
+
+  if (prayer.user_id !== userId) {
+    closePrayerActionMenu();
+
+    Alert.alert(
+      "Not allowed",
+      "You can only delete prayer requests that you created."
+    );
+
+    return;
+  }
+
+  Alert.alert(
+    "Delete prayer request?",
+    "This will remove your prayer request from the Prayer screen. This cannot be undone.",
+    [
+      {
+        text: "Cancel",
+        style: "cancel",
+      },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            closePrayerActionMenu();
+
+            const { error } = await supabase
+              .from("prayer_requests")
+              .delete()
+              .eq("id", prayer.id)
+              .eq("user_id", userId);
+
+            if (error) throw error;
+
+            setRequests((prev) => prev.filter((r) => r.id !== prayer.id));
+
+            setBookmarkedById((prev) => {
+              const next = { ...prev };
+              delete next[prayer.id];
+              return next;
+            });
+
+            setPrayedById((prev) => {
+              const next = { ...prev };
+              delete next[prayer.id];
+              return next;
+            });
+
+            setRepliesByPrayerId((prev) => {
+              const next = { ...prev };
+              delete next[prayer.id];
+              return next;
+            });
+
+            setExpandedPrayerIds((prev) => {
+              const next = { ...prev };
+              delete next[prayer.id];
+              return next;
+            });
+
+            showToast("Prayer request deleted");
+          } catch (e) {
+            console.log("Error deleting prayer request", e);
+
+            Alert.alert(
+              "Could not delete",
+              e?.message ||
+                "We couldn’t delete this prayer request right now. Please try again."
+            );
+          }
+        },
+      },
+    ]
+  );
+}
+
+async function handleReportPrayerRequest(prayer, reason = "other") {
+  if (!prayer?.id) return;
+
+  const userId = await ensureUserIdOrAlert();
+  if (!userId) return;
+
+  if (prayer.user_id === userId) {
+    closePrayerActionMenu();
+
+    Alert.alert(
+      "Not needed",
+      "You do not need to report your own prayer request. You can delete it instead."
+    );
+
+    return;
+  }
+
+  try {
+    closePrayerActionMenu();
+
+    const { error } = await supabase.from("prayer_request_reports").insert({
+      prayer_id: prayer.id,
+      reporter_id: userId,
+      reason,
+    });
+
+    if (error) {
+      if (
+        error?.code === "23505" ||
+        String(error?.message || "").toLowerCase().includes("duplicate")
+      ) {
+        showToast("You have already reported this request");
         return;
       }
 
-      const finalVisibility = visibility || "global";
-
-      const { data, error } = await supabase
-        .from("prayer_requests")
-        .insert({
-          user_id: userId,
-          community_id: GLOBAL_COMMUNITY_ID,
-          title,
-          body: body || null,
-          is_anonymous: isAnonymous,
-          visibility: finalVisibility,
-          group_id: groupId || null,
-        })
-        .select(
-          "id, title, body, is_anonymous, prayed_count, created_at, user_id, visibility, group_id"
-        )
-        .single();
-
-      if (error) throw error;
-
-      if (!currentUserId) setCurrentUserId(userId);
-
-      setRequests((prev) => [data, ...prev]);
-      setShowNewModal(false);
-
-      if (!data.is_anonymous) fetchProfilesForRequests([data]);
-    } catch (e) {
-      console.log("Error creating prayer request", e);
-
-      const msg =
-        e?.message ||
-        e?.error_description ||
-        (typeof e === "string"
-          ? e
-          : "We couldn’t post your prayer request right now. Please try again.");
-
-      Alert.alert("Could not post", msg);
-    } finally {
-      setPosting(false);
+      throw error;
     }
+
+    showToast("Report submitted");
+  } catch (e) {
+    console.log("Error reporting prayer request", e);
+
+    Alert.alert(
+      "Could not report",
+      e?.message ||
+        "We couldn’t submit this report right now. Please try again."
+    );
   }
+}
+
+async function openPrayedPeople(prayer) {
+  if (!prayer?.id) return;
+
+  setPrayedPeopleTitle(prayer.title || "Prayer request");
+  setPrayedPeopleRows([]);
+  setPrayedPeopleVisible(true);
+
+  try {
+    setPrayedPeopleLoading(true);
+
+    const { data: prayedRows, error: prayedError } = await supabase
+      .from("prayer_request_prayers")
+      .select("user_id, created_at")
+      .eq("prayer_id", prayer.id)
+      .order("created_at", { ascending: false });
+
+    if (prayedError) throw prayedError;
+
+    const rows = prayedRows || [];
+    const userIds = rows.map((row) => row.user_id).filter(Boolean);
+
+    if (userIds.length === 0) {
+      setPrayedPeopleRows([]);
+      return;
+    }
+
+    const { data: profiles, error: profilesError } = await supabase
+      .from("profiles")
+      .select("id, display_name, avatar_url")
+      .in("id", userIds);
+
+    if (profilesError) throw profilesError;
+
+    const profilesByUserId = {};
+
+    (profiles || []).forEach((profile) => {
+      if (profile?.id) profilesByUserId[profile.id] = profile;
+    });
+
+    const merged = rows.map((row) => {
+      const profile = profilesByUserId[row.user_id] || {};
+      const displayName = profile.display_name || "Triunely Member";
+
+      return {
+        user_id: row.user_id,
+        created_at: row.created_at,
+        display_name: displayName,
+        avatar_url: profile.avatar_url || null,
+      };
+    });
+
+    setPrayedPeopleRows(merged);
+  } catch (e) {
+    console.log("Error loading prayed people", e);
+
+    Alert.alert(
+      "Could not load prayed list",
+      e?.message || "Please try again in a moment."
+    );
+  } finally {
+    setPrayedPeopleLoading(false);
+  }
+}
+
+async function handleCreateRequest(
+  title,
+  body,
+  isAnonymous,
+  visibility,
+  groupId,
+  allowReshare = false
+) {
+  if (!title) {
+    Alert.alert("Title required", "Please add a short title to your request.");
+    return false;
+  }
+
+  try {
+    setPosting(true);
+
+    const { data: sessionData, error: sessionError } =
+      await supabase.auth.getSession();
+
+    if (sessionError) throw sessionError;
+
+    const userId = sessionData?.session?.user?.id;
+
+    if (!userId) {
+      Alert.alert(
+        "Not signed in",
+        "Please sign in again before posting a prayer request."
+      );
+      return false;
+    }
+
+    const finalVisibility = visibility || "fellowship";
+
+    const { data, error } = await supabase
+      .from("prayer_requests")
+      .insert({
+        user_id: userId,
+        community_id: GLOBAL_COMMUNITY_ID,
+        title,
+        body: body || null,
+        is_anonymous: isAnonymous,
+        visibility: finalVisibility,
+        group_id: groupId || null,
+        allow_reshare: finalVisibility === "fellowship" ? !!allowReshare : false,
+      })
+      .select(
+        "id, title, body, is_anonymous, prayed_count, created_at, user_id, visibility, group_id, allow_reshare"
+      )
+      .single();
+
+    if (error) throw error;
+
+    if (!currentUserId) setCurrentUserId(userId);
+
+    setRequests((prev) => [data, ...prev]);
+
+    if (!data.is_anonymous) {
+      fetchProfilesForRequests([data]);
+    }
+
+    return true;
+  } catch (e) {
+    console.log("Error creating prayer request", e);
+
+    const msg =
+      e?.message ||
+      e?.error_description ||
+      (typeof e === "string"
+        ? e
+        : "We couldn’t post your prayer request right now. Please try again.");
+
+    Alert.alert("Could not post", msg);
+    return false;
+  } finally {
+    setPosting(false);
+  }
+}
 
   async function handleCreateGroup(name, description, privacy, groupType) {
     if (!name) {
@@ -1337,28 +1664,22 @@ const [creatingGroup, setCreatingGroup] = useState(false);
     }
   }
 
-  const filteredRequests = useMemo(() => {
-    if (activeFilter === "mine" && currentUserId) {
-      return requests.filter((r) => r.user_id === currentUserId);
-    }
+const filteredRequests = useMemo(() => {
+  if (activeFilter === "mine" && currentUserId) {
+    return requests.filter((r) => r.user_id === currentUserId);
+  }
 
-    if (activeFilter === "saved") {
-      if (!currentUserId) return [];
-      return requests.filter((r) => !!bookmarkedById[r.id]);
-    }
+  if (activeFilter === "saved") {
+    if (!currentUserId) return [];
+    return requests.filter((r) => !!bookmarkedById[r.id]);
+  }
 
-    if (activeFilter === "prayed") {
-      return requests.filter((r) => !!prayedThisSessionById[r.id]);
-    }
+  if (activeFilter === "prayed") {
+    return requests.filter((r) => !!prayedById[r.id]);
+  }
 
-    return requests.filter((r) => !prayedThisSessionById[r.id]);
-  }, [
-    activeFilter,
-    requests,
-    currentUserId,
-    bookmarkedById,
-    prayedThisSessionById,
-  ]);
+  return requests.filter((r) => !prayedById[r.id]);
+}, [activeFilter, requests, currentUserId, bookmarkedById, prayedById]);
 
   const totalPrayed = requests.reduce(
     (sum, r) => sum + (r.prayed_count || 0),
@@ -1465,6 +1786,536 @@ const [creatingGroup, setCreatingGroup] = useState(false);
     return `${prayedDir} to mark prayed  •  ${saveDir} to save`;
   }, []);
 
+  const renderPrayedPeopleModal = () => (
+  <Modal
+    visible={prayedPeopleVisible}
+    animationType="fade"
+    transparent
+    onRequestClose={() => setPrayedPeopleVisible(false)}
+  >
+    <Pressable
+      onPress={() => setPrayedPeopleVisible(false)}
+      style={{
+        flex: 1,
+        backgroundColor: "rgba(15, 23, 42, 0.28)",
+        justifyContent: "flex-end",
+      }}
+    >
+      <Pressable
+        onPress={() => {}}
+        style={{
+          backgroundColor: PREMIUM_CREAM,
+          borderTopLeftRadius: 30,
+          borderTopRightRadius: 30,
+          paddingHorizontal: 18,
+          paddingTop: 16,
+          paddingBottom: 28,
+          borderTopWidth: 1,
+          borderColor: CARD_BORDER,
+          maxHeight: "72%",
+        }}
+      >
+        <View
+          style={{
+            width: 44,
+            height: 5,
+            borderRadius: 999,
+            backgroundColor: CARD_BORDER,
+            alignSelf: "center",
+            marginBottom: 16,
+          }}
+        />
+
+        <Text
+          style={[
+            serifHeading,
+            {
+              fontSize: 24,
+              lineHeight: 29,
+              marginBottom: 4,
+            },
+          ]}
+        >
+          Prayed for this
+        </Text>
+
+        <Text
+          style={{
+            color: MUTED,
+            fontSize: 13,
+            lineHeight: 19,
+            fontWeight: "700",
+            marginBottom: 14,
+          }}
+          numberOfLines={2}
+        >
+          {prayedPeopleTitle}
+        </Text>
+
+        {prayedPeopleLoading ? (
+          <View
+            style={{
+              paddingVertical: 24,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <ActivityIndicator color={EVENT_AMBER} />
+
+            <Text
+              style={{
+                color: MUTED,
+                marginTop: 10,
+                fontWeight: "700",
+              }}
+            >
+              Loading people who prayed…
+            </Text>
+          </View>
+        ) : prayedPeopleRows.length === 0 ? (
+          <View
+            style={{
+              padding: 16,
+              borderRadius: 22,
+              backgroundColor: SURFACE,
+              borderWidth: 1,
+              borderColor: CARD_BORDER,
+              alignItems: "center",
+            }}
+          >
+            <View
+              style={{
+                width: 48,
+                height: 48,
+                borderRadius: 999,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: OLIVE_SOFT,
+                borderWidth: 1,
+                borderColor: OLIVE_BORDER,
+                marginBottom: 10,
+              }}
+            >
+              <Ionicons name="heart-outline" size={23} color={OLIVE} />
+            </View>
+
+            <Text
+              style={{
+                color: TEXT,
+                fontWeight: "900",
+                fontSize: 15,
+                textAlign: "center",
+              }}
+            >
+              No one has marked this as prayed yet
+            </Text>
+
+            <Text
+              style={{
+                color: MUTED,
+                marginTop: 5,
+                fontSize: 12.5,
+                lineHeight: 18,
+                fontWeight: "700",
+                textAlign: "center",
+              }}
+            >
+              When someone presses Pray, they will appear here.
+            </Text>
+          </View>
+        ) : (
+          <FlatList
+            data={prayedPeopleRows}
+            keyExtractor={(item) => `${item.user_id}-${item.created_at}`}
+            showsVerticalScrollIndicator={false}
+            renderItem={({ item }) => (
+              <View
+                style={{
+                  padding: 13,
+                  borderRadius: 22,
+                  backgroundColor: SURFACE,
+                  borderWidth: 1,
+                  borderColor: CARD_BORDER,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  marginBottom: 10,
+                }}
+              >
+                {item.avatar_url ? (
+                  <Image
+                    source={{ uri: item.avatar_url }}
+                    style={{
+                      width: 42,
+                      height: 42,
+                      borderRadius: 999,
+                      marginRight: 12,
+                      backgroundColor: OLIVE_SOFT,
+                    }}
+                  />
+                ) : (
+                  <View
+                    style={{
+                      width: 42,
+                      height: 42,
+                      borderRadius: 999,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: OLIVE_SOFT,
+                      borderWidth: 1,
+                      borderColor: OLIVE_BORDER,
+                      marginRight: 12,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: OLIVE,
+                        fontWeight: "900",
+                        fontSize: 13,
+                      }}
+                    >
+                      {initialsFromName(item.display_name)}
+                    </Text>
+                  </View>
+                )}
+
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={{
+                      color: TEXT,
+                      fontSize: 14.5,
+                      fontWeight: "900",
+                    }}
+                    numberOfLines={1}
+                  >
+                    {item.display_name}
+                  </Text>
+
+                  <Text
+                    style={{
+                      color: MUTED,
+                      marginTop: 2,
+                      fontSize: 12,
+                      fontWeight: "700",
+                    }}
+                  >
+                    Prayed for this request
+                  </Text>
+                </View>
+
+                <Ionicons
+                  name="checkmark-circle"
+                  size={21}
+                  color={EVENT_AMBER}
+                />
+              </View>
+            )}
+          />
+        )}
+      </Pressable>
+    </Pressable>
+  </Modal>
+);
+
+const renderPrayerActionMenu = () => {
+  const prayer = selectedPrayerForActions;
+  const isMine = !!currentUserId && prayer?.user_id === currentUserId;
+  const isSaved = !!prayer?.id && !!bookmarkedById[prayer.id];
+
+  return (
+    <Modal
+      visible={prayerActionMenuVisible}
+      animationType="fade"
+      transparent
+      onRequestClose={closePrayerActionMenu}
+    >
+      <Pressable
+        onPress={closePrayerActionMenu}
+        style={{
+          flex: 1,
+          backgroundColor: "rgba(15, 23, 42, 0.28)",
+          justifyContent: "flex-end",
+        }}
+      >
+        <Pressable
+          onPress={() => {}}
+          style={{
+            backgroundColor: PREMIUM_CREAM,
+            borderTopLeftRadius: 30,
+            borderTopRightRadius: 30,
+            paddingHorizontal: 18,
+            paddingTop: 16,
+            paddingBottom: 28,
+            borderTopWidth: 1,
+            borderColor: CARD_BORDER,
+          }}
+        >
+          <View
+            style={{
+              width: 44,
+              height: 5,
+              borderRadius: 999,
+              backgroundColor: CARD_BORDER,
+              alignSelf: "center",
+              marginBottom: 16,
+            }}
+          />
+
+          <Text
+            style={[
+              serifHeading,
+              {
+                fontSize: 24,
+                lineHeight: 29,
+                marginBottom: 4,
+              },
+            ]}
+          >
+            Prayer options
+          </Text>
+
+          <Text
+            style={{
+              color: MUTED,
+              fontSize: 13,
+              lineHeight: 19,
+              fontWeight: "700",
+              marginBottom: 14,
+            }}
+            numberOfLines={2}
+          >
+            {prayer?.title || "Prayer request"}
+          </Text>
+
+          <View
+            style={{
+              backgroundColor: SURFACE,
+              borderRadius: 24,
+              borderWidth: 1,
+              borderColor: CARD_BORDER,
+              overflow: "hidden",
+            }}
+          >
+            <Pressable
+              onPress={() => {
+                if (prayer?.id) toggleBookmark(prayer.id);
+                closePrayerActionMenu();
+              }}
+              style={({ pressed }) => ({
+                paddingHorizontal: 15,
+                paddingVertical: 15,
+                flexDirection: "row",
+                alignItems: "center",
+                backgroundColor: pressed ? AMBER_SOFT : SURFACE,
+              })}
+            >
+              <View
+                style={{
+                  width: 38,
+                  height: 38,
+                  borderRadius: 999,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: AMBER_SOFT,
+                  borderWidth: 1,
+                  borderColor: AMBER_BORDER,
+                  marginRight: 12,
+                }}
+              >
+                <Ionicons
+                  name={isSaved ? "bookmark" : "bookmark-outline"}
+                  size={19}
+                  color={EVENT_AMBER}
+                />
+              </View>
+
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={{
+                    color: TEXT,
+                    fontSize: 14.5,
+                    fontWeight: "900",
+                  }}
+                >
+                  {isSaved ? "Unsave prayer" : "Save prayer"}
+                </Text>
+
+                <Text
+                  style={{
+                    color: MUTED,
+                    marginTop: 2,
+                    fontSize: 12,
+                    fontWeight: "700",
+                  }}
+                >
+                  {isSaved
+                    ? "Remove this request from your saved prayers."
+                    : "Keep this request so you can return to it later."}
+                </Text>
+              </View>
+            </Pressable>
+
+            <View style={{ height: 1, backgroundColor: CARD_BORDER }} />
+
+            {isMine ? (
+              <Pressable
+               onPress={() => handleDeletePrayerRequest(prayer)}
+                style={({ pressed }) => ({
+                  paddingHorizontal: 15,
+                  paddingVertical: 15,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  backgroundColor: pressed ? "rgba(180, 35, 24, 0.08)" : SURFACE,
+                })}
+              >
+                <View
+                  style={{
+                    width: 38,
+                    height: 38,
+                    borderRadius: 999,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: "rgba(180, 35, 24, 0.08)",
+                    borderWidth: 1,
+                    borderColor: DANGER_BORDER,
+                    marginRight: 12,
+                  }}
+                >
+                  <Ionicons name="trash-outline" size={19} color={DANGER} />
+                </View>
+
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={{
+                      color: DANGER,
+                      fontSize: 14.5,
+                      fontWeight: "900",
+                    }}
+                  >
+                    Delete request
+                  </Text>
+
+                  <Text
+                    style={{
+                      color: MUTED,
+                      marginTop: 2,
+                      fontSize: 12,
+                      fontWeight: "700",
+                    }}
+                  >
+                    Only you can delete your own prayer request.
+                  </Text>
+                </View>
+              </Pressable>
+            ) : (
+              <Pressable
+               onPress={() => {
+  Alert.alert(
+    "Report prayer request",
+    "Why are you reporting this request?",
+    [
+      {
+        text: "Cancel",
+        style: "cancel",
+      },
+      {
+        text: "Inappropriate or harmful",
+        onPress: () => handleReportPrayerRequest(prayer, "inappropriate"),
+      },
+      {
+        text: "Spam or fake",
+        onPress: () => handleReportPrayerRequest(prayer, "spam"),
+      },
+      {
+        text: "Privacy concern",
+        onPress: () => handleReportPrayerRequest(prayer, "privacy"),
+      },
+      {
+        text: "Other",
+        onPress: () => handleReportPrayerRequest(prayer, "other"),
+      },
+    ]
+  );
+}}
+                style={({ pressed }) => ({
+                  paddingHorizontal: 15,
+                  paddingVertical: 15,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  backgroundColor: pressed ? OLIVE_SOFT : SURFACE,
+                })}
+              >
+                <View
+                  style={{
+                    width: 38,
+                    height: 38,
+                    borderRadius: 999,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: OLIVE_SOFT,
+                    borderWidth: 1,
+                    borderColor: OLIVE_BORDER,
+                    marginRight: 12,
+                  }}
+                >
+                  <Ionicons name="flag-outline" size={19} color={OLIVE} />
+                </View>
+
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={{
+                      color: TEXT,
+                      fontSize: 14.5,
+                      fontWeight: "900",
+                    }}
+                  >
+                    Report request
+                  </Text>
+
+                  <Text
+                    style={{
+                      color: MUTED,
+                      marginTop: 2,
+                      fontSize: 12,
+                      fontWeight: "700",
+                    }}
+                  >
+                    Reporting will be added after delete is stable.
+                  </Text>
+                </View>
+              </Pressable>
+            )}
+          </View>
+
+          <Pressable
+            onPress={closePrayerActionMenu}
+            style={({ pressed }) => ({
+              marginTop: 12,
+              paddingVertical: 14,
+              borderRadius: 999,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: pressed ? OLIVE_SOFT : SURFACE,
+              borderWidth: 1,
+              borderColor: CARD_BORDER,
+              transform: [{ scale: pressed ? 0.98 : 1 }],
+            })}
+          >
+            <Text
+              style={{
+                color: MUTED,
+                fontSize: 14,
+                fontWeight: "900",
+              }}
+            >
+              Cancel
+            </Text>
+          </Pressable>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+};
+
   const renderItem = ({ item }) => {
     const createdLabel = formatDateTime(item.created_at);
 
@@ -1480,7 +2331,7 @@ const [creatingGroup, setCreatingGroup] = useState(false);
     const replies = repliesByPrayerId[item.id] || [];
     const isExpanded = !!expandedPrayerIds[item.id];
     const isSaved = !!bookmarkedById[item.id];
-    const alreadyPrayedThisSession = !!prayedThisSessionById[item.id];
+    const alreadyPrayed = !!prayedById[item.id];
 
     const poster = getPosterMeta(item);
 
@@ -1498,7 +2349,7 @@ const [creatingGroup, setCreatingGroup] = useState(false);
       >
         <View
           style={{
-            backgroundColor: alreadyPrayedThisSession
+            backgroundColor: alreadyPrayed
               ? CARD_BORDER
               : AMBER_SOFT,
             paddingHorizontal: 16,
@@ -1508,28 +2359,28 @@ const [creatingGroup, setCreatingGroup] = useState(false);
             justifyContent: "center",
             minWidth: 116,
             borderWidth: 1,
-            borderColor: alreadyPrayedThisSession ? CARD_BORDER : AMBER_BORDER,
+            borderColor: alreadyPrayed ? CARD_BORDER : AMBER_BORDER,
           }}
         >
           <Ionicons
             name={
-              alreadyPrayedThisSession
+              alreadyPrayed
                 ? "checkmark-circle"
                 : "checkmark-circle-outline"
             }
             size={19}
-            color={alreadyPrayedThisSession ? MUTED : EVENT_AMBER}
+            color={alreadyPrayed ? MUTED : EVENT_AMBER}
           />
 
           <Text
             style={{
-              color: alreadyPrayedThisSession ? MUTED : EVENT_BROWN,
+              color: alreadyPrayed ? MUTED : EVENT_BROWN,
               fontWeight: "900",
               fontSize: 13,
               marginTop: 4,
             }}
           >
-            {alreadyPrayedThisSession ? "Prayed" : "I prayed"}
+            {alreadyPrayed ? "Prayed" : "Pray"}
           </Text>
         </View>
       </View>
@@ -1606,7 +2457,7 @@ const [creatingGroup, setCreatingGroup] = useState(false);
             borderRadius: 26,
             backgroundColor: SURFACE,
             borderWidth: 1,
-            borderColor: alreadyPrayedThisSession ? AMBER_BORDER : CARD_BORDER,
+            borderColor: alreadyPrayed ? AMBER_BORDER : CARD_BORDER,
             shadowColor: SHADOW,
             shadowOpacity: 0.08,
             shadowRadius: 13,
@@ -1668,20 +2519,41 @@ const [creatingGroup, setCreatingGroup] = useState(false);
                   </View>
                 </View>
 
-                {createdLabel ? (
-                  <Text
-                    style={{
-                      color: MUTED,
-                      fontSize: 10.5,
-                      fontWeight: "700",
-                      maxWidth: 86,
-                      textAlign: "right",
-                    }}
-                    numberOfLines={2}
-                  >
-                    {createdLabel}
-                  </Text>
-                ) : null}
+               <View style={{ alignItems: "flex-end", marginLeft: 8 }}>
+  {createdLabel ? (
+    <Text
+      style={{
+        color: MUTED,
+        fontSize: 10.5,
+        fontWeight: "700",
+        maxWidth: 86,
+        textAlign: "right",
+        marginBottom: 7,
+      }}
+      numberOfLines={2}
+    >
+      {createdLabel}
+    </Text>
+  ) : null}
+
+  <Pressable
+    onPress={() => openPrayerActionMenu(item)}
+    hitSlop={10}
+    style={({ pressed }) => ({
+      width: 32,
+      height: 32,
+      borderRadius: 999,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: pressed ? OLIVE_SOFT : SURFACE,
+      borderWidth: 1,
+      borderColor: CARD_BORDER,
+      transform: [{ scale: pressed ? 0.94 : 1 }],
+    })}
+  >
+    <Ionicons name="ellipsis-horizontal" size={18} color={MUTED} />
+  </Pressable>
+</View>
               </View>
             </View>
 
@@ -1717,64 +2589,67 @@ const [creatingGroup, setCreatingGroup] = useState(false);
                 marginTop: 14,
               }}
             >
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  paddingHorizontal: 11,
-                  paddingVertical: 8,
-                  borderRadius: 999,
-                  backgroundColor: AMBER_SOFT,
-                  borderWidth: 1,
-                  borderColor: AMBER_BORDER,
-                }}
-              >
-                <Ionicons name="people-outline" size={15} color={EVENT_AMBER} />
+        <Pressable
+  onPress={() => openPrayedPeople(item)}
+  hitSlop={8}
+  style={({ pressed }) => ({
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 11,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: pressed ? AMBER_BORDER : AMBER_SOFT,
+    borderWidth: 1,
+    borderColor: AMBER_BORDER,
+    transform: [{ scale: pressed ? 0.97 : 1 }],
+  })}
+>
+  <Ionicons name="people-outline" size={15} color={EVENT_AMBER} />
 
-                <Text
-                  style={{
-                    color: EVENT_BROWN,
-                    fontSize: 12,
-                    fontWeight: "900",
-                    marginLeft: 6,
-                  }}
-                >
-                  {item.prayed_count || 0} prayed
-                </Text>
-              </View>
+  <Text
+    style={{
+      color: EVENT_BROWN,
+      fontSize: 12,
+      fontWeight: "900",
+      marginLeft: 6,
+    }}
+  >
+    {item.prayed_count || 0} prayed
+  </Text>
+</Pressable>
 
               <View style={{ flex: 1 }} />
 
               <Pressable
                 onPress={() => handlePrayedForPrayer(item.id)}
                 style={({ pressed }) => ({
-                  backgroundColor: alreadyPrayedThisSession
+                  backgroundColor: alreadyPrayed
                     ? OLIVE_SOFT
                     : EVENT_AMBER,
                   paddingHorizontal: 16,
                   paddingVertical: 10,
                   borderRadius: 999,
                   borderWidth: 1,
-                  borderColor: alreadyPrayedThisSession
+                  borderColor: alreadyPrayed
                     ? OLIVE_BORDER
                     : AMBER_BORDER,
                   shadowColor: EVENT_AMBER,
                   shadowOpacity:
-                    alreadyPrayedThisSession || pressed ? 0.04 : 0.16,
+                    alreadyPrayed || pressed ? 0.04 : 0.16,
                   shadowRadius: 10,
                   shadowOffset: { width: 0, height: 4 },
-                  elevation: alreadyPrayedThisSession ? 0 : 2,
+                  elevation: alreadyPrayed ? 0 : 2,
                   transform: [{ scale: pressed ? 0.96 : 1 }],
                 })}
               >
                 <Text
                   style={{
-                    color: alreadyPrayedThisSession ? OLIVE : "#FFFFFF",
+                    color: alreadyPrayed ? OLIVE : "#FFFFFF",
                     fontWeight: "900",
                     fontSize: 13,
                   }}
                 >
-                  {alreadyPrayedThisSession ? "Prayed" : "I prayed"}
+                  {alreadyPrayed ? "Prayed" : "Pray"}
                 </Text>
               </Pressable>
             </View>
@@ -2556,7 +3431,7 @@ const [creatingGroup, setCreatingGroup] = useState(false);
   extraData={{
     activeFilter,
     bookmarkedById,
-    prayedThisSessionById,
+    prayedById,
     repliesByPrayerId,
     expandedPrayerIds,
     requestsLength: requests.length,
@@ -2634,7 +3509,7 @@ onOpenGroup={(group) => {
             text={faithCoachText}
           />
 
-          <EncourageModal
+            <EncourageModal
             visible={encourageVisible}
             onClose={() => {
               if (!encourageLoading) {
@@ -2646,6 +3521,9 @@ onOpenGroup={(group) => {
             onSubmit={handleSubmitEncouragement}
             prayer={encourageTargetPrayer}
           />
+
+          {renderPrayedPeopleModal()}
+          {renderPrayerActionMenu()}
         </>
       )}
     </Screen>

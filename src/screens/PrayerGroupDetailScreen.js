@@ -1,10 +1,13 @@
 // src/screens/PrayerGroupDetailScreen.js
 import { Ionicons } from "@expo/vector-icons";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
     ActivityIndicator,
     Alert,
+    Animated,
+    Dimensions,
     FlatList,
+    Image,
     KeyboardAvoidingView,
     Modal,
     Platform,
@@ -16,6 +19,9 @@ import {
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
+import EncourageModal from "../components/EncourageModal";
+import FaithCoachModal from "../components/FaithCoachModal";
+import { usePoints } from "../context/PointsContext";
 import { supabase } from "../lib/supabase";
 
 const GLOBAL_COMMUNITY_ID = "bb6353e4-8517-4c3e-b360-3cf5adbe9bb3";
@@ -80,6 +86,17 @@ function formatDateTime(ts) {
   }
 }
 
+function initialsFromName(name) {
+  const parts = (name || "").trim().split(/\s+/).filter(Boolean);
+
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 1).toUpperCase();
+
+  return (
+    parts[0].slice(0, 1) + parts[parts.length - 1].slice(0, 1)
+  ).toUpperCase();
+}
+
 function NewGroupPrayerModal({
   visible,
   groupName,
@@ -92,33 +109,67 @@ function NewGroupPrayerModal({
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [isAnonymous, setIsAnonymous] = useState(false);
+  const [deliveryVisible, setDeliveryVisible] = useState(false);
+
+  const planeAnim = useRef(new Animated.Value(0)).current;
+  const cardAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (!visible) {
       setTitle("");
       setBody("");
       setIsAnonymous(false);
+      setDeliveryVisible(false);
+      planeAnim.setValue(0);
+      cardAnim.setValue(0);
     }
-  }, [visible]);
+  }, [visible, planeAnim, cardAnim]);
 
   const handleClose = () => {
-    if (loading) return;
+    if (loading || deliveryVisible) return;
+
     setTitle("");
     setBody("");
     setIsAnonymous(false);
     onClose?.();
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!title.trim()) {
       Alert.alert("Title required", "Please add a short title.");
       return;
     }
 
-    onSubmit?.({
+    const success = await onSubmit?.({
       title: title.trim(),
       body: body.trim() || null,
       isAnonymous,
+    });
+
+    if (!success) return;
+
+    setDeliveryVisible(true);
+    planeAnim.setValue(0);
+    cardAnim.setValue(0);
+
+    Animated.sequence([
+      Animated.timing(planeAnim, {
+        toValue: 1,
+        duration: 760,
+        useNativeDriver: true,
+      }),
+      Animated.timing(cardAnim, {
+        toValue: 1,
+        duration: 360,
+        useNativeDriver: true,
+      }),
+      Animated.delay(900),
+    ]).start(() => {
+      setTitle("");
+      setBody("");
+      setIsAnonymous(false);
+      setDeliveryVisible(false);
+      onClose?.();
     });
   };
 
@@ -152,7 +203,7 @@ function NewGroupPrayerModal({
               <View style={{ flexDirection: "row", alignItems: "center" }}>
                 <Pressable
                   onPress={handleClose}
-                  disabled={loading}
+                  disabled={loading || deliveryVisible}
                   hitSlop={10}
                   style={({ pressed }) => ({
                     width: 42,
@@ -163,7 +214,7 @@ function NewGroupPrayerModal({
                     backgroundColor: pressed ? OLIVE_SOFT : SURFACE,
                     borderWidth: 1,
                     borderColor: CARD_BORDER,
-                    opacity: loading ? 0.6 : 1,
+                    opacity: loading || deliveryVisible ? 0.6 : 1,
                     transform: [{ scale: pressed ? 0.96 : 1 }],
                   })}
                 >
@@ -277,7 +328,7 @@ function NewGroupPrayerModal({
                           This will only be posted into this prayer group.
                         </Text>
                       </View>
-                    </View>
+                                          </View>
 
                     <Text
                       style={{
@@ -411,6 +462,159 @@ function NewGroupPrayerModal({
               renderItem={null}
             />
 
+            {deliveryVisible ? (
+              <View
+                pointerEvents="none"
+                style={{
+                  position: "absolute",
+                  left: 0,
+                  right: 0,
+                  top: 0,
+                  bottom: 0,
+                  zIndex: 20,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  paddingHorizontal: 26,
+                  backgroundColor: "rgba(255, 252, 245, 0.88)",
+                }}
+              >
+                <Animated.View
+                  style={{
+                    transform: [
+                      {
+                        translateY: planeAnim.interpolate({
+                          inputRange: [0, 0.25, 1],
+                          outputRange: [80, 10, -260],
+                        }),
+                      },
+                      {
+                        translateX: planeAnim.interpolate({
+                          inputRange: [0, 0.35, 1],
+                          outputRange: [-70, 10, 145],
+                        }),
+                      },
+                      {
+                        rotate: planeAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: ["-18deg", "18deg"],
+                        }),
+                      },
+                      {
+                        scale: planeAnim.interpolate({
+                          inputRange: [0, 0.3, 0.75, 1],
+                          outputRange: [0.82, 1.08, 1, 0.72],
+                        }),
+                      },
+                    ],
+                    opacity: planeAnim.interpolate({
+                      inputRange: [0, 0.12, 0.78, 1],
+                      outputRange: [0, 1, 1, 0],
+                    }),
+                  }}
+                >
+                  <View
+                    style={{
+                      width: 72,
+                      height: 72,
+                      borderRadius: 999,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: AMBER_SOFT,
+                      borderWidth: 1,
+                      borderColor: AMBER_BORDER,
+                      shadowColor: EVENT_AMBER,
+                      shadowOpacity: 0.16,
+                      shadowRadius: 14,
+                      shadowOffset: { width: 0, height: 7 },
+                      elevation: 4,
+                    }}
+                  >
+                    <Ionicons
+                      name="paper-plane-outline"
+                      size={31}
+                      color={EVENT_AMBER}
+                    />
+                  </View>
+                </Animated.View>
+
+                <Animated.View
+                  style={{
+                    marginTop: 18,
+                    width: "100%",
+                    maxWidth: 330,
+                    backgroundColor: SURFACE,
+                    borderRadius: 28,
+                    borderWidth: 1,
+                    borderColor: AMBER_BORDER,
+                    padding: 18,
+                    alignItems: "center",
+                    shadowColor: SHADOW,
+                    shadowOpacity: 0.12,
+                    shadowRadius: 18,
+                    shadowOffset: { width: 0, height: 8 },
+                    elevation: 5,
+                    opacity: cardAnim,
+                    transform: [
+                      {
+                        translateY: cardAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [16, 0],
+                        }),
+                      },
+                      {
+                        scale: cardAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [0.96, 1],
+                        }),
+                      },
+                    ],
+                  }}
+                >
+                  <View
+                    style={{
+                      width: 42,
+                      height: 42,
+                      borderRadius: 999,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: OLIVE_SOFT,
+                      borderWidth: 1,
+                      borderColor: OLIVE_BORDER,
+                      marginBottom: 10,
+                    }}
+                  >
+                    <Ionicons name="checkmark" size={22} color={OLIVE} />
+                  </View>
+
+                  <Text
+                    style={[
+                      serifHeading,
+                      {
+                        fontSize: 24,
+                        lineHeight: 29,
+                        textAlign: "center",
+                      },
+                    ]}
+                  >
+                    Prayer delivered
+                  </Text>
+
+                  <Text
+                    style={{
+                      color: MUTED,
+                      marginTop: 7,
+                      fontSize: 13,
+                      lineHeight: 19,
+                      fontWeight: "700",
+                      textAlign: "center",
+                    }}
+                  >
+                    Your group can now pray with you.
+                  </Text>
+                </Animated.View>
+              </View>
+            ) : null}
+
             <View
               style={{
                 paddingHorizontal: 18,
@@ -424,7 +628,7 @@ function NewGroupPrayerModal({
             >
               <Pressable
                 onPress={handleClose}
-                disabled={loading}
+                disabled={loading || deliveryVisible}
                 style={({ pressed }) => ({
                   flex: 1,
                   paddingVertical: 13,
@@ -434,7 +638,7 @@ function NewGroupPrayerModal({
                   borderWidth: 1,
                   borderColor: OLIVE_BORDER,
                   backgroundColor: SURFACE,
-                  opacity: loading ? 0.6 : 1,
+                  opacity: loading || deliveryVisible ? 0.6 : 1,
                   transform: [{ scale: pressed ? 0.97 : 1 }],
                 })}
               >
@@ -451,22 +655,22 @@ function NewGroupPrayerModal({
 
               <Pressable
                 onPress={handleSubmit}
-                disabled={loading || !title.trim()}
+                disabled={loading || deliveryVisible}
                 style={({ pressed }) => ({
                   flex: 1,
-                  paddingVertical: 13,
+                                    paddingVertical: 13,
                   borderRadius: 999,
                   alignItems: "center",
                   backgroundColor: title.trim() ? EVENT_AMBER : AMBER_SOFT,
                   borderWidth: 1,
                   borderColor: AMBER_BORDER,
-                  opacity: loading || !title.trim() ? 0.65 : 1,
+                  opacity: loading || deliveryVisible || !title.trim() ? 0.7 : 1,
                   shadowColor: EVENT_AMBER,
                   shadowOpacity: title.trim() ? 0.16 : 0,
                   shadowRadius: 10,
                   shadowOffset: { width: 0, height: 5 },
                   elevation: title.trim() ? 3 : 0,
-                  transform: [{ scale: pressed && title.trim() ? 0.97 : 1 }],
+                  transform: [{ scale: pressed ? 0.97 : 1 }],
                 })}
               >
                 <Text
@@ -476,7 +680,7 @@ function NewGroupPrayerModal({
                     fontWeight: "900",
                   }}
                 >
-                  {loading ? "Posting…" : "Post prayer"}
+                  {loading ? "Posting…" : deliveryVisible ? "Delivered" : "Post prayer"}
                 </Text>
               </Pressable>
             </View>
@@ -489,6 +693,9 @@ function NewGroupPrayerModal({
 
 export default function PrayerGroupDetailScreen({ route, navigation }) {
   const insets = useSafeAreaInsets();
+
+  const points = usePoints();
+  const awardPrayerPoint = points?.awardPrayerPoint;
 
   const routeGroup = route?.params?.group || null;
   const groupId = route?.params?.groupId || routeGroup?.id || null;
@@ -507,6 +714,38 @@ const [editNameVisible, setEditNameVisible] = useState(false);
 const [editedGroupName, setEditedGroupName] = useState("");
 const [updatingGroupName, setUpdatingGroupName] = useState(false);
 const [deletingGroup, setDeletingGroup] = useState(false);
+
+const [selectedPrayer, setSelectedPrayer] = useState(null);
+const [prayerMenuVisible, setPrayerMenuVisible] = useState(false);
+const [deletingPrayer, setDeletingPrayer] = useState(false);
+
+const [currentUserId, setCurrentUserId] = useState(null);
+const [prayedById, setPrayedById] = useState({});
+
+const [toastText, setToastText] = useState("");
+const toastOpacity = useRef(new Animated.Value(0)).current;
+const toastScale = useRef(new Animated.Value(0.98)).current;
+
+const flyOpacity = useRef(new Animated.Value(0)).current;
+const flyScale = useRef(new Animated.Value(0.9)).current;
+const flyX = useRef(new Animated.Value(0)).current;
+const flyY = useRef(new Animated.Value(0)).current;
+
+const [prayedPeopleVisible, setPrayedPeopleVisible] = useState(false);
+const [prayedPeopleLoading, setPrayedPeopleLoading] = useState(false);
+const [prayedPeopleTitle, setPrayedPeopleTitle] = useState("");
+const [prayedPeopleRows, setPrayedPeopleRows] = useState([]);
+
+const [faithCoachVisible, setFaithCoachVisible] = useState(false);
+const [faithCoachLoading, setFaithCoachLoading] = useState(false);
+const [faithCoachText, setFaithCoachText] = useState("");
+const [faithCoachRequest, setFaithCoachRequest] = useState(null);
+
+const [encourageVisible, setEncourageVisible] = useState(false);
+const [encourageLoading, setEncourageLoading] = useState(false);
+const [encourageTargetPrayer, setEncourageTargetPrayer] = useState(null);
+const [repliesByPrayerId, setRepliesByPrayerId] = useState({});
+const [expandedPrayerIds, setExpandedPrayerIds] = useState({});
 
   const groupName = group?.name || "Prayer Group";
   const icon = groupTypeIcon(group?.group_type);
@@ -550,7 +789,39 @@ const [deletingGroup, setDeletingGroup] = useState(false);
 
       if (error) throw error;
 
-      setRequests(data || []);
+      const rows = data || [];
+      setRequests(rows);
+
+      const { data: sessionData } = await supabase.auth.getSession();
+      const userId = sessionData?.session?.user?.id ?? null;
+
+      if (userId) {
+        setCurrentUserId(userId);
+
+        const prayerIds = rows.map((item) => item.id).filter(Boolean);
+
+        if (prayerIds.length > 0) {
+          const { data: prayedRows, error: prayedError } = await supabase
+            .from("prayer_request_prayers")
+            .select("prayer_id")
+            .eq("user_id", userId)
+            .in("prayer_id", prayerIds);
+
+          if (prayedError) {
+            console.log("Error loading group prayed marks", prayedError);
+          } else {
+            const nextMap = {};
+
+            (prayedRows || []).forEach((row) => {
+              if (row?.prayer_id) nextMap[row.prayer_id] = true;
+            });
+
+            setPrayedById(nextMap);
+          }
+        } else {
+          setPrayedById({});
+        }
+      }
     } catch (e) {
       console.log("Error loading group prayer requests", e);
       setErrorText("Could not load prayer requests for this group.");
@@ -585,15 +856,125 @@ const [deletingGroup, setDeletingGroup] = useState(false);
     loadAll();
   }, [loadAll]);
 
+function showToast(text) {
+  setToastText(text);
+
+  toastOpacity.stopAnimation();
+  toastScale.stopAnimation();
+  toastOpacity.setValue(0);
+  toastScale.setValue(0.98);
+
+  Animated.parallel([
+    Animated.timing(toastOpacity, {
+      toValue: 1,
+      duration: 140,
+      useNativeDriver: true,
+    }),
+    Animated.sequence([
+      Animated.timing(toastScale, {
+        toValue: 1.02,
+        duration: 140,
+        useNativeDriver: true,
+      }),
+      Animated.timing(toastScale, {
+        toValue: 1,
+        duration: 140,
+        useNativeDriver: true,
+      }),
+    ]),
+  ]).start(() => {
+    Animated.timing(toastOpacity, {
+      toValue: 0,
+      duration: 220,
+      delay: 900,
+      useNativeDriver: true,
+    }).start();
+  });
+}
+
+function animatePrayerLight() {
+  const { width, height } = Dimensions.get("window");
+
+  flyOpacity.stopAnimation();
+  flyScale.stopAnimation();
+  flyX.stopAnimation();
+  flyY.stopAnimation();
+
+  flyOpacity.setValue(0);
+  flyScale.setValue(0.9);
+  flyX.setValue(width / 2 - 14);
+  flyY.setValue(height * 0.58);
+
+  Animated.parallel([
+    Animated.timing(flyOpacity, {
+      toValue: 1,
+      duration: 120,
+      useNativeDriver: true,
+    }),
+    Animated.timing(flyScale, {
+      toValue: 1,
+      duration: 120,
+      useNativeDriver: true,
+    }),
+  ]).start(() => {
+    Animated.parallel([
+      Animated.timing(flyX, {
+        toValue: width - 44,
+        duration: 560,
+        useNativeDriver: true,
+      }),
+      Animated.timing(flyY, {
+        toValue: 70,
+        duration: 560,
+        useNativeDriver: true,
+      }),
+      Animated.timing(flyScale, {
+        toValue: 0.72,
+        duration: 560,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      Animated.timing(flyOpacity, {
+        toValue: 0,
+        duration: 140,
+        useNativeDriver: true,
+      }).start();
+    });
+  });
+}
+
+async function ensureUserIdOrAlert() {
+  let userId = currentUserId;
+
+  if (!userId) {
+    const { data, error } = await supabase.auth.getSession();
+
+    if (error) {
+      console.log("Error getting session", error);
+    }
+
+    userId = data?.session?.user?.id ?? null;
+
+    if (userId) setCurrentUserId(userId);
+  }
+
+  if (!userId) {
+    Alert.alert("Not signed in", "Please sign in again to use this feature.");
+    return null;
+  }
+
+  return userId;
+}
+
   async function handleCreateGroupPrayer({ title, body, isAnonymous }) {
     if (!groupId) {
       Alert.alert("No group selected", "Please go back and choose a group.");
-      return;
+      return false;
     }
 
     if (!title?.trim()) {
       Alert.alert("Title required", "Please add a short title.");
-      return;
+      return false;
     }
 
     try {
@@ -611,7 +992,7 @@ const [deletingGroup, setDeletingGroup] = useState(false);
           "Not signed in",
           "Please sign in again before posting a prayer request."
         );
-        return;
+        return false;
       }
 
       const { data, error } = await supabase
@@ -619,6 +1000,7 @@ const [deletingGroup, setDeletingGroup] = useState(false);
         .insert({
           user_id: userId,
           community_id: GLOBAL_COMMUNITY_ID,
+                    community_id: GLOBAL_COMMUNITY_ID,
           title: title.trim(),
           body: body || null,
           is_anonymous: !!isAnonymous,
@@ -633,7 +1015,7 @@ const [deletingGroup, setDeletingGroup] = useState(false);
       if (error) throw error;
 
       setRequests((prev) => [data, ...prev]);
-      setShowNewPrayer(false);
+      return true;
     } catch (e) {
       console.log("Error creating group prayer", e);
 
@@ -643,6 +1025,7 @@ const [deletingGroup, setDeletingGroup] = useState(false);
         "We couldn’t post your group prayer right now. Please try again.";
 
       Alert.alert("Could not post", msg);
+      return false;
     } finally {
       setPosting(false);
     }
@@ -670,21 +1053,24 @@ async function handleSaveGroupName() {
   try {
     setUpdatingGroupName(true);
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("prayer_groups")
       .update({
         name: nextName,
       })
-      .eq("id", groupId);
+      .eq("id", groupId)
+      .select("id, name, description, privacy, group_type, created_at")
+      .single();
 
     if (error) throw error;
 
-    setGroup((prev) => ({
-      ...(prev || {}),
-      id: groupId,
-      name: nextName,
-    }));
+    if (!data?.id) {
+      throw new Error(
+        "The group name was not updated. Please check your Supabase update policy."
+      );
+    }
 
+    setGroup(data);
     setEditNameVisible(false);
   } catch (e) {
     console.log("Error updating prayer group name", e);
@@ -754,16 +1140,140 @@ async function handleDeleteGroup() {
   }
 }
 
-  async function handlePrayedForPrayer(prayerId) {
-    setRequests((prev) =>
-      prev.map((item) =>
-        item.id === prayerId
-          ? { ...item, prayed_count: (item.prayed_count || 0) + 1 }
-          : item
-      )
+function openPrayerMenu(prayer) {
+  setSelectedPrayer(prayer);
+  setPrayerMenuVisible(true);
+}
+
+function closePrayerMenu() {
+  if (deletingPrayer) return;
+
+  setPrayerMenuVisible(false);
+  setSelectedPrayer(null);
+}
+
+function confirmDeletePrayer() {
+  const prayerTitle = selectedPrayer?.title || "this prayer request";
+
+  setPrayerMenuVisible(false);
+
+  Alert.alert(
+    "Delete prayer request?",
+    `This will permanently delete "${prayerTitle}". This cannot be undone.`,
+    [
+      {
+        text: "Cancel",
+        style: "cancel",
+        onPress: () => setSelectedPrayer(null),
+      },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: handleDeletePrayer,
+      },
+    ]
+  );
+}
+
+async function handleDeletePrayer() {
+  const prayerId = selectedPrayer?.id;
+
+  if (!prayerId) {
+    setSelectedPrayer(null);
+    Alert.alert("No prayer selected", "Please try again.");
+    return;
+  }
+
+  try {
+    setDeletingPrayer(true);
+
+    const { data, error } = await supabase
+      .from("prayer_requests")
+      .delete()
+      .eq("id", prayerId)
+      .eq("group_id", groupId)
+      .select("id");
+
+    if (error) throw error;
+
+    if (!data || data.length === 0) {
+      throw new Error(
+        "The prayer request was not deleted. Please check the Supabase delete policy for prayer_requests."
+      );
+    }
+
+    setRequests((prev) => prev.filter((item) => item.id !== prayerId));
+    setSelectedPrayer(null);
+  } catch (e) {
+    console.log("Error deleting group prayer request", e);
+
+    await loadRequests();
+
+    Alert.alert(
+      "Could not delete prayer",
+      e?.message || "Please try again in a moment."
     );
+  } finally {
+    setDeletingPrayer(false);
+  }
+}
+
+  async function handlePrayedForPrayer(prayerId) {
+    if (!prayerId) return;
+
+    if (prayedById[prayerId]) {
+      showToast("Already marked as prayed");
+      return;
+    }
+
+    const userId = await ensureUserIdOrAlert();
+    if (!userId) return;
 
     try {
+      const { data: existingRows, error: existingError } = await supabase
+        .from("prayer_request_prayers")
+        .select("id")
+        .eq("prayer_id", prayerId)
+        .eq("user_id", userId)
+        .limit(1);
+
+      if (existingError) throw existingError;
+
+      if ((existingRows || []).length > 0) {
+        setPrayedById((prev) => ({ ...prev, [prayerId]: true }));
+        showToast("Already marked as prayed");
+        return;
+      }
+
+      setPrayedById((prev) => ({ ...prev, [prayerId]: true }));
+
+      const res = awardPrayerPoint?.();
+
+      showToast(
+        res?.granted
+          ? `Prayed · +1 Light Point (${res.remaining ?? 4} left)`
+          : "Prayed · +1 Light Point"
+      );
+
+      animatePrayerLight();
+
+      setRequests((prev) =>
+        prev.map((item) =>
+          item.id === prayerId
+            ? { ...item, prayed_count: (item.prayed_count || 0) + 1 }
+            : item
+        )
+      );
+
+      const { error: insertError } = await supabase
+        .from("prayer_request_prayers")
+        .insert({
+          prayer_id: prayerId,
+          user_id: userId,
+        });
+
+      if (insertError) throw insertError;
+
       const { data, error } = await supabase.rpc("increment_prayed_count", {
         prayer_id: prayerId,
       });
@@ -778,7 +1288,223 @@ async function handleDeleteGroup() {
         );
       }
     } catch (e) {
-      console.log("Error incrementing group prayer count", e);
+      console.log("Error marking group prayer as prayed", e);
+
+      setPrayedById((prev) => {
+        const next = { ...prev };
+        delete next[prayerId];
+        return next;
+      });
+
+      await loadRequests();
+
+      Alert.alert(
+        "Could not mark as prayed",
+        e?.message || "Please try again in a moment."
+      );
+    }
+  }
+
+  async function openPrayedPeople(prayer) {
+    if (!prayer?.id) return;
+
+    setPrayedPeopleTitle(prayer.title || "Prayer request");
+    setPrayedPeopleRows([]);
+    setPrayedPeopleVisible(true);
+
+    try {
+      setPrayedPeopleLoading(true);
+
+      const { data: prayedRows, error: prayedError } = await supabase
+        .from("prayer_request_prayers")
+        .select("user_id, created_at")
+        .eq("prayer_id", prayer.id)
+        .order("created_at", { ascending: false });
+
+      if (prayedError) throw prayedError;
+
+      const rows = prayedRows || [];
+      const userIds = rows.map((row) => row.user_id).filter(Boolean);
+
+      if (userIds.length === 0) {
+        setPrayedPeopleRows([]);
+        return;
+      }
+
+      const { data: profiles, error: profilesError } = await supabase
+        .from("profiles")
+        .select("id, display_name, avatar_url, handle")
+        .in("id", userIds);
+
+      if (profilesError) throw profilesError;
+
+      const profilesById = {};
+
+      (profiles || []).forEach((profile) => {
+        if (profile?.id) profilesById[profile.id] = profile;
+      });
+
+      const merged = rows.map((row) => {
+        const profile = profilesById[row.user_id] || {};
+
+        return {
+          user_id: row.user_id,
+          created_at: row.created_at,
+          display_name:
+                      profile.display_name ||
+            (profile.handle ? `@${profile.handle}` : "Group member"),
+          avatar_url: profile.avatar_url || null,
+          handle: profile.handle || null,
+        };
+      });
+
+      setPrayedPeopleRows(merged);
+    } catch (e) {
+      console.log("Error loading prayed people", e);
+
+      Alert.alert(
+        "Could not load prayed list",
+        e?.message || "Please try again in a moment."
+      );
+    } finally {
+      setPrayedPeopleLoading(false);
+    }
+  }
+
+  async function fetchRepliesForPrayer(prayerId) {
+  if (!prayerId) return;
+
+  try {
+    const { data, error } = await supabase
+      .from("prayer_replies")
+      .select("id, prayer_id, user_id, message, created_at")
+      .eq("prayer_id", prayerId)
+      .order("created_at", { ascending: true });
+
+    if (error) throw error;
+
+    setRepliesByPrayerId((prev) => ({
+      ...prev,
+      [prayerId]: data || [],
+    }));
+  } catch (e) {
+    console.log("Error loading group prayer replies", e);
+    Alert.alert("Could not load encouragements", "Please try again in a moment.");
+  }
+}
+
+async function toggleReplies(prayerId) {
+  if (!prayerId) return;
+
+  const isCurrentlyExpanded = !!expandedPrayerIds[prayerId];
+
+  if (!isCurrentlyExpanded && !repliesByPrayerId[prayerId]) {
+    await fetchRepliesForPrayer(prayerId);
+  }
+
+  setExpandedPrayerIds((prev) => ({
+    ...prev,
+    [prayerId]: !isCurrentlyExpanded,
+  }));
+}
+
+  function openEncourage(prayer) {
+    setEncourageTargetPrayer(prayer);
+    setEncourageVisible(true);
+  }
+
+async function handleSubmitEncouragement(message) {
+  if (!message || !message.trim()) {
+    Alert.alert("Message required", "Please write an encouragement message.");
+    return;
+  }
+
+  if (!encourageTargetPrayer) {
+    Alert.alert("No prayer selected", "Please try again.");
+    return;
+  }
+
+  try {
+    setEncourageLoading(true);
+
+    const userId = await ensureUserIdOrAlert();
+    if (!userId) return;
+
+    const { data, error } = await supabase
+      .from("prayer_replies")
+      .insert({
+        prayer_id: encourageTargetPrayer.id,
+        user_id: userId,
+        message: message.trim(),
+      })
+      .select("id, prayer_id, user_id, message, created_at")
+      .single();
+
+    if (error) throw error;
+
+    setRepliesByPrayerId((prev) => {
+      const existing = prev[encourageTargetPrayer.id] || [];
+
+      return {
+        ...prev,
+        [encourageTargetPrayer.id]: [...existing, data],
+      };
+    });
+
+    setExpandedPrayerIds((prev) => ({
+      ...prev,
+      [encourageTargetPrayer.id]: true,
+    }));
+
+    setEncourageVisible(false);
+    setEncourageTargetPrayer(null);
+    showToast("Encouragement sent");
+  } catch (e) {
+    console.log("Error sending group encouragement", e);
+
+    Alert.alert(
+      "Could not send encouragement",
+      e?.message || "Please try again in a moment."
+    );
+  } finally {
+    setEncourageLoading(false);
+  }
+}
+
+  async function handleAskFaithCoach(item) {
+    setFaithCoachRequest(item);
+    setFaithCoachVisible(true);
+    setFaithCoachLoading(true);
+    setFaithCoachText("");
+
+    try {
+      const title = item?.title || "";
+      const body = item?.body || "";
+
+      const { data, error } = await supabase.functions.invoke("faith-coach", {
+        body: {
+          title,
+          body,
+          viewer_is_owner: !!currentUserId && item?.user_id === currentUserId,
+        },
+      });
+
+      if (error) {
+        console.log("Group Faith Coach invoke error", error);
+        setFaithCoachText(
+          "Sorry, Faith Coach could not load a response right now. Please try again in a moment."
+        );
+        return;
+      }
+
+      setFaithCoachText(data?.text || "Faith Coach did not return any text.");
+    } catch (e) {
+      console.log("Group Faith Coach invoke exception", e);
+      setFaithCoachText(
+        "Sorry, something went wrong while talking to Faith Coach. Please try again soon."
+      );
+    } finally {
+      setFaithCoachLoading(false);
     }
   }
 
@@ -909,6 +1635,7 @@ async function handleDeleteGroup() {
             borderColor: CARD_BORDER,
             flexDirection: "row",
             alignItems: "center",
+                        alignItems: "center",
             marginBottom: 10,
             transform: [{ scale: pressed ? 0.985 : 1 }],
           })}
@@ -1161,6 +1888,356 @@ const renderEditNameModal = () => (
     </View>
   </Modal>
 );
+const renderPrayerMenuModal = () => (
+  <Modal
+    visible={prayerMenuVisible}
+    animationType="fade"
+    transparent
+    onRequestClose={closePrayerMenu}
+  >
+    <Pressable
+      onPress={closePrayerMenu}
+      style={{
+        flex: 1,
+        backgroundColor: "rgba(15, 23, 42, 0.28)",
+        justifyContent: "flex-end",
+      }}
+    >
+      <Pressable
+        onPress={() => {}}
+        style={{
+          backgroundColor: PREMIUM_CREAM,
+          borderTopLeftRadius: 30,
+          borderTopRightRadius: 30,
+          paddingHorizontal: 18,
+          paddingTop: 16,
+          paddingBottom: Math.max(insets.bottom + 14, 26),
+          borderTopWidth: 1,
+          borderColor: CARD_BORDER,
+        }}
+      >
+        <View
+          style={{
+            width: 44,
+            height: 5,
+            borderRadius: 999,
+            backgroundColor: CARD_BORDER,
+            alignSelf: "center",
+            marginBottom: 16,
+          }}
+        />
+
+        <Text
+          style={[
+            serifHeading,
+            {
+              fontSize: 24,
+              lineHeight: 29,
+              marginBottom: 4,
+            },
+          ]}
+        >
+          Prayer request
+        </Text>
+
+        <Text
+          style={{
+            color: MUTED,
+            fontSize: 13,
+            lineHeight: 19,
+            fontWeight: "700",
+            marginBottom: 14,
+          }}
+          numberOfLines={2}
+        >
+          {selectedPrayer?.title || "Manage this group prayer request."}
+        </Text>
+
+        <Pressable
+          onPress={confirmDeletePrayer}
+          disabled={deletingPrayer}
+          style={({ pressed }) => ({
+            padding: 15,
+            borderRadius: 22,
+            backgroundColor: SURFACE,
+            borderWidth: 1,
+            borderColor: DANGER_BORDER,
+            flexDirection: "row",
+            alignItems: "center",
+            opacity: deletingPrayer ? 0.55 : 1,
+            transform: [{ scale: pressed ? 0.985 : 1 }],
+          })}
+        >
+          <View
+            style={{
+              width: 42,
+              height: 42,
+              borderRadius: 999,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: "rgba(180, 35, 24, 0.08)",
+              borderWidth: 1,
+              borderColor: DANGER_BORDER,
+              marginRight: 12,
+            }}
+          >
+            <Ionicons name="trash-outline" size={20} color={DANGER} />
+          </View>
+
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: DANGER, fontSize: 15, fontWeight: "900" }}>
+              {deletingPrayer ? "Deleting prayer…" : "Delete prayer request"}
+            </Text>
+
+            <Text
+              style={{
+                color: MUTED,
+                marginTop: 2,
+                fontSize: 12,
+                fontWeight: "700",
+              }}
+            >
+              Permanently remove this request from the group.
+            </Text>
+          </View>
+        </Pressable>
+      </Pressable>
+    </Pressable>
+  </Modal>
+);
+
+const renderPrayedPeopleModal = () => (
+  <Modal
+    visible={prayedPeopleVisible}
+    animationType="fade"
+    transparent
+    onRequestClose={() => setPrayedPeopleVisible(false)}
+  >
+    <Pressable
+      onPress={() => setPrayedPeopleVisible(false)}
+      style={{
+        flex: 1,
+        backgroundColor: "rgba(15, 23, 42, 0.28)",
+        justifyContent: "flex-end",
+      }}
+    >
+      <Pressable
+        onPress={() => {}}
+        style={{
+          backgroundColor: PREMIUM_CREAM,
+          borderTopLeftRadius: 30,
+          borderTopRightRadius: 30,
+          paddingHorizontal: 18,
+          paddingTop: 16,
+          paddingBottom: Math.max(insets.bottom + 14, 26),
+          borderTopWidth: 1,
+          borderColor: CARD_BORDER,
+          maxHeight: "72%",
+        }}
+      >
+        <View
+          style={{
+            width: 44,
+            height: 5,
+            borderRadius: 999,
+            backgroundColor: CARD_BORDER,
+            alignSelf: "center",
+            marginBottom: 16,
+          }}
+        />
+
+        <Text
+          style={[
+            serifHeading,
+            {
+              fontSize: 24,
+              lineHeight: 29,
+              marginBottom: 4,
+            },
+          ]}
+        >
+          Prayed for this
+        </Text>
+
+        <Text
+          style={{
+            color: MUTED,
+            fontSize: 13,
+            lineHeight: 19,
+            fontWeight: "700",
+            marginBottom: 14,
+          }}
+          numberOfLines={2}
+        >
+          {prayedPeopleTitle}
+        </Text>
+
+        {prayedPeopleLoading ? (
+          <View
+            style={{
+              paddingVertical: 24,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <ActivityIndicator color={EVENT_AMBER} />
+
+            <Text
+              style={{
+                color: MUTED,
+                marginTop: 10,
+                fontWeight: "700",
+              }}
+            >
+              Loading people who prayed…
+            </Text>
+          </View>
+        ) : prayedPeopleRows.length === 0 ? (
+          <View
+            style={{
+              padding: 16,
+              borderRadius: 22,
+              backgroundColor: SURFACE,
+              borderWidth: 1,
+              borderColor: CARD_BORDER,
+              alignItems: "center",
+            }}
+          >
+            <View
+              style={{
+                width: 48,
+                height: 48,
+                borderRadius: 999,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: OLIVE_SOFT,
+                borderWidth: 1,
+                borderColor: OLIVE_BORDER,
+                marginBottom: 10,
+              }}
+            >
+              <Ionicons name="heart-outline" size={23} color={OLIVE} />
+            </View>
+
+            <Text
+              style={{
+                color: TEXT,
+                fontWeight: "900",
+                fontSize: 15,
+                textAlign: "center",
+              }}
+            >
+              No one has marked this as prayed yet
+            </Text>
+
+            <Text
+              style={{
+                color: MUTED,
+                marginTop: 5,
+                fontSize: 12.5,
+                lineHeight: 18,
+                fontWeight: "700",
+                textAlign: "center",
+              }}
+            >
+              When group members press Pray, they will appear here.
+            </Text>
+          </View>
+        ) : (
+          <FlatList
+            data={prayedPeopleRows}
+            keyExtractor={(item) => `${item.user_id}-${item.created_at}`}
+            showsVerticalScrollIndicator={false}
+            renderItem={({ item }) => (
+              <View
+                style={{
+                  padding: 13,
+                  borderRadius: 22,
+                  backgroundColor: SURFACE,
+                  borderWidth: 1,
+                  borderColor: CARD_BORDER,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  marginBottom: 10,
+                }}
+              >
+                {item.avatar_url ? (
+                  <Image
+                    source={{ uri: item.avatar_url }}
+                    style={{
+                      width: 42,
+                      height: 42,
+                      borderRadius: 999,
+                      marginRight: 12,
+                      backgroundColor: OLIVE_SOFT,
+                    }}
+                  />
+                ) : (
+                  <View
+                    style={{
+                      width: 42,
+                      height: 42,
+                      borderRadius: 999,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: OLIVE_SOFT,
+                      borderWidth: 1,
+                      borderColor: OLIVE_BORDER,
+                      marginRight: 12,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: OLIVE,
+                        fontWeight: "900",
+                        fontSize: 13,
+                      }}
+                    >
+                      {initialsFromName(item.display_name)}
+                    </Text>
+                  </View>
+                )}
+
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={{
+                      color: TEXT,
+                      fontSize: 14.5,
+                      fontWeight: "900",
+                    }}
+                    numberOfLines={1}
+                  >
+                    {item.display_name}
+                  </Text>
+
+                  {item.handle ? (
+                    <Text
+                      style={{
+                        color: MUTED,
+                        marginTop: 2,
+                        fontSize: 12,
+                        fontWeight: "700",
+                      }}
+                      numberOfLines={1}
+                    >
+                      @{item.handle}
+                    </Text>
+                  ) : null}
+                </View>
+
+                <Ionicons
+                  name="checkmark-circle"
+                  size={21}
+                  color={EVENT_AMBER}
+                />
+              </View>
+            )}
+          />
+        )}
+      </Pressable>
+    </Pressable>
+  </Modal>
+);
 
   const renderHeader = () => (
     <View>
@@ -1195,8 +2272,7 @@ const renderEditNameModal = () => (
           >
             <Ionicons name={icon} size={25} color={EVENT_AMBER} />
           </View>
-
-          <View style={{ flex: 1 }}>
+                    <View style={{ flex: 1 }}>
             <Text
               style={[
                 serifHeading,
@@ -1370,7 +2446,9 @@ const renderEditNameModal = () => (
   );
 
   const renderPrayer = ({ item }) => {
-    const createdLabel = formatDateTime(item.created_at);
+  const createdLabel = formatDateTime(item.created_at);
+  const replies = repliesByPrayerId[item.id] || [];
+  const isExpanded = !!expandedPrayerIds[item.id];
 
     return (
       <View
@@ -1415,7 +2493,11 @@ const renderEditNameModal = () => (
               }}
             >
               <Ionicons
-                name={item.is_anonymous ? "person-outline" : "person-circle-outline"}
+                name={
+                  item.is_anonymous
+                    ? "person-outline"
+                    : "person-circle-outline"
+                }
                 size={20}
                 color={OLIVE}
               />
@@ -1444,20 +2526,45 @@ const renderEditNameModal = () => (
               </Text>
             </View>
 
-            {createdLabel ? (
-              <Text
-                style={{
-                  color: MUTED,
-                  fontSize: 10.5,
-                  fontWeight: "700",
-                  maxWidth: 86,
-                  textAlign: "right",
-                }}
-                numberOfLines={2}
+            <View style={{ alignItems: "flex-end", marginLeft: 8 }}>
+              {createdLabel ? (
+                <Text
+                  style={{
+                    color: MUTED,
+                    fontSize: 10.5,
+                    fontWeight: "700",
+                    maxWidth: 86,
+                    textAlign: "right",
+                  }}
+                  numberOfLines={2}
+                >
+                  {createdLabel}
+                </Text>
+              ) : null}
+
+              <Pressable
+                onPress={() => openPrayerMenu(item)}
+                hitSlop={10}
+                style={({ pressed }) => ({
+                  width: 32,
+                  height: 32,
+                  borderRadius: 999,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginTop: 6,
+                  backgroundColor: pressed ? AMBER_SOFT : SURFACE,
+                  borderWidth: 1,
+                  borderColor: CARD_BORDER,
+                  transform: [{ scale: pressed ? 0.94 : 1 }],
+                })}
               >
-                {createdLabel}
-              </Text>
-            ) : null}
+                <Ionicons
+                  name="ellipsis-horizontal"
+                  size={18}
+                  color={MUTED}
+                />
+              </Pressable>
+            </View>
           </View>
 
           <Text
@@ -1492,17 +2599,20 @@ const renderEditNameModal = () => (
               marginTop: 14,
             }}
           >
-            <View
-              style={{
+            <Pressable
+              onPress={() => openPrayedPeople(item)}
+              hitSlop={8}
+              style={({ pressed }) => ({
                 flexDirection: "row",
                 alignItems: "center",
                 paddingHorizontal: 11,
                 paddingVertical: 8,
                 borderRadius: 999,
-                backgroundColor: AMBER_SOFT,
+                backgroundColor: pressed ? AMBER_BORDER : AMBER_SOFT,
                 borderWidth: 1,
                 borderColor: AMBER_BORDER,
-              }}
+                transform: [{ scale: pressed ? 0.97 : 1 }],
+              })}
             >
               <Ionicons name="people-outline" size={15} color={EVENT_AMBER} />
 
@@ -1516,44 +2626,195 @@ const renderEditNameModal = () => (
               >
                 {item.prayed_count || 0} prayed
               </Text>
-            </View>
+            </Pressable>
 
             <View style={{ flex: 1 }} />
 
             <Pressable
               onPress={() => handlePrayedForPrayer(item.id)}
-              style={({ pressed }) => ({
-                backgroundColor: EVENT_AMBER,
-                paddingHorizontal: 16,
-                paddingVertical: 10,
-                borderRadius: 999,
-                borderWidth: 1,
-                borderColor: AMBER_BORDER,
-                shadowColor: EVENT_AMBER,
-                shadowOpacity: pressed ? 0.04 : 0.16,
-                shadowRadius: 10,
-                shadowOffset: { width: 0, height: 4 },
-                elevation: 2,
-                transform: [{ scale: pressed ? 0.96 : 1 }],
-              })}
+              hitSlop={8}
+              style={({ pressed }) => {
+                const hasPrayed = !!prayedById[item.id];
+
+                return {
+                  backgroundColor: hasPrayed ? OLIVE_SOFT : EVENT_AMBER,
+                  paddingHorizontal: 16,
+                  paddingVertical: 10,
+                  borderRadius: 999,
+                  borderWidth: 1,
+                  borderColor: hasPrayed ? OLIVE_BORDER : AMBER_BORDER,
+                  shadowColor: EVENT_AMBER,
+                  shadowOpacity: pressed || hasPrayed ? 0.04 : 0.16,
+                  shadowRadius: 10,
+                  shadowOffset: { width: 0, height: 4 },
+                  elevation: hasPrayed ? 0 : 2,
+                  transform: [{ scale: pressed ? 0.96 : 1 }],
+                };
+              }}
             >
               <Text
                 style={{
-                  color: "#FFFFFF",
+                  color: prayedById[item.id] ? OLIVE : "#FFFFFF",
                   fontWeight: "900",
                   fontSize: 13,
                 }}
               >
-                I prayed
+                {prayedById[item.id] ? "Prayed" : "Pray"}
               </Text>
             </Pressable>
           </View>
+
+ <View
+  style={{
+    height: 1,
+    backgroundColor: CARD_BORDER,
+    marginTop: 13,
+    marginBottom: 11,
+  }}
+/>
+
+<View style={{ flexDirection: "row", alignItems: "center" }}>
+  <Pressable
+    onPress={() => openEncourage(item)}
+    style={({ pressed }) => ({
+      flexDirection: "row",
+      alignItems: "center",
+      marginRight: 15,
+      opacity: pressed ? 0.7 : 1,
+    })}
+  >
+    <Ionicons name="heart-outline" size={18} color={OLIVE} />
+
+    <Text
+      style={{
+        color: OLIVE,
+        fontSize: 12,
+        fontWeight: "900",
+        marginLeft: 6,
+      }}
+    >
+      Encourage
+    </Text>
+  </Pressable>
+
+  <Pressable
+    onPress={() => handleAskFaithCoach(item)}
+    style={({ pressed }) => ({
+      flexDirection: "row",
+      alignItems: "center",
+      opacity: pressed ? 0.7 : 1,
+    })}
+  >
+    <Ionicons
+      name="sparkles-outline"
+      size={18}
+      color={EVENT_AMBER}
+    />
+
+    <Text
+      style={{
+        color: EVENT_BROWN,
+        fontSize: 12,
+        fontWeight: "900",
+        marginLeft: 6,
+      }}
+    >
+      Faith Coach
+    </Text>
+  </Pressable>
+</View>
+
+<View style={{ marginTop: 11 }}>
+  <Pressable onPress={() => toggleReplies(item.id)}>
+    <Text
+      style={{
+        color: MUTED,
+        fontSize: 12,
+        fontWeight: "900",
+      }}
+    >
+      {isExpanded
+        ? "Hide encouragement"
+        : replies.length > 0
+        ? `View encouragement (${replies.length})`
+        : "View encouragement"}
+    </Text>
+  </Pressable>
+
+  {isExpanded ? (
+    <View
+      style={{
+        marginTop: 10,
+        padding: 12,
+        borderRadius: 18,
+        backgroundColor: PREMIUM_CREAM,
+        borderWidth: 1,
+        borderColor: CARD_BORDER,
+      }}
+    >
+      {replies.length > 0 ? (
+        <View>
+          {replies.map((reply, index) => {
+            const isMine = reply.user_id === currentUserId;
+            const whoReply = isMine ? "You" : "Group member";
+            const replyCreated = formatDateTime(reply.created_at);
+            const isLast = index === replies.length - 1;
+
+            return (
+              <View
+                key={reply.id}
+                style={{
+                  paddingBottom: isLast ? 0 : 10,
+                  marginBottom: isLast ? 0 : 10,
+                  borderBottomWidth: isLast ? 0 : 1,
+                  borderBottomColor: CARD_BORDER,
+                }}
+              >
+                <Text
+                  style={{
+                    color: TEXT,
+                    fontSize: 12,
+                    fontWeight: "900",
+                  }}
+                >
+                  {whoReply}
+                  {replyCreated ? ` · ${replyCreated}` : ""}
+                </Text>
+
+                <Text
+                  style={{
+                    color: MUTED,
+                    fontSize: 12,
+                    marginTop: 4,
+                    lineHeight: 18,
+                    fontWeight: "650",
+                  }}
+                >
+                  {reply.message}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
+      ) : (
+        <Text
+          style={{
+            color: MUTED,
+            fontSize: 12,
+            fontWeight: "700",
+          }}
+        >
+          No encouragement yet. Be the first to encourage.
+        </Text>
+      )}
+    </View>
+  ) : null}
+</View>
         </View>
       </View>
     );
   };
-
-  return (
+    return (
     <SafeAreaView
       edges={["top"]}
       style={{ flex: 1, backgroundColor: PREMIUM_CREAM }}
@@ -1617,44 +2878,44 @@ const renderEditNameModal = () => (
               </Text>
             </View>
 
-          <View style={{ flexDirection: "row", alignItems: "center" }}>
-  <Pressable
-    onPress={() => loadAll({ refresh: true })}
-    hitSlop={10}
-    style={({ pressed }) => ({
-      width: 42,
-      height: 42,
-      borderRadius: 999,
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: pressed ? AMBER_SOFT : SURFACE,
-      borderWidth: 1,
-      borderColor: AMBER_BORDER,
-      marginRight: 8,
-      transform: [{ scale: pressed ? 0.96 : 1 }],
-    })}
-  >
-    <Ionicons name="refresh" size={18} color={EVENT_AMBER} />
-  </Pressable>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <Pressable
+                onPress={() => loadAll({ refresh: true })}
+                hitSlop={10}
+                style={({ pressed }) => ({
+                  width: 42,
+                  height: 42,
+                  borderRadius: 999,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: pressed ? AMBER_SOFT : SURFACE,
+                  borderWidth: 1,
+                  borderColor: AMBER_BORDER,
+                  marginRight: 8,
+                  transform: [{ scale: pressed ? 0.96 : 1 }],
+                })}
+              >
+                <Ionicons name="refresh" size={18} color={EVENT_AMBER} />
+              </Pressable>
 
-  <Pressable
-    onPress={() => setMenuVisible(true)}
-    hitSlop={10}
-    style={({ pressed }) => ({
-      width: 42,
-      height: 42,
-      borderRadius: 999,
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: pressed ? OLIVE_SOFT : SURFACE,
-      borderWidth: 1,
-      borderColor: CARD_BORDER,
-      transform: [{ scale: pressed ? 0.96 : 1 }],
-    })}
-  >
-    <Ionicons name="ellipsis-horizontal" size={21} color={TEXT} />
-  </Pressable>
-</View>
+              <Pressable
+                onPress={() => setMenuVisible(true)}
+                hitSlop={10}
+                style={({ pressed }) => ({
+                  width: 42,
+                  height: 42,
+                  borderRadius: 999,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: pressed ? OLIVE_SOFT : SURFACE,
+                  borderWidth: 1,
+                  borderColor: CARD_BORDER,
+                  transform: [{ scale: pressed ? 0.96 : 1 }],
+                })}
+              >
+                <Ionicons name="ellipsis-horizontal" size={21} color={TEXT} />
+              </Pressable>
+            </View>
           </View>
         </View>
 
@@ -1768,8 +3029,99 @@ const renderEditNameModal = () => (
           }}
           onSubmit={handleCreateGroupPrayer}
         />
+
+        <Animated.View
+          pointerEvents="none"
+          style={{
+            position: "absolute",
+            width: 28,
+            height: 28,
+            borderRadius: 999,
+            backgroundColor: AMBER_SOFT,
+            borderWidth: 1,
+            borderColor: AMBER_BORDER,
+            alignItems: "center",
+            justifyContent: "center",
+            opacity: flyOpacity,
+            transform: [
+              { translateX: flyX },
+              { translateY: flyY },
+              { scale: flyScale },
+            ],
+          }}
+        >
+          <View
+            style={{
+              width: 13,
+              height: 13,
+              borderRadius: 999,
+              backgroundColor: EVENT_AMBER,
+            }}
+          />
+        </Animated.View>
+
+        <Animated.View
+          pointerEvents="none"
+          style={{
+            position: "absolute",
+            left: 18,
+            right: 18,
+            bottom: Math.max(insets.bottom + 22, 34),
+            opacity: toastOpacity,
+            transform: [{ scale: toastScale }],
+            alignItems: "center",
+          }}
+        >
+          <View
+            style={{
+              backgroundColor: TEXT,
+              borderRadius: 999,
+              paddingHorizontal: 15,
+              paddingVertical: 10,
+              shadowColor: SHADOW,
+              shadowOpacity: 0.18,
+              shadowRadius: 14,
+              shadowOffset: { width: 0, height: 6 },
+              elevation: 5,
+            }}
+          >
+            <Text
+              style={{
+                color: "#FFFFFF",
+                fontSize: 12.5,
+                fontWeight: "900",
+              }}
+            >
+              {toastText}
+            </Text>
+          </View>
+        </Animated.View>
+
         {renderGroupMenuModal()}
-{renderEditNameModal()}
+        {renderEditNameModal()}
+        {renderPrayerMenuModal()}
+        {renderPrayedPeopleModal()}
+
+        <FaithCoachModal
+          visible={faithCoachVisible}
+          onClose={() => setFaithCoachVisible(false)}
+          loading={faithCoachLoading}
+          request={faithCoachRequest}
+          text={faithCoachText}
+        />
+
+        <EncourageModal
+          visible={encourageVisible}
+          onClose={() => {
+            if (!encourageLoading) {
+              setEncourageVisible(false);
+              setEncourageTargetPrayer(null);
+            }
+          }}
+          loading={encourageLoading}
+          onSubmit={handleSubmitEncouragement}
+          prayer={encourageTargetPrayer}
+        />
       </View>
     </SafeAreaView>
   );

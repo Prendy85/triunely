@@ -1,17 +1,18 @@
 // src/components/NewPrayerModal.js
 import { Ionicons } from "@expo/vector-icons";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
+  Animated,
   KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
-  SafeAreaView,
   ScrollView,
   Text,
   TextInput,
   View,
 } from "react-native";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 const PREMIUM_CREAM = "#FFFCF5";
 const SURFACE = "#FFFFFF";
@@ -44,12 +45,18 @@ export default function NewPrayerModal({
   loading,
   groups = [],
 }) {
+  const insets = useSafeAreaInsets();
+
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [isAnonymous, setIsAnonymous] = useState(false);
-
-  const [audience, setAudience] = useState("global");
+  const [audience, setAudience] = useState("fellowship");
   const [selectedGroupId, setSelectedGroupId] = useState(null);
+  const [allowReshare, setAllowReshare] = useState(false);
+  const [deliveryVisible, setDeliveryVisible] = useState(false);
+
+  const planeAnim = useRef(new Animated.Value(0)).current;
+  const cardAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (audience === "group" && groups.length > 0 && !selectedGroupId) {
@@ -58,9 +65,7 @@ export default function NewPrayerModal({
   }, [audience, groups, selectedGroupId]);
 
   useEffect(() => {
-    if (!visible) {
-      resetState();
-    }
+    if (!visible) resetState();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
@@ -68,79 +73,108 @@ export default function NewPrayerModal({
     setTitle("");
     setBody("");
     setIsAnonymous(false);
-    setAudience("global");
+    setAudience("fellowship");
     setSelectedGroupId(null);
+    setAllowReshare(false);
+    setDeliveryVisible(false);
+    planeAnim.setValue(0);
+    cardAnim.setValue(0);
   };
 
   const handleClose = () => {
-    if (loading) return;
+    if (loading || deliveryVisible) return;
     resetState();
-    onClose && onClose();
+    onClose?.();
   };
 
-  const handleSubmit = () => {
-    if (!title.trim()) return;
+  const handleSubmit = async () => {
+    if (!title.trim() || loading || deliveryVisible) return;
 
-    let visibility = "global";
+    let visibility = "fellowship";
     let groupId = null;
 
     if (audience === "group" && groups.length > 0 && selectedGroupId) {
       visibility = "group";
       groupId = selectedGroupId;
-    } else if (audience === "private") {
-      visibility = "private";
-      groupId = null;
     }
 
-    onSubmit(
+    const success = await onSubmit?.(
       title.trim(),
       body.trim() || null,
       isAnonymous,
       visibility,
-      groupId
+      groupId,
+      visibility === "fellowship" ? allowReshare : false
     );
+
+    if (!success) return;
+
+    setDeliveryVisible(true);
+    planeAnim.setValue(0);
+    cardAnim.setValue(0);
+
+    Animated.sequence([
+      Animated.timing(planeAnim, {
+        toValue: 1,
+        duration: 760,
+        useNativeDriver: true,
+      }),
+      Animated.timing(cardAnim, {
+        toValue: 1,
+        duration: 360,
+        useNativeDriver: true,
+      }),
+      Animated.delay(900),
+    ]).start(() => {
+      resetState();
+      onClose?.();
+    });
   };
 
-  const AudienceCard = ({ value, title: cardTitle, subtitle, icon, disabled }) => {
+  const AudienceCard = ({
+    value,
+    title: cardTitle,
+    subtitle,
+    icon,
+    disabled,
+  }) => {
     const active = audience === value;
 
     return (
       <Pressable
-        onPress={() => !disabled && setAudience(value)}
-        disabled={disabled}
+        onPress={() => {
+          if (disabled || loading || deliveryVisible) return;
+          setAudience(value);
+        }}
+        disabled={disabled || loading || deliveryVisible}
         style={({ pressed }) => ({
-          padding: 13,
-          borderRadius: 22,
-          marginBottom: 10,
+          padding: 10,
+          borderRadius: 18,
+          marginBottom: 8,
           backgroundColor: active ? AMBER_SOFT : SURFACE,
           borderWidth: 1,
           borderColor: active ? AMBER_BORDER : CARD_BORDER,
           opacity: disabled ? 0.5 : 1,
-          shadowColor: SHADOW,
-          shadowOpacity: pressed ? 0.03 : 0.06,
-          shadowRadius: 10,
-          shadowOffset: { width: 0, height: 4 },
-          elevation: pressed ? 1 : 2,
           transform: [{ scale: pressed && !disabled ? 0.985 : 1 }],
         })}
       >
         <View style={{ flexDirection: "row", alignItems: "center" }}>
           <View
             style={{
-              width: 38,
-              height: 38,
+              width: 32,
+              height: 32,
               borderRadius: 999,
               alignItems: "center",
               justifyContent: "center",
               backgroundColor: active ? AMBER_SOFT : OLIVE_SOFT,
               borderWidth: 1,
               borderColor: active ? AMBER_BORDER : OLIVE_BORDER,
-              marginRight: 11,
+              marginRight: 10,
             }}
           >
             <Ionicons
               name={icon}
-              size={19}
+              size={16}
               color={active ? EVENT_AMBER : OLIVE}
             />
           </View>
@@ -149,9 +183,10 @@ export default function NewPrayerModal({
             <Text
               style={{
                 color: active ? EVENT_BROWN : TEXT,
-                fontSize: 14,
+                fontSize: 13.5,
                 fontWeight: "900",
               }}
+              numberOfLines={1}
             >
               {cardTitle}
             </Text>
@@ -159,23 +194,83 @@ export default function NewPrayerModal({
             <Text
               style={{
                 color: MUTED,
-                marginTop: 3,
-                fontSize: 12,
-                lineHeight: 17,
+                marginTop: 1,
+                fontSize: 11.5,
+                lineHeight: 15,
                 fontWeight: "700",
               }}
+              numberOfLines={2}
             >
               {subtitle}
             </Text>
           </View>
 
           {active ? (
-            <Ionicons name="checkmark-circle" size={21} color={EVENT_AMBER} />
+            <Ionicons name="checkmark-circle" size={19} color={EVENT_AMBER} />
           ) : null}
         </View>
       </Pressable>
     );
   };
+
+  const ToggleRow = ({ active, onPress, title: rowTitle, subtitle, icon }) => (
+    <Pressable
+      onPress={() => {
+        if (loading || deliveryVisible) return;
+        onPress?.();
+      }}
+      style={({ pressed }) => ({
+        paddingVertical: 9,
+        flexDirection: "row",
+        alignItems: "center",
+        opacity: pressed ? 0.85 : 1,
+      })}
+    >
+      <View
+        style={{
+          width: 22,
+          height: 22,
+          borderRadius: 7,
+          borderWidth: 1,
+          borderColor: active ? OLIVE_BORDER : CARD_BORDER,
+          marginRight: 10,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: active ? OLIVE : SURFACE,
+        }}
+      >
+        {active ? <Ionicons name="checkmark" size={15} color="#FFFFFF" /> : null}
+      </View>
+
+      <View style={{ flex: 1 }}>
+        <Text
+          style={{
+            color: TEXT,
+            fontSize: 13.2,
+            fontWeight: "900",
+          }}
+          numberOfLines={1}
+        >
+          {rowTitle}
+        </Text>
+
+        <Text
+          style={{
+            color: MUTED,
+            marginTop: 1,
+            fontSize: 11.2,
+            lineHeight: 15,
+            fontWeight: "700",
+          }}
+          numberOfLines={2}
+        >
+          {subtitle}
+        </Text>
+      </View>
+
+      {icon ? <Ionicons name={icon} size={18} color={active ? OLIVE : MUTED} /> : null}
+    </Pressable>
+  );
 
   return (
     <Modal
@@ -184,17 +279,20 @@ export default function NewPrayerModal({
       transparent={false}
       onRequestClose={handleClose}
     >
-      <SafeAreaView style={{ flex: 1, backgroundColor: PREMIUM_CREAM }}>
+      <SafeAreaView
+        edges={["top"]}
+        style={{ flex: 1, backgroundColor: PREMIUM_CREAM }}
+      >
         <KeyboardAvoidingView
           style={{ flex: 1 }}
           behavior={Platform.OS === "ios" ? "padding" : undefined}
         >
-          <View style={{ flex: 1 }}>
+          <View style={{ flex: 1, backgroundColor: PREMIUM_CREAM }}>
             <View
               style={{
-                paddingHorizontal: 18,
-                paddingTop: 12,
-                paddingBottom: 14,
+                paddingHorizontal: 16,
+                paddingTop: 4,
+                paddingBottom: 8,
                 backgroundColor: PREMIUM_CREAM,
                 borderBottomWidth: 1,
                 borderBottomColor: CARD_BORDER,
@@ -203,22 +301,22 @@ export default function NewPrayerModal({
               <View style={{ flexDirection: "row", alignItems: "center" }}>
                 <Pressable
                   onPress={handleClose}
-                  disabled={loading}
+                  disabled={loading || deliveryVisible}
                   hitSlop={10}
                   style={({ pressed }) => ({
-                    width: 42,
-                    height: 42,
+                    width: 38,
+                    height: 38,
                     borderRadius: 999,
                     alignItems: "center",
                     justifyContent: "center",
                     backgroundColor: pressed ? OLIVE_SOFT : SURFACE,
                     borderWidth: 1,
                     borderColor: CARD_BORDER,
-                    opacity: loading ? 0.6 : 1,
+                    opacity: loading || deliveryVisible ? 0.6 : 1,
                     transform: [{ scale: pressed ? 0.96 : 1 }],
                   })}
                 >
-                  <Ionicons name="close" size={22} color={TEXT} />
+                  <Ionicons name="close" size={21} color={TEXT} />
                 </Pressable>
 
                 <View style={{ flex: 1, marginLeft: 12 }}>
@@ -226,10 +324,11 @@ export default function NewPrayerModal({
                     style={[
                       serifHeading,
                       {
-                        fontSize: 26,
-                        lineHeight: 30,
+                        fontSize: 23,
+                        lineHeight: 26,
                       },
                     ]}
+                    numberOfLines={1}
                   >
                     New prayer
                   </Text>
@@ -237,11 +336,12 @@ export default function NewPrayerModal({
                   <Text
                     style={{
                       color: MUTED,
-                      marginTop: 2,
-                      fontSize: 13,
-                      lineHeight: 18,
+                      marginTop: 0,
+                      fontSize: 12,
+                      lineHeight: 15,
                       fontWeight: "700",
                     }}
+                    numberOfLines={1}
                   >
                     Share what you would like others to pray for.
                   </Text>
@@ -250,45 +350,46 @@ export default function NewPrayerModal({
             </View>
 
             <ScrollView
+              style={{ flex: 1 }}
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
               contentContainerStyle={{
-                paddingHorizontal: 18,
-                paddingTop: 16,
-                paddingBottom: 120,
+                paddingHorizontal: 16,
+                paddingTop: 10,
+                paddingBottom: 12,
               }}
             >
               <View
                 style={{
                   backgroundColor: SURFACE,
-                  borderRadius: 28,
+                  borderRadius: 22,
                   borderWidth: 1,
                   borderColor: AMBER_BORDER,
-                  padding: 16,
+                  padding: 12,
                   shadowColor: SHADOW,
-                  shadowOpacity: 0.08,
-                  shadowRadius: 14,
-                  shadowOffset: { width: 0, height: 6 },
-                  elevation: 3,
+                  shadowOpacity: 0.06,
+                  shadowRadius: 10,
+                  shadowOffset: { width: 0, height: 4 },
+                  elevation: 2,
                 }}
               >
                 <View style={{ flexDirection: "row", alignItems: "center" }}>
                   <View
                     style={{
-                      width: 48,
-                      height: 48,
+                      width: 36,
+                      height: 36,
                       borderRadius: 999,
                       alignItems: "center",
                       justifyContent: "center",
                       backgroundColor: AMBER_SOFT,
                       borderWidth: 1,
                       borderColor: AMBER_BORDER,
-                      marginRight: 12,
+                      marginRight: 10,
                     }}
                   >
                     <Ionicons
                       name="heart-outline"
-                      size={23}
+                      size={19}
                       color={EVENT_AMBER}
                     />
                   </View>
@@ -297,9 +398,10 @@ export default function NewPrayerModal({
                     <Text
                       style={{
                         color: TEXT,
-                        fontSize: 16,
+                        fontSize: 14.5,
                         fontWeight: "900",
                       }}
+                      numberOfLines={1}
                     >
                       Prayer request
                     </Text>
@@ -307,13 +409,14 @@ export default function NewPrayerModal({
                     <Text
                       style={{
                         color: MUTED,
-                        marginTop: 3,
-                        fontSize: 12,
-                        lineHeight: 17,
+                        marginTop: 1,
+                        fontSize: 11.2,
+                        lineHeight: 15,
                         fontWeight: "700",
                       }}
+                      numberOfLines={1}
                     >
-                      Keep it clear, honest, and easy for others to pray into.
+                      Keep it clear, honest, and easy to pray into.
                     </Text>
                   </View>
                 </View>
@@ -321,10 +424,10 @@ export default function NewPrayerModal({
                 <Text
                   style={{
                     color: TEXT,
-                    fontSize: 13,
+                    fontSize: 12.2,
                     fontWeight: "900",
-                    marginTop: 18,
-                    marginBottom: 7,
+                    marginTop: 10,
+                    marginBottom: 5,
                   }}
                 >
                   Title
@@ -333,15 +436,16 @@ export default function NewPrayerModal({
                 <TextInput
                   value={title}
                   onChangeText={setTitle}
+                  editable={!loading && !deliveryVisible}
                   placeholder="e.g. Job interview on Tuesday"
                   placeholderTextColor="rgba(107, 114, 128, 0.72)"
                   style={{
                     backgroundColor: PREMIUM_CREAM,
-                    borderRadius: 18,
-                    paddingHorizontal: 13,
-                    paddingVertical: 12,
+                    borderRadius: 15,
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
                     color: TEXT,
-                    fontSize: 15,
+                    fontSize: 14,
                     fontWeight: "650",
                     borderWidth: 1,
                     borderColor: CARD_BORDER,
@@ -351,10 +455,10 @@ export default function NewPrayerModal({
                 <Text
                   style={{
                     color: TEXT,
-                    fontSize: 13,
+                    fontSize: 12.2,
                     fontWeight: "900",
-                    marginTop: 15,
-                    marginBottom: 7,
+                    marginTop: 9,
+                    marginBottom: 5,
                   }}
                 >
                   Details
@@ -363,20 +467,21 @@ export default function NewPrayerModal({
                 <TextInput
                   value={body}
                   onChangeText={setBody}
+                  editable={!loading && !deliveryVisible}
                   placeholder="Share any details that would help others pray."
                   placeholderTextColor="rgba(107, 114, 128, 0.72)"
                   multiline
                   textAlignVertical="top"
                   style={{
                     backgroundColor: PREMIUM_CREAM,
-                    borderRadius: 18,
-                    paddingHorizontal: 13,
-                    paddingVertical: 12,
+                    borderRadius: 15,
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
                     color: TEXT,
-                    fontSize: 15,
-                    lineHeight: 21,
+                    fontSize: 14,
+                    lineHeight: 18,
                     fontWeight: "650",
-                    minHeight: 105,
+                    minHeight: 58,
                     borderWidth: 1,
                     borderColor: CARD_BORDER,
                   }}
@@ -385,25 +490,25 @@ export default function NewPrayerModal({
 
               <View
                 style={{
-                  marginTop: 14,
+                  marginTop: 10,
                   backgroundColor: SURFACE,
-                  borderRadius: 28,
+                  borderRadius: 22,
                   borderWidth: 1,
                   borderColor: CARD_BORDER,
-                  padding: 16,
+                  padding: 12,
                   shadowColor: SHADOW,
-                  shadowOpacity: 0.06,
-                  shadowRadius: 12,
-                  shadowOffset: { width: 0, height: 5 },
-                  elevation: 2,
+                  shadowOpacity: 0.04,
+                  shadowRadius: 8,
+                  shadowOffset: { width: 0, height: 3 },
+                  elevation: 1,
                 }}
               >
                 <Text
                   style={{
                     color: TEXT,
-                    fontSize: 16,
+                    fontSize: 14.5,
                     fontWeight: "900",
-                    marginBottom: 4,
+                    marginBottom: 2,
                   }}
                 >
                   Who can see this?
@@ -412,20 +517,21 @@ export default function NewPrayerModal({
                 <Text
                   style={{
                     color: MUTED,
-                    fontSize: 12,
-                    lineHeight: 17,
+                    fontSize: 11.2,
+                    lineHeight: 15,
                     fontWeight: "700",
-                    marginBottom: 12,
+                    marginBottom: 8,
                   }}
+                  numberOfLines={1}
                 >
                   Choose where this prayer request should be shared.
                 </Text>
 
                 <AudienceCard
-                  value="global"
-                  title="Triunely Prayer"
-                  subtitle="Visible in the main Prayer feed."
-                  icon="earth-outline"
+                  value="fellowship"
+                  title="My Fellowship"
+                  subtitle="Visible to your Fellowship connections."
+                  icon="people-circle-outline"
                 />
 
                 <AudienceCard
@@ -433,27 +539,20 @@ export default function NewPrayerModal({
                   title={groups.length > 0 ? "One of my groups" : "Prayer group"}
                   subtitle={
                     groups.length > 0
-                      ? "Share this inside a selected prayer group."
+                      ? "Share inside a selected prayer group."
                       : "Create a group first to use this option."
                   }
                   icon="people-outline"
                   disabled={groups.length === 0}
                 />
 
-                <AudienceCard
-                  value="private"
-                  title="Private"
-                  subtitle="Only you can see this prayer request."
-                  icon="lock-closed-outline"
-                />
-
                 {audience === "group" && groups.length > 0 ? (
                   <View
                     style={{
-                      marginTop: 4,
+                      marginTop: 2,
                       backgroundColor: PREMIUM_CREAM,
-                      borderRadius: 22,
-                      padding: 12,
+                      borderRadius: 18,
+                      padding: 9,
                       borderWidth: 1,
                       borderColor: CARD_BORDER,
                     }}
@@ -461,9 +560,9 @@ export default function NewPrayerModal({
                     <Text
                       style={{
                         color: TEXT,
-                        fontSize: 13,
+                        fontSize: 12,
                         fontWeight: "900",
-                        marginBottom: 8,
+                        marginBottom: 6,
                       }}
                     >
                       Choose group
@@ -475,11 +574,14 @@ export default function NewPrayerModal({
                       return (
                         <Pressable
                           key={g.id}
-                          onPress={() => setSelectedGroupId(g.id)}
+                          onPress={() => {
+                            if (loading || deliveryVisible) return;
+                            setSelectedGroupId(g.id);
+                          }}
                           style={({ pressed }) => ({
-                            paddingVertical: 10,
-                            paddingHorizontal: 11,
-                            borderRadius: 16,
+                            paddingVertical: 8,
+                            paddingHorizontal: 9,
+                            borderRadius: 14,
                             backgroundColor: selected
                               ? AMBER_SOFT
                               : pressed
@@ -487,25 +589,26 @@ export default function NewPrayerModal({
                               : SURFACE,
                             borderWidth: 1,
                             borderColor: selected ? AMBER_BORDER : CARD_BORDER,
-                            marginBottom: 8,
+                            marginBottom: 6,
                             flexDirection: "row",
                             alignItems: "center",
                           })}
                         >
                           <Ionicons
                             name="people-outline"
-                            size={17}
+                            size={15}
                             color={selected ? EVENT_AMBER : OLIVE}
                           />
 
                           <Text
                             style={{
                               color: selected ? EVENT_BROWN : TEXT,
-                              fontSize: 13,
+                              fontSize: 12,
                               fontWeight: "900",
-                              marginLeft: 8,
+                              marginLeft: 7,
                               flex: 1,
                             }}
+                            numberOfLines={1}
                           >
                             {g.name}
                           </Text>
@@ -513,7 +616,7 @@ export default function NewPrayerModal({
                           {selected ? (
                             <Ionicons
                               name="checkmark-circle"
-                              size={19}
+                              size={17}
                               color={EVENT_AMBER}
                             />
                           ) : null}
@@ -522,80 +625,195 @@ export default function NewPrayerModal({
                     })}
                   </View>
                 ) : null}
-              </View>
 
-              <Pressable
-                onPress={() => setIsAnonymous((prev) => !prev)}
-                style={({ pressed }) => ({
-                  marginTop: 14,
-                  backgroundColor: SURFACE,
-                  borderRadius: 24,
-                  borderWidth: 1,
-                  borderColor: isAnonymous ? AMBER_BORDER : CARD_BORDER,
-                  padding: 14,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  shadowColor: SHADOW,
-                  shadowOpacity: 0.05,
-                  shadowRadius: 10,
-                  shadowOffset: { width: 0, height: 4 },
-                  elevation: 2,
-                  transform: [{ scale: pressed ? 0.985 : 1 }],
-                })}
-              >
+                {audience === "fellowship" ? (
+                  <ToggleRow
+                    active={allowReshare}
+                    onPress={() => setAllowReshare((prev) => !prev)}
+                    title="Allow Fellowship sharing"
+                    subtitle="Trusted connections may share this onward."
+                    icon={allowReshare ? "share-social" : "share-social-outline"}
+                  />
+                ) : null}
+
                 <View
                   style={{
-                    width: 24,
-                    height: 24,
-                    borderRadius: 7,
-                    borderWidth: 1,
-                    borderColor: isAnonymous ? AMBER_BORDER : CARD_BORDER,
-                    marginRight: 11,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    backgroundColor: isAnonymous ? EVENT_AMBER : PREMIUM_CREAM,
+                    height: 1,
+                    backgroundColor: CARD_BORDER,
+                    marginVertical: 2,
+                  }}
+                />
+
+                <ToggleRow
+                  active={isAnonymous}
+                  onPress={() => setIsAnonymous((prev) => !prev)}
+                  title="Post anonymously"
+                  subtitle="Your name and avatar will not be shown."
+                  icon="person-outline"
+                />
+              </View>
+            </ScrollView>
+
+            {deliveryVisible ? (
+              <View
+                pointerEvents="none"
+                style={{
+                  position: "absolute",
+                  left: 0,
+                  right: 0,
+                  top: 0,
+                  bottom: 0,
+                  zIndex: 20,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  paddingHorizontal: 26,
+                  backgroundColor: "rgba(255, 252, 245, 0.88)",
+                }}
+              >
+                <Animated.View
+                  style={{
+                    transform: [
+                      {
+                        translateY: planeAnim.interpolate({
+                          inputRange: [0, 0.25, 1],
+                          outputRange: [80, 10, -260],
+                        }),
+                      },
+                      {
+                        translateX: planeAnim.interpolate({
+                          inputRange: [0, 0.35, 1],
+                          outputRange: [-70, 10, 145],
+                        }),
+                      },
+                      {
+                        rotate: planeAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: ["-18deg", "18deg"],
+                        }),
+                      },
+                      {
+                        scale: planeAnim.interpolate({
+                          inputRange: [0, 0.3, 0.75, 1],
+                          outputRange: [0.82, 1.08, 1, 0.72],
+                        }),
+                      },
+                    ],
+                    opacity: planeAnim.interpolate({
+                      inputRange: [0, 0.12, 0.78, 1],
+                      outputRange: [0, 1, 1, 0],
+                    }),
                   }}
                 >
-                  {isAnonymous ? (
-                    <Ionicons name="checkmark" size={16} color="#FFFFFF" />
-                  ) : null}
-                </View>
-
-                <View style={{ flex: 1 }}>
-                  <Text
+                  <View
                     style={{
-                      color: TEXT,
-                      fontSize: 14,
-                      fontWeight: "900",
+                      width: 72,
+                      height: 72,
+                      borderRadius: 999,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: AMBER_SOFT,
+                      borderWidth: 1,
+                      borderColor: AMBER_BORDER,
+                      shadowColor: EVENT_AMBER,
+                      shadowOpacity: 0.16,
+                      shadowRadius: 14,
+                      shadowOffset: { width: 0, height: 7 },
+                      elevation: 4,
                     }}
                   >
-                    Post anonymously
+                    <Ionicons
+                      name="paper-plane-outline"
+                      size={31}
+                      color={EVENT_AMBER}
+                    />
+                  </View>
+                </Animated.View>
+
+                <Animated.View
+                  style={{
+                    marginTop: 18,
+                    width: "100%",
+                    maxWidth: 330,
+                    backgroundColor: SURFACE,
+                    borderRadius: 28,
+                    borderWidth: 1,
+                    borderColor: AMBER_BORDER,
+                    padding: 18,
+                    alignItems: "center",
+                    shadowColor: SHADOW,
+                    shadowOpacity: 0.12,
+                    shadowRadius: 18,
+                    shadowOffset: { width: 0, height: 8 },
+                    elevation: 5,
+                    opacity: cardAnim,
+                    transform: [
+                      {
+                        translateY: cardAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [16, 0],
+                        }),
+                      },
+                      {
+                        scale: cardAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [0.96, 1],
+                        }),
+                      },
+                    ],
+                  }}
+                >
+                  <View
+                    style={{
+                      width: 42,
+                      height: 42,
+                      borderRadius: 999,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: OLIVE_SOFT,
+                      borderWidth: 1,
+                      borderColor: OLIVE_BORDER,
+                      marginBottom: 10,
+                    }}
+                  >
+                    <Ionicons name="checkmark" size={22} color={OLIVE} />
+                  </View>
+
+                  <Text
+                    style={[
+                      serifHeading,
+                      {
+                        fontSize: 24,
+                        lineHeight: 29,
+                        textAlign: "center",
+                      },
+                    ]}
+                  >
+                    Prayer delivered
                   </Text>
 
                   <Text
                     style={{
                       color: MUTED,
-                      marginTop: 2,
-                      fontSize: 12,
-                      lineHeight: 17,
+                      marginTop: 7,
+                      fontSize: 13,
+                      lineHeight: 19,
                       fontWeight: "700",
+                      textAlign: "center",
                     }}
                   >
-                    Your name and avatar will not be shown on this request.
+                    {audience === "group"
+                      ? "Your group can now pray with you."
+                      : "Your Fellowship can now pray with you."}
                   </Text>
-                </View>
-              </Pressable>
-            </ScrollView>
+                </Animated.View>
+              </View>
+            ) : null}
 
             <View
               style={{
-                position: "absolute",
-                left: 0,
-                right: 0,
-                bottom: 0,
-                paddingHorizontal: 18,
-                paddingTop: 12,
-                paddingBottom: Platform.OS === "ios" ? 20 : 14,
+                paddingHorizontal: 16,
+                paddingTop: 8,
+                paddingBottom: Math.max(insets.bottom, 10),
                 backgroundColor: PREMIUM_CREAM,
                 borderTopWidth: 1,
                 borderTopColor: CARD_BORDER,
@@ -604,24 +822,24 @@ export default function NewPrayerModal({
             >
               <Pressable
                 onPress={handleClose}
-                disabled={loading}
+                disabled={loading || deliveryVisible}
                 style={({ pressed }) => ({
                   flex: 1,
-                  paddingVertical: 13,
+                  paddingVertical: 10,
                   borderRadius: 999,
                   alignItems: "center",
                   marginRight: 8,
                   borderWidth: 1,
                   borderColor: OLIVE_BORDER,
                   backgroundColor: SURFACE,
-                  opacity: loading ? 0.6 : 1,
+                  opacity: loading || deliveryVisible ? 0.6 : 1,
                   transform: [{ scale: pressed ? 0.97 : 1 }],
                 })}
               >
                 <Text
                   style={{
                     color: OLIVE,
-                    fontSize: 14,
+                    fontSize: 13.5,
                     fontWeight: "900",
                   }}
                 >
@@ -631,32 +849,36 @@ export default function NewPrayerModal({
 
               <Pressable
                 onPress={handleSubmit}
-                disabled={loading || !title.trim()}
+                disabled={loading || deliveryVisible || !title.trim()}
                 style={({ pressed }) => ({
                   flex: 1,
-                  paddingVertical: 13,
+                  paddingVertical: 10,
                   borderRadius: 999,
                   alignItems: "center",
                   backgroundColor: title.trim() ? EVENT_AMBER : AMBER_SOFT,
                   borderWidth: 1,
                   borderColor: AMBER_BORDER,
-                  opacity: loading || !title.trim() ? 0.65 : 1,
-                  shadowColor: EVENT_AMBER,
-                  shadowOpacity: title.trim() ? 0.18 : 0,
-                  shadowRadius: 10,
-                  shadowOffset: { width: 0, height: 5 },
-                  elevation: title.trim() ? 3 : 0,
-                  transform: [{ scale: pressed && title.trim() ? 0.97 : 1 }],
+                  opacity: loading || deliveryVisible || !title.trim() ? 0.65 : 1,
+                  transform: [
+                    {
+                      scale:
+                        pressed && title.trim() && !deliveryVisible ? 0.97 : 1,
+                    },
+                  ],
                 })}
               >
                 <Text
                   style={{
                     color: title.trim() ? "#FFFFFF" : EVENT_BROWN,
-                    fontSize: 14,
+                    fontSize: 13.5,
                     fontWeight: "900",
                   }}
                 >
-                  {loading ? "Posting…" : "Post request"}
+                  {loading
+                    ? "Posting…"
+                    : deliveryVisible
+                    ? "Delivered"
+                    : "Post request"}
                 </Text>
               </Pressable>
             </View>

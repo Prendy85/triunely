@@ -15,7 +15,7 @@ import {
   Animated,
   Pressable,
   Text,
-  View,
+  View
 } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
@@ -27,6 +27,7 @@ import { FellowshipRequestsModalProvider } from "./src/context/FellowshipRequest
 import { PointsProvider } from "./src/context/PointsContext";
 import { RealtimeProvider } from "./src/context/RealtimeProvider";
 import { supabase } from "./src/lib/supabase";
+import PrayerGroupDetailScreen from "./src/screens/PrayerGroupDetailScreen";
 import { theme } from "./src/theme/theme";
 
 // Auth / onboarding
@@ -104,6 +105,119 @@ const CURRENT_SUBSCRIBERS = 0;
 const SUBSCRIPTION_PRICE = 6.99;
 const CHARITY_PER_SUBSCRIBER = 2;
 const GOAL_SUBSCRIBERS = 1_000_000;
+const PREMIUM_CREAM = "#FFFCF5";
+const EVENT_AMBER = "#B45309";
+
+function AuthLogoRevealOverlay({ visible, reveal, onDone }) {
+  const overlayOpacity = useRef(new Animated.Value(1)).current;
+  const logoOpacity = useRef(new Animated.Value(1)).current;
+  const logoScale = useRef(new Animated.Value(1)).current;
+  const bloomOpacity = useRef(new Animated.Value(0)).current;
+  const bloomScale = useRef(new Animated.Value(0.85)).current;
+
+  useEffect(() => {
+    if (!visible) return;
+
+    overlayOpacity.setValue(1);
+    logoOpacity.setValue(1);
+    logoScale.setValue(1);
+    bloomOpacity.setValue(0.08);
+    bloomScale.setValue(0.85);
+  }, [visible, overlayOpacity, logoOpacity, logoScale, bloomOpacity, bloomScale]);
+
+  useEffect(() => {
+    if (!visible || !reveal) return;
+
+    const holdTimer = setTimeout(() => {
+      Animated.parallel([
+        Animated.timing(logoScale, {
+          toValue: 1.16,
+          duration: 1450,
+          useNativeDriver: true,
+        }),
+        Animated.sequence([
+          Animated.timing(bloomOpacity, {
+            toValue: 0.16,
+            duration: 450,
+            useNativeDriver: true,
+          }),
+          Animated.timing(bloomOpacity, {
+            toValue: 0,
+            duration: 950,
+            useNativeDriver: true,
+          }),
+        ]),
+        Animated.timing(bloomScale, {
+          toValue: 1.45,
+          duration: 1450,
+          useNativeDriver: true,
+        }),
+        Animated.timing(logoOpacity, {
+          toValue: 0,
+          duration: 1150,
+          delay: 260,
+          useNativeDriver: true,
+        }),
+        Animated.timing(overlayOpacity, {
+          toValue: 0,
+          duration: 950,
+          delay: 520,
+          useNativeDriver: true,
+        }),
+      ]).start(({ finished }) => {
+        if (finished && typeof onDone === "function") {
+          onDone();
+        }
+      });
+    }, 220);
+
+    return () => clearTimeout(holdTimer);
+  }, [visible, reveal, overlayOpacity, logoOpacity, logoScale, bloomOpacity, bloomScale, onDone]);
+
+  if (!visible) return null;
+
+  return (
+    <Animated.View
+      pointerEvents="auto"
+      style={{
+        position: "absolute",
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        zIndex: 2000,
+        elevation: 2000,
+        backgroundColor: PREMIUM_CREAM,
+        alignItems: "center",
+        justifyContent: "center",
+        opacity: overlayOpacity,
+      }}
+    >
+      <Animated.View
+        style={{
+          position: "absolute",
+          width: 340,
+          height: 340,
+          borderRadius: 999,
+          backgroundColor: "rgba(255, 255, 255, 0.92)",
+          opacity: bloomOpacity,
+          transform: [{ scale: bloomScale }],
+        }}
+      />
+
+      <Animated.Image
+        source={require("./src/assets/brand/triunely-logo.png")}
+        resizeMode="contain"
+        style={{
+          width: 330,
+          height: 330,
+          opacity: logoOpacity,
+          transform: [{ scale: logoScale }],
+        }}
+      />
+    </Animated.View>
+  );
+}
 
 function NotificationsBell({ navigation }) {
   return (
@@ -345,6 +459,12 @@ function PrayerStackNavigator() {
   return (
     <PrayerStack.Navigator screenOptions={{ headerShown: false }}>
       <PrayerStack.Screen name="PrayerMain" component={Prayer} />
+
+      <PrayerStack.Screen
+        name="PrayerGroupDetail"
+        component={PrayerGroupDetailScreen}
+        options={{ animation: "slide_from_right" }}
+      />
     </PrayerStack.Navigator>
   );
 }
@@ -648,6 +768,11 @@ function RootNavigator({ initialTabName = "Daily" }) {
         component={UserProfile}
         options={{ animation: "slide_from_right" }}
       />
+      <RootStack.Screen
+  name="PrayerGroupDetail"
+  component={PrayerGroupDetailScreen}
+  options={{ animation: "slide_from_right" }}
+/>
 
       <RootStack.Screen
         name="ChurchFind"
@@ -830,6 +955,8 @@ export default function App() {
 
   const [showAuthOverlay, setShowAuthOverlay] = useState(false);
   const [authExitFinished, setAuthExitFinished] = useState(false);
+  const [showAuthReveal, setShowAuthReveal] = useState(false);
+  const [authRevealReady, setAuthRevealReady] = useState(false);
 
   const authOverlayOpacity = useRef(new Animated.Value(1)).current;
   const impactTimerRef = useRef(null);
@@ -927,9 +1054,11 @@ export default function App() {
       impactTimerRef.current = null;
     }
 
-    setShowAuthOverlay(false);
-    setAuthExitFinished(false);
-    authOverlayOpacity.setValue(1);
+setShowAuthOverlay(false);
+setAuthExitFinished(false);
+setShowAuthReveal(false);
+setAuthRevealReady(false);
+authOverlayOpacity.setValue(1);
   }, [session, authOverlayOpacity]);
 
   useEffect(() => {
@@ -1015,17 +1144,30 @@ export default function App() {
     };
   }, [session?.user?.id]);
 
-  useEffect(() => {
-    if (!session) return;
-    if (!showAuthOverlay) return;
-    if (!authExitFinished) return;
+useEffect(() => {
+  if (!session) return;
+  if (!showAuthOverlay) return;
+  if (!authExitFinished) return;
+  if (profileLoading) return;
+  if (!churchAdminLandingChecked) return;
 
-    fadeOutAuthOverlay(() => {
-      setShowAuthOverlay(false);
-      setAuthExitFinished(false);
-      authOverlayOpacity.setValue(1);
+  requestAnimationFrame(() => {
+    setShowAuthOverlay(false);
+    setAuthExitFinished(false);
+    authOverlayOpacity.setValue(1);
+
+    requestAnimationFrame(() => {
+      setAuthRevealReady(true);
     });
-  }, [session, showAuthOverlay, authExitFinished, authOverlayOpacity]);
+  });
+}, [
+  session,
+  showAuthOverlay,
+  authExitFinished,
+  profileLoading,
+  churchAdminLandingChecked,
+  authOverlayOpacity,
+]);
 
   useEffect(() => {
     if (!session) return;
@@ -1132,17 +1274,27 @@ export default function App() {
               }}
             >
               <AuthScreen
-                onAuthSuccessStart={() => {
-                  setShowAuthOverlay(true);
-                  setAuthExitFinished(false);
-                  authOverlayOpacity.setValue(1);
-                }}
+               onAuthSuccessStart={() => {
+  setShowAuthOverlay(true);
+  setAuthExitFinished(false);
+  setShowAuthReveal(true);
+  setAuthRevealReady(false);
+  authOverlayOpacity.setValue(1);
+}}
                 onAuthSuccessEnd={() => {
                   setAuthExitFinished(true);
                 }}
               />
             </Animated.View>
           ) : null}
+            <AuthLogoRevealOverlay
+  visible={showAuthReveal}
+  reveal={authRevealReady}
+  onDone={() => {
+    setShowAuthReveal(false);
+    setAuthRevealReady(false);
+  }}
+/>
         </KeyboardProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
