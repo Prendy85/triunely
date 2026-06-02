@@ -691,7 +691,11 @@ function NewGroupPrayerModal({
   );
 }
 
-export default function PrayerGroupDetailScreen({ route, navigation }) {
+export default function PrayerGroupDetailScreen({
+  route,
+  navigation,
+  onGroupDeleted,
+}) {
   const insets = useSafeAreaInsets();
 
   const points = usePoints();
@@ -1113,19 +1117,46 @@ async function handleDeleteGroup() {
   try {
     setDeletingGroup(true);
 
-    const { error: prayerDeleteError } = await supabase
+    const { data: deletedPrayers, error: prayerDeleteError } = await supabase
       .from("prayer_requests")
       .delete()
-      .eq("group_id", groupId);
+      .eq("group_id", groupId)
+      .select("id");
 
     if (prayerDeleteError) throw prayerDeleteError;
 
-    const { error: groupDeleteError } = await supabase
+    console.log("Deleted group prayers:", deletedPrayers?.length || 0);
+
+    const { data: deletedMembers, error: memberDeleteError } = await supabase
+      .from("prayer_group_members")
+      .delete()
+      .eq("group_id", groupId)
+      .select("id");
+
+    if (memberDeleteError) throw memberDeleteError;
+
+    console.log("Deleted group members:", deletedMembers?.length || 0);
+
+    const { data: deletedGroups, error: groupDeleteError } = await supabase
       .from("prayer_groups")
       .delete()
-      .eq("id", groupId);
+      .eq("id", groupId)
+      .select("id");
 
     if (groupDeleteError) throw groupDeleteError;
+
+    console.log("Deleted groups:", deletedGroups);
+
+    if (!deletedGroups || deletedGroups.length === 0) {
+      throw new Error(
+        "The group was not deleted. Supabase returned zero deleted rows. Check the delete policy for prayer_groups."
+      );
+    }
+
+    if (typeof onGroupDeleted === "function") {
+      await onGroupDeleted(groupId);
+      return;
+    }
 
     navigation?.goBack?.();
   } catch (e) {

@@ -3049,7 +3049,90 @@ const renderPrayerActionMenu = () => {
               {swipeHint}
             </Text>
           </View>
-        </View>
+
+                    <View
+            style={{
+              marginTop: 12,
+              paddingTop: 12,
+              borderTopWidth: 1,
+              borderTopColor: CARD_BORDER,
+              flexDirection: "row",
+              alignItems: "center",
+            }}
+          >
+            <Pressable
+              onPress={() => setShowGroupsScreen(true)}
+              style={({ pressed }) => ({
+                flex: 1,
+                paddingVertical: 11,
+                paddingHorizontal: 12,
+                borderRadius: 999,
+                backgroundColor: OLIVE_SOFT,
+                borderWidth: 1,
+                borderColor: OLIVE_BORDER,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                transform: [{ scale: pressed ? 0.97 : 1 }],
+              })}
+            >
+              <Ionicons name="people-outline" size={17} color={OLIVE} />
+
+              <Text
+                style={{
+                  color: OLIVE,
+                  fontSize: 12.5,
+                  fontWeight: "900",
+                  marginLeft: 7,
+                }}
+              >
+                Prayer Groups
+              </Text>
+
+              <Text
+                style={{
+                  color: MUTED,
+                  fontSize: 11,
+                  fontWeight: "800",
+                  marginLeft: 6,
+                }}
+              >
+                {myGroups.length}
+              </Text>
+            </Pressable>
+
+            <Pressable
+              onPress={() => setShowNewModal(true)}
+              style={({ pressed }) => ({
+                flex: 1,
+                paddingVertical: 11,
+                paddingHorizontal: 12,
+                borderRadius: 999,
+                backgroundColor: EVENT_AMBER,
+                borderWidth: 1,
+                borderColor: AMBER_BORDER,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                marginLeft: 9,
+                transform: [{ scale: pressed ? 0.97 : 1 }],
+              })}
+            >
+              <Ionicons name="add" size={17} color="#FFFFFF" />
+
+              <Text
+                style={{
+                  color: "#FFFFFF",
+                  fontSize: 12.5,
+                  fontWeight: "900",
+                  marginLeft: 7,
+                }}
+              >
+                New Prayer
+              </Text>
+            </Pressable>
+          </View>
+              </View>
       </View>
 
       <View
@@ -3223,6 +3306,7 @@ const renderPrayerActionMenu = () => {
       />
     </View>
   );
+
 
   const renderEmptyState = () => {
     if (loading) {
@@ -3455,7 +3539,6 @@ const renderPrayerActionMenu = () => {
   onCreateGroup={() => setShowGroupModal(true)}
   onRefresh={fetchMyGroups}
 onOpenGroup={(group) => {
-  setShowGroupsScreen(false);
   setSelectedPrayerGroup(group);
 }}
 />
@@ -3468,17 +3551,31 @@ onOpenGroup={(group) => {
   onRequestClose={() => setSelectedPrayerGroup(null)}
 >
   {selectedPrayerGroup ? (
-    <PrayerGroupDetailScreen
-      route={{
-        params: {
-          groupId: selectedPrayerGroup.id,
-          group: selectedPrayerGroup,
-        },
-      }}
-      navigation={{
-        goBack: () => setSelectedPrayerGroup(null),
-      }}
-    />
+<PrayerGroupDetailScreen
+  route={{
+    params: {
+      groupId: selectedPrayerGroup.id,
+      group: selectedPrayerGroup,
+    },
+  }}
+  navigation={{
+    goBack: () => {
+      setSelectedPrayerGroup(null);
+    },
+  }}
+  onGroupDeleted={async (deletedGroupId) => {
+    setSelectedPrayerGroup(null);
+
+    if (deletedGroupId) {
+      setMyGroups((prev) =>
+        prev.filter((group) => group.id !== deletedGroupId)
+      );
+    }
+
+    await fetchMyGroups();
+    setShowGroupsScreen(true);
+  }}
+/>
   ) : null}
 </Modal>
 
