@@ -761,6 +761,8 @@ const [groupMembers, setGroupMembers] = useState([]);
 const [pendingGroupInvites, setPendingGroupInvites] = useState([]);
 const [membersLoading, setMembersLoading] = useState(false);
 const [withdrawingInviteById, setWithdrawingInviteById] = useState({});
+const [memberSearchText, setMemberSearchText] = useState("");
+const [showAllGroupMembers, setShowAllGroupMembers] = useState(false);
 
 const inviteSheetTranslateY = useRef(new Animated.Value(0)).current;
 
@@ -770,6 +772,8 @@ function resetInviteMembersModal() {
   setInviteSearchLoading(false);
   setSendingInviteByUserId({});
   setWithdrawingInviteById({});
+  setMemberSearchText("");
+  setShowAllGroupMembers(false);
 }
 
 function closeInviteMembersModal() {
@@ -1861,6 +1865,56 @@ async function handleSubmitEncouragement(message) {
     }
   }
 
+  const sortedGroupMembers = useMemo(() => {
+  return [...(groupMembers || [])].sort((a, b) => {
+    const aIsAdmin = a.role === "admin";
+    const bIsAdmin = b.role === "admin";
+
+    if (aIsAdmin && !bIsAdmin) return -1;
+    if (!aIsAdmin && bIsAdmin) return 1;
+
+    const aName =
+      a.profile?.display_name ||
+      a.profile?.handle ||
+      "Triunely Member";
+
+    const bName =
+      b.profile?.display_name ||
+      b.profile?.handle ||
+      "Triunely Member";
+
+    return aName.localeCompare(bName);
+  });
+}, [groupMembers]);
+
+const filteredGroupMembers = useMemo(() => {
+  const q = memberSearchText.trim().toLowerCase();
+
+  if (!q) return sortedGroupMembers;
+
+  return sortedGroupMembers.filter((member) => {
+    const profile = member.profile || {};
+
+    const name = String(profile.display_name || "").toLowerCase();
+    const handle = String(profile.handle || "").toLowerCase();
+
+    return name.includes(q) || handle.includes(q);
+  });
+}, [memberSearchText, sortedGroupMembers]);
+
+const hasMemberSearch = memberSearchText.trim().length > 0;
+const memberPreviewLimit = 5;
+
+const visibleGroupMembers =
+  hasMemberSearch || showAllGroupMembers
+    ? filteredGroupMembers
+    : filteredGroupMembers.slice(0, memberPreviewLimit);
+
+const hiddenGroupMemberCount = Math.max(
+  filteredGroupMembers.length - visibleGroupMembers.length,
+  0
+);
+
 const renderInviteMembersModal = () => (
   <Modal
     visible={inviteMembersVisible}
@@ -1968,6 +2022,70 @@ const renderInviteMembersModal = () => (
               >
                 Manage who can pray inside {groupName}.
               </Text>
+              
+                            <View
+                style={{
+                  flexDirection: "row",
+                  flexWrap: "wrap",
+                  marginTop: 9,
+                }}
+              >
+                <View
+                  style={{
+                    paddingHorizontal: 10,
+                    paddingVertical: 6,
+                    borderRadius: 999,
+                    backgroundColor: OLIVE_SOFT,
+                    borderWidth: 1,
+                    borderColor: OLIVE_BORDER,
+                    marginRight: 7,
+                    marginBottom: 6,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: OLIVE,
+                      fontSize: 11.5,
+                      fontWeight: "900",
+                    }}
+                  >
+                    {groupMembers.length === 1
+                      ? "1 member"
+                      : `${groupMembers.length} members`}
+                  </Text>
+                </View>
+
+                <View
+                  style={{
+                    paddingHorizontal: 10,
+                    paddingVertical: 6,
+                    borderRadius: 999,
+                    backgroundColor:
+                      pendingGroupInvites.length > 0 ? AMBER_SOFT : SURFACE,
+                    borderWidth: 1,
+                    borderColor:
+                      pendingGroupInvites.length > 0
+                        ? AMBER_BORDER
+                        : CARD_BORDER,
+                    marginRight: 7,
+                    marginBottom: 6,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color:
+                        pendingGroupInvites.length > 0 ? EVENT_BROWN : MUTED,
+                      fontSize: 11.5,
+                      fontWeight: "900",
+                    }}
+                  >
+                    {pendingGroupInvites.length === 1
+                      ? "1 pending invite"
+                      : `${pendingGroupInvites.length} pending invites`}
+                  </Text>
+                </View>
+              </View>
+
             </View>
           </View>
 
@@ -2012,18 +2130,93 @@ const renderInviteMembersModal = () => (
                 marginBottom: 14,
               }}
             >
-              <Text
+                           <View
                 style={{
-                  color: TEXT,
-                  fontSize: 15,
-                  fontWeight: "900",
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
                   marginBottom: 8,
                 }}
               >
-                Members
-              </Text>
+                <Text
+                  style={{
+                    color: TEXT,
+                    fontSize: 15,
+                    fontWeight: "900",
+                  }}
+                >
+                  Members
+                </Text>
 
-              {groupMembers.length === 0 && !membersLoading ? (
+                <Text
+                  style={{
+                    color: MUTED,
+                    fontSize: 11.5,
+                    fontWeight: "800",
+                  }}
+                >
+                  {groupMembers.length === 1
+                    ? "1 person"
+                    : `${groupMembers.length} people`}
+                </Text>
+              </View>
+
+                            <View
+                style={{
+                  backgroundColor: SURFACE,
+                  borderRadius: 22,
+                  borderWidth: 1,
+                  borderColor: CARD_BORDER,
+                  paddingHorizontal: 13,
+                  paddingVertical: 10,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  marginBottom: 10,
+                }}
+              >
+                <Ionicons name="search-outline" size={18} color={MUTED} />
+
+                <TextInput
+                  value={memberSearchText}
+                  onChangeText={(text) => {
+                    setMemberSearchText(text);
+                    setShowAllGroupMembers(false);
+                  }}
+                  placeholder="Search members"
+                  placeholderTextColor="rgba(107, 114, 128, 0.72)"
+                  autoCapitalize="none"
+                  style={{
+                    flex: 1,
+                    marginLeft: 9,
+                    color: TEXT,
+                    fontSize: 14.5,
+                    fontWeight: "700",
+                    paddingVertical: 4,
+                  }}
+                />
+
+                {memberSearchText.trim().length > 0 ? (
+                  <Pressable
+                    onPress={() => {
+                      setMemberSearchText("");
+                      setShowAllGroupMembers(false);
+                    }}
+                    hitSlop={8}
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: 999,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: OLIVE_SOFT,
+                    }}
+                  >
+                    <Ionicons name="close" size={16} color={OLIVE} />
+                  </Pressable>
+                ) : null}
+              </View>
+
+              {filteredGroupMembers.length === 0 && !membersLoading ? (
                 <View
                   style={{
                     padding: 14,
@@ -2042,12 +2235,14 @@ const renderInviteMembersModal = () => (
                       textAlign: "center",
                     }}
                   >
-                    No members loaded yet.
+                    {hasMemberSearch
+  ? "No members match that search."
+  : "No members loaded yet."}
                   </Text>
                 </View>
               ) : null}
 
-              {groupMembers.map((member) => {
+              {visibleGroupMembers.map((member) => {
                 const profile = member.profile || {};
                 const displayName =
                   profile.display_name ||
@@ -2156,6 +2351,36 @@ const renderInviteMembersModal = () => (
                   </View>
                 );
               })}
+
+                            {!hasMemberSearch && filteredGroupMembers.length > memberPreviewLimit ? (
+                <Pressable
+                  onPress={() => setShowAllGroupMembers((prev) => !prev)}
+                  style={({ pressed }) => ({
+                    marginTop: 2,
+                    paddingVertical: 11,
+                    borderRadius: 999,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: pressed ? OLIVE_SOFT : SURFACE,
+                    borderWidth: 1,
+                    borderColor: OLIVE_BORDER,
+                    transform: [{ scale: pressed ? 0.98 : 1 }],
+                  })}
+                >
+                  <Text
+                    style={{
+                      color: OLIVE,
+                      fontSize: 13,
+                      fontWeight: "900",
+                    }}
+                  >
+                    {showAllGroupMembers
+                      ? "Show fewer members"
+                      : `View all ${filteredGroupMembers.length} members`}
+                  </Text>
+                </Pressable>
+              ) : null}
+              
             </View>
 
             <View
@@ -2163,16 +2388,49 @@ const renderInviteMembersModal = () => (
                 marginBottom: 16,
               }}
             >
-              <Text
+                           <View
                 style={{
-                  color: TEXT,
-                  fontSize: 15,
-                  fontWeight: "900",
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
                   marginBottom: 8,
                 }}
               >
-                Pending invites
-              </Text>
+                <View style={{ flex: 1, paddingRight: 10 }}>
+                  <Text
+                    style={{
+                      color: TEXT,
+                      fontSize: 15,
+                      fontWeight: "900",
+                    }}
+                  >
+                    Pending invites
+                  </Text>
+
+                  <Text
+                    style={{
+                      color: MUTED,
+                      marginTop: 2,
+                      fontSize: 11.5,
+                      lineHeight: 16,
+                      fontWeight: "700",
+                    }}
+                  >
+                    People invited but not yet accepted.
+                  </Text>
+                </View>
+
+                <Text
+                  style={{
+                    color:
+                      pendingGroupInvites.length > 0 ? EVENT_BROWN : MUTED,
+                    fontSize: 11.5,
+                    fontWeight: "900",
+                  }}
+                >
+                  {pendingGroupInvites.length}
+                </Text>
+              </View>
 
               {pendingGroupInvites.length === 0 ? (
                 <View
@@ -2193,7 +2451,7 @@ const renderInviteMembersModal = () => (
                       textAlign: "center",
                     }}
                   >
-                    No pending invites.
+                    No pending invites. Anyone you invite will appear here until they accept or decline.
                   </Text>
                 </View>
               ) : null}
