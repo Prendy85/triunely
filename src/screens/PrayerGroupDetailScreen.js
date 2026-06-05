@@ -718,6 +718,9 @@ const [errorText, setErrorText] = useState("");
 const [menuVisible, setMenuVisible] = useState(false);
 const [editNameVisible, setEditNameVisible] = useState(false);
 const [editedGroupName, setEditedGroupName] = useState("");
+const [editedGroupDescription, setEditedGroupDescription] = useState("");
+const [editedGroupPrivacy, setEditedGroupPrivacy] = useState("private");
+const [editedGroupType, setEditedGroupType] = useState("other");
 const [updatingGroupName, setUpdatingGroupName] = useState(false);
 const [deletingGroup, setDeletingGroup] = useState(false);
 
@@ -765,6 +768,7 @@ const [memberSearchText, setMemberSearchText] = useState("");
 const [showAllGroupMembers, setShowAllGroupMembers] = useState(false);
 
 const inviteSheetTranslateY = useRef(new Animated.Value(0)).current;
+const groupMenuTranslateY = useRef(new Animated.Value(0)).current;
 
 function resetInviteMembersModal() {
   setInviteSearchText("");
@@ -785,6 +789,17 @@ function closeInviteMembersModal() {
     setInviteMembersVisible(false);
     resetInviteMembersModal();
     inviteSheetTranslateY.setValue(0);
+  });
+}
+
+function closeGroupMenuModal() {
+  Animated.timing(groupMenuTranslateY, {
+    toValue: 420,
+    duration: 145,
+    useNativeDriver: true,
+  }).start(() => {
+    setMenuVisible(false);
+    groupMenuTranslateY.setValue(0);
   });
 }
 
@@ -826,6 +841,53 @@ const inviteSheetPanResponder = useRef(
 
     onPanResponderTerminate: () => {
       Animated.spring(inviteSheetTranslateY, {
+        toValue: 0,
+        useNativeDriver: true,
+        speed: 22,
+        bounciness: 4,
+      }).start();
+    },
+  })
+).current;
+
+const groupMenuPanResponder = useRef(
+  PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+
+    onMoveShouldSetPanResponder: (_, gestureState) =>
+      Math.abs(gestureState.dy) > 2,
+
+    onPanResponderGrant: () => {
+      groupMenuTranslateY.stopAnimation();
+    },
+
+    onPanResponderMove: (_, gestureState) => {
+      const nextY =
+        gestureState.dy < 0
+          ? Math.max(gestureState.dy, -80)
+          : gestureState.dy;
+
+      groupMenuTranslateY.setValue(nextY);
+    },
+
+    onPanResponderRelease: (_, gestureState) => {
+      const shouldClose = gestureState.dy > 85 || gestureState.vy > 0.55;
+
+      if (shouldClose) {
+        closeGroupMenuModal();
+        return;
+      }
+
+      Animated.spring(groupMenuTranslateY, {
+        toValue: 0,
+        useNativeDriver: true,
+        speed: 22,
+        bounciness: 4,
+      }).start();
+    },
+
+    onPanResponderTerminate: () => {
+      Animated.spring(groupMenuTranslateY, {
         toValue: 0,
         useNativeDriver: true,
         speed: 22,
@@ -1363,12 +1425,16 @@ async function handleWithdrawPrayerGroupInvite(invite) {
 
 function openEditGroupName() {
   setEditedGroupName(group?.name || "");
+  setEditedGroupDescription(group?.description || "");
+  setEditedGroupPrivacy(group?.privacy || "private");
+  setEditedGroupType(group?.group_type || "other");
   setMenuVisible(false);
   setEditNameVisible(true);
 }
 
 async function handleSaveGroupName() {
   const nextName = editedGroupName.trim();
+  const nextDescription = editedGroupDescription.trim();
 
   if (!groupId) {
     Alert.alert("No group selected", "Please go back and choose a group.");
@@ -1387,6 +1453,9 @@ async function handleSaveGroupName() {
       .from("prayer_groups")
       .update({
         name: nextName,
+        description: nextDescription || null,
+        privacy: editedGroupPrivacy || "private",
+        group_type: editedGroupType || "other",
       })
       .eq("id", groupId)
       .select("id, name, description, privacy, group_type, created_at")
@@ -1396,14 +1465,15 @@ async function handleSaveGroupName() {
 
     if (!data?.id) {
       throw new Error(
-        "The group name was not updated. Please check your Supabase update policy."
+        "The group details were not updated. Please check your Supabase update policy."
       );
     }
 
     setGroup(data);
     setEditNameVisible(false);
+    showToast("Group details updated");
   } catch (e) {
-    console.log("Error updating prayer group name", e);
+    console.log("Error updating prayer group details", e);
 
     Alert.alert(
       "Could not update group",
@@ -2380,7 +2450,7 @@ const renderInviteMembersModal = () => (
                   </Text>
                 </Pressable>
               ) : null}
-              
+
             </View>
 
             <View
@@ -2815,39 +2885,48 @@ const renderInviteMembersModal = () => (
     visible={menuVisible}
     animationType="fade"
     transparent
-    onRequestClose={() => setMenuVisible(false)}
+    onRequestClose={closeGroupMenuModal}
   >
     <Pressable
-      onPress={() => setMenuVisible(false)}
+      onPress={closeGroupMenuModal}
       style={{
         flex: 1,
         backgroundColor: "rgba(15, 23, 42, 0.28)",
         justifyContent: "flex-end",
       }}
     >
-      <Pressable
-        onPress={() => {}}
+          <Animated.View
         style={{
           backgroundColor: PREMIUM_CREAM,
           borderTopLeftRadius: 30,
           borderTopRightRadius: 30,
           paddingHorizontal: 18,
-          paddingTop: 16,
+          paddingTop: 8,
           paddingBottom: Math.max(insets.bottom + 14, 26),
           borderTopWidth: 1,
           borderColor: CARD_BORDER,
+          transform: [{ translateY: groupMenuTranslateY }],
         }}
       >
-        <View
+                      <View
+          {...groupMenuPanResponder.panHandlers}
           style={{
-            width: 44,
-            height: 5,
-            borderRadius: 999,
-            backgroundColor: CARD_BORDER,
             alignSelf: "center",
-            marginBottom: 16,
+            paddingHorizontal: 42,
+            paddingTop: 8,
+            paddingBottom: 18,
+            marginBottom: 0,
           }}
-        />
+        >
+          <View
+            style={{
+              width: 46,
+              height: 5,
+              borderRadius: 999,
+              backgroundColor: CARD_BORDER,
+            }}
+          />
+        </View>
 
         <Text
           style={[
@@ -2906,7 +2985,7 @@ const renderInviteMembersModal = () => (
 
           <View style={{ flex: 1 }}>
             <Text style={{ color: TEXT, fontSize: 15, fontWeight: "900" }}>
-              Edit group name
+              Edit group details
             </Text>
             <Text
               style={{
@@ -2916,7 +2995,7 @@ const renderInviteMembersModal = () => (
                 fontWeight: "700",
               }}
             >
-              Rename this prayer group.
+              Update the name, description, privacy, and group type.
             </Text>
           </View>
         </Pressable>
@@ -3020,7 +3099,7 @@ onPress={async () => {
             </Text>
           </View>
         </Pressable>
-      </Pressable>
+            </Animated.View>
     </Pressable>
   </Modal>
 );
@@ -3034,158 +3113,338 @@ const renderEditNameModal = () => (
       if (!updatingGroupName) setEditNameVisible(false);
     }}
   >
-    <View
-      style={{
-        flex: 1,
-        backgroundColor: "rgba(15, 23, 42, 0.30)",
-        justifyContent: "center",
-        paddingHorizontal: 18,
-      }}
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 18}
     >
-      <View
+      <Pressable
+        onPress={() => {
+          if (!updatingGroupName) setEditNameVisible(false);
+        }}
         style={{
-          backgroundColor: PREMIUM_CREAM,
-          borderRadius: 30,
-          borderWidth: 1,
-          borderColor: CARD_BORDER,
-          padding: 18,
-          shadowColor: SHADOW,
-          shadowOpacity: 0.14,
-          shadowRadius: 18,
-          shadowOffset: { width: 0, height: 8 },
-          elevation: 6,
+          flex: 1,
+          backgroundColor: "rgba(15, 23, 42, 0.30)",
+          justifyContent: "center",
+          paddingHorizontal: 18,
         }}
       >
-        <View style={{ flexDirection: "row", alignItems: "center" }}>
-          <View
-            style={{
-              width: 48,
-              height: 48,
-              borderRadius: 999,
-              alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: AMBER_SOFT,
-              borderWidth: 1,
-              borderColor: AMBER_BORDER,
-              marginRight: 12,
-            }}
-          >
-            <Ionicons name="create-outline" size={23} color={EVENT_AMBER} />
-          </View>
-
-          <View style={{ flex: 1 }}>
-            <Text
-              style={[
-                serifHeading,
-                {
-                  fontSize: 23,
-                  lineHeight: 28,
-                },
-              ]}
-            >
-              Edit group name
-            </Text>
-
-            <Text
-              style={{
-                color: MUTED,
-                marginTop: 2,
-                fontSize: 12.5,
-                lineHeight: 18,
-                fontWeight: "700",
-              }}
-            >
-              Choose a clear name for this prayer group.
-            </Text>
-          </View>
-        </View>
-
-        <Text
+        <Pressable
+          onPress={() => {}}
           style={{
-            color: TEXT,
-            fontSize: 13,
-            fontWeight: "900",
-            marginTop: 18,
-            marginBottom: 7,
-          }}
-        >
-          Group name
-        </Text>
-
-        <TextInput
-          value={editedGroupName}
-          onChangeText={setEditedGroupName}
-          placeholder="Prayer group name"
-          placeholderTextColor="rgba(107, 114, 128, 0.72)"
-          editable={!updatingGroupName}
-          style={{
-            backgroundColor: SURFACE,
-            borderRadius: 18,
-            paddingHorizontal: 13,
-            paddingVertical: 12,
-            color: TEXT,
-            fontSize: 15,
-            fontWeight: "700",
+            backgroundColor: PREMIUM_CREAM,
+            borderRadius: 30,
             borderWidth: 1,
             borderColor: CARD_BORDER,
+            padding: 18,
+            shadowColor: SHADOW,
+            shadowOpacity: 0.14,
+            shadowRadius: 18,
+            shadowOffset: { width: 0, height: 8 },
+            elevation: 6,
+            maxHeight: "88%",
           }}
-        />
-
-        <View style={{ flexDirection: "row", marginTop: 18 }}>
-          <Pressable
-            onPress={() => setEditNameVisible(false)}
-            disabled={updatingGroupName}
-            style={({ pressed }) => ({
-              flex: 1,
-              paddingVertical: 13,
-              borderRadius: 999,
-              alignItems: "center",
-              marginRight: 8,
-              borderWidth: 1,
-              borderColor: OLIVE_BORDER,
-              backgroundColor: SURFACE,
-              opacity: updatingGroupName ? 0.55 : 1,
-              transform: [{ scale: pressed ? 0.97 : 1 }],
-            })}
+        >
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
           >
-            <Text style={{ color: OLIVE, fontSize: 14, fontWeight: "900" }}>
-              Cancel
-            </Text>
-          </Pressable>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <View
+                style={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: 999,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: AMBER_SOFT,
+                  borderWidth: 1,
+                  borderColor: AMBER_BORDER,
+                  marginRight: 12,
+                }}
+              >
+                <Ionicons name="create-outline" size={23} color={EVENT_AMBER} />
+              </View>
 
-          <Pressable
-            onPress={handleSaveGroupName}
-            disabled={updatingGroupName || !editedGroupName.trim()}
-            style={({ pressed }) => ({
-              flex: 1,
-              paddingVertical: 13,
-              borderRadius: 999,
-              alignItems: "center",
-              backgroundColor: editedGroupName.trim()
-                ? EVENT_AMBER
-                : AMBER_SOFT,
-              borderWidth: 1,
-              borderColor: AMBER_BORDER,
-              opacity:
-                updatingGroupName || !editedGroupName.trim() ? 0.65 : 1,
-              transform: [
-                { scale: pressed && editedGroupName.trim() ? 0.97 : 1 },
-              ],
-            })}
-          >
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={[
+                    serifHeading,
+                    {
+                      fontSize: 23,
+                      lineHeight: 28,
+                    },
+                  ]}
+                >
+                  Edit group details
+                </Text>
+
+                <Text
+                  style={{
+                    color: MUTED,
+                    marginTop: 2,
+                    fontSize: 12.5,
+                    lineHeight: 18,
+                    fontWeight: "700",
+                  }}
+                >
+                  Update how this prayer group appears to members.
+                </Text>
+              </View>
+
+              <Pressable
+                onPress={() => {
+                  if (!updatingGroupName) setEditNameVisible(false);
+                }}
+                disabled={updatingGroupName}
+                hitSlop={10}
+                style={({ pressed }) => ({
+                  width: 38,
+                  height: 38,
+                  borderRadius: 999,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: pressed ? OLIVE_SOFT : SURFACE,
+                  borderWidth: 1,
+                  borderColor: CARD_BORDER,
+                  opacity: updatingGroupName ? 0.55 : 1,
+                  transform: [{ scale: pressed ? 0.96 : 1 }],
+                })}
+              >
+                <Ionicons name="close" size={19} color={TEXT} />
+              </Pressable>
+            </View>
+
             <Text
               style={{
-                color: editedGroupName.trim() ? "#FFFFFF" : EVENT_BROWN,
-                fontSize: 14,
+                color: TEXT,
+                fontSize: 13,
                 fontWeight: "900",
+                marginTop: 18,
+                marginBottom: 7,
               }}
             >
-              {updatingGroupName ? "Saving…" : "Save"}
+              Group name
             </Text>
-          </Pressable>
-        </View>
-      </View>
-    </View>
+
+            <TextInput
+              value={editedGroupName}
+              onChangeText={setEditedGroupName}
+              placeholder="Prayer group name"
+              placeholderTextColor="rgba(107, 114, 128, 0.72)"
+              editable={!updatingGroupName}
+              style={{
+                backgroundColor: SURFACE,
+                borderRadius: 18,
+                paddingHorizontal: 13,
+                paddingVertical: 12,
+                color: TEXT,
+                fontSize: 15,
+                fontWeight: "700",
+                borderWidth: 1,
+                borderColor: CARD_BORDER,
+              }}
+            />
+
+            <Text
+              style={{
+                color: TEXT,
+                fontSize: 13,
+                fontWeight: "900",
+                marginTop: 15,
+                marginBottom: 7,
+              }}
+            >
+              Description
+            </Text>
+
+            <TextInput
+              value={editedGroupDescription}
+              onChangeText={setEditedGroupDescription}
+              placeholder="What is this prayer group for?"
+              placeholderTextColor="rgba(107, 114, 128, 0.72)"
+              editable={!updatingGroupName}
+              multiline
+              textAlignVertical="top"
+              style={{
+                backgroundColor: SURFACE,
+                borderRadius: 18,
+                paddingHorizontal: 13,
+                paddingVertical: 12,
+                color: TEXT,
+                fontSize: 15,
+                lineHeight: 21,
+                fontWeight: "650",
+                borderWidth: 1,
+                borderColor: CARD_BORDER,
+                minHeight: 96,
+              }}
+            />
+
+            <Text
+              style={{
+                color: TEXT,
+                fontSize: 13,
+                fontWeight: "900",
+                marginTop: 15,
+                marginBottom: 7,
+              }}
+            >
+              Privacy
+            </Text>
+
+            <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
+              {[
+                { value: "private", label: "Private" },
+                { value: "public", label: "Public" },
+                { value: "request", label: "By request" },
+              ].map((option) => {
+                const selected = editedGroupPrivacy === option.value;
+
+                return (
+                  <Pressable
+                    key={option.value}
+                    onPress={() => setEditedGroupPrivacy(option.value)}
+                    disabled={updatingGroupName}
+                    style={({ pressed }) => ({
+                      paddingHorizontal: 13,
+                      paddingVertical: 9,
+                      borderRadius: 999,
+                      backgroundColor: selected ? EVENT_AMBER : SURFACE,
+                      borderWidth: 1,
+                      borderColor: selected ? AMBER_BORDER : CARD_BORDER,
+                      marginRight: 8,
+                      marginBottom: 8,
+                      opacity: updatingGroupName ? 0.6 : 1,
+                      transform: [{ scale: pressed ? 0.97 : 1 }],
+                    })}
+                  >
+                    <Text
+                      style={{
+                        color: selected ? "#FFFFFF" : MUTED,
+                        fontSize: 12.5,
+                        fontWeight: "900",
+                      }}
+                    >
+                      {option.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <Text
+              style={{
+                color: TEXT,
+                fontSize: 13,
+                fontWeight: "900",
+                marginTop: 7,
+                marginBottom: 7,
+              }}
+            >
+              Group type
+            </Text>
+
+            <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
+              {[
+                { value: "family", label: "Family" },
+                { value: "friends", label: "Friends" },
+                { value: "ministry", label: "Ministry" },
+                { value: "youth", label: "Youth" },
+                { value: "church", label: "Church" },
+                { value: "other", label: "Other" },
+              ].map((option) => {
+                const selected = editedGroupType === option.value;
+
+                return (
+                  <Pressable
+                    key={option.value}
+                    onPress={() => setEditedGroupType(option.value)}
+                    disabled={updatingGroupName}
+                    style={({ pressed }) => ({
+                      paddingHorizontal: 13,
+                      paddingVertical: 9,
+                      borderRadius: 999,
+                      backgroundColor: selected ? OLIVE : SURFACE,
+                      borderWidth: 1,
+                      borderColor: selected ? OLIVE_BORDER : CARD_BORDER,
+                      marginRight: 8,
+                      marginBottom: 8,
+                      opacity: updatingGroupName ? 0.6 : 1,
+                      transform: [{ scale: pressed ? 0.97 : 1 }],
+                    })}
+                  >
+                    <Text
+                      style={{
+                        color: selected ? "#FFFFFF" : MUTED,
+                        fontSize: 12.5,
+                        fontWeight: "900",
+                      }}
+                    >
+                      {option.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </ScrollView>
+
+          <View style={{ flexDirection: "row", marginTop: 18 }}>
+            <Pressable
+              onPress={() => setEditNameVisible(false)}
+              disabled={updatingGroupName}
+              style={({ pressed }) => ({
+                flex: 1,
+                paddingVertical: 13,
+                borderRadius: 999,
+                alignItems: "center",
+                marginRight: 8,
+                borderWidth: 1,
+                borderColor: OLIVE_BORDER,
+                backgroundColor: SURFACE,
+                opacity: updatingGroupName ? 0.55 : 1,
+                transform: [{ scale: pressed ? 0.97 : 1 }],
+              })}
+            >
+              <Text style={{ color: OLIVE, fontSize: 14, fontWeight: "900" }}>
+                Cancel
+              </Text>
+            </Pressable>
+
+            <Pressable
+              onPress={handleSaveGroupName}
+              disabled={updatingGroupName || !editedGroupName.trim()}
+              style={({ pressed }) => ({
+                flex: 1,
+                paddingVertical: 13,
+                borderRadius: 999,
+                alignItems: "center",
+                backgroundColor: editedGroupName.trim()
+                  ? EVENT_AMBER
+                  : AMBER_SOFT,
+                borderWidth: 1,
+                borderColor: AMBER_BORDER,
+                opacity:
+                  updatingGroupName || !editedGroupName.trim() ? 0.65 : 1,
+                transform: [
+                  { scale: pressed && editedGroupName.trim() ? 0.97 : 1 },
+                ],
+              })}
+            >
+              <Text
+                style={{
+                  color: editedGroupName.trim() ? "#FFFFFF" : EVENT_BROWN,
+                  fontSize: 14,
+                  fontWeight: "900",
+                }}
+              >
+                {updatingGroupName ? "Saving…" : "Save changes"}
+              </Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Pressable>
+    </KeyboardAvoidingView>
   </Modal>
 );
 const renderPrayerMenuModal = () => (
