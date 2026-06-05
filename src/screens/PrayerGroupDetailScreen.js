@@ -766,6 +766,9 @@ const [membersLoading, setMembersLoading] = useState(false);
 const [withdrawingInviteById, setWithdrawingInviteById] = useState({});
 const [memberSearchText, setMemberSearchText] = useState("");
 const [showAllGroupMembers, setShowAllGroupMembers] = useState(false);
+const [memberActionsVisible, setMemberActionsVisible] = useState(false);
+const [selectedMemberForActions, setSelectedMemberForActions] = useState(null);
+const [managingMemberAction, setManagingMemberAction] = useState(false);
 
 const inviteSheetTranslateY = useRef(new Animated.Value(0)).current;
 const groupMenuTranslateY = useRef(new Animated.Value(0)).current;
@@ -1355,6 +1358,158 @@ async function handleWithdrawPrayerGroupInvite(invite) {
       delete next[invite.id];
       return next;
     });
+  }
+}
+
+function confirmMakePrayerGroupAdmin(member) {
+  if (!member?.user_id) return;
+
+  const name = getMemberDisplayName(member);
+
+  Alert.alert(
+    "Make admin?",
+    `${name} will be able to manage members, invites, and group settings.`,
+    [
+      {
+        text: "Cancel",
+        style: "cancel",
+      },
+      {
+        text: "Make admin",
+        onPress: () => handleMakePrayerGroupAdmin(member),
+      },
+    ]
+  );
+}
+
+async function handleMakePrayerGroupAdmin(member) {
+  if (!member?.user_id || !groupId) return;
+
+  try {
+    setManagingMemberAction(true);
+
+    const { error } = await supabase.rpc("make_prayer_group_admin", {
+      target_group_id: groupId,
+      target_user_id: member.user_id,
+    });
+
+    if (error) throw error;
+
+    await fetchGroupMembersAndInvites();
+
+    showToast(`${getMemberDisplayName(member)} is now an admin`);
+    closeMemberActions();
+  } catch (e) {
+    console.log("Error making prayer group admin", e);
+
+    Alert.alert(
+      "Could not make admin",
+      e?.message || "Please try again in a moment."
+    );
+  } finally {
+    setManagingMemberAction(false);
+  }
+}
+
+function confirmRemovePrayerGroupAdmin(member) {
+  if (!member?.user_id) return;
+
+  const name = getMemberDisplayName(member);
+
+  Alert.alert(
+    "Remove admin?",
+    `${name} will remain in the group but will no longer be able to manage members or group settings.`,
+    [
+      {
+        text: "Cancel",
+        style: "cancel",
+      },
+      {
+        text: "Remove admin",
+        style: "destructive",
+        onPress: () => handleRemovePrayerGroupAdmin(member),
+      },
+    ]
+  );
+}
+
+async function handleRemovePrayerGroupAdmin(member) {
+  if (!member?.user_id || !groupId) return;
+
+  try {
+    setManagingMemberAction(true);
+
+    const { error } = await supabase.rpc("remove_prayer_group_admin", {
+      target_group_id: groupId,
+      target_user_id: member.user_id,
+    });
+
+    if (error) throw error;
+
+    await fetchGroupMembersAndInvites();
+
+    showToast(`${getMemberDisplayName(member)} is now a member`);
+    closeMemberActions();
+  } catch (e) {
+    console.log("Error removing prayer group admin", e);
+
+    Alert.alert(
+      "Could not remove admin",
+      e?.message || "Please try again in a moment."
+    );
+  } finally {
+    setManagingMemberAction(false);
+  }
+}
+
+function confirmRemovePrayerGroupMember(member) {
+  if (!member?.user_id) return;
+
+  const name = getMemberDisplayName(member);
+
+  Alert.alert(
+    "Remove from group?",
+    `${name} will be removed from this prayer group. They will need a new invite to rejoin.`,
+    [
+      {
+        text: "Cancel",
+        style: "cancel",
+      },
+      {
+        text: "Remove",
+        style: "destructive",
+        onPress: () => handleRemovePrayerGroupMember(member),
+      },
+    ]
+  );
+}
+
+async function handleRemovePrayerGroupMember(member) {
+  if (!member?.user_id || !groupId) return;
+
+  try {
+    setManagingMemberAction(true);
+
+    const { error } = await supabase.rpc("remove_prayer_group_member", {
+      target_group_id: groupId,
+      target_user_id: member.user_id,
+    });
+
+    if (error) throw error;
+
+    await fetchGroupMembersAndInvites();
+
+    showToast(`${getMemberDisplayName(member)} removed from group`);
+    closeMemberActions();
+  } catch (e) {
+    console.log("Error removing prayer group member", e);
+
+    Alert.alert(
+      "Could not remove member",
+      e?.message || "Please try again in a moment."
+    );
+  } finally {
+    setManagingMemberAction(false);
   }
 }
 
@@ -1985,6 +2140,44 @@ const hiddenGroupMemberCount = Math.max(
   0
 );
 
+const currentUserGroupMember = useMemo(() => {
+  if (!currentUserId) return null;
+
+  return (groupMembers || []).find(
+    (member) => member.user_id === currentUserId
+  );
+}, [currentUserId, groupMembers]);
+
+const currentUserIsGroupAdmin = currentUserGroupMember?.role === "admin";
+
+const groupAdminCount = useMemo(() => {
+  return (groupMembers || []).filter((member) => member.role === "admin")
+    .length;
+}, [groupMembers]);
+
+function getMemberDisplayName(member) {
+  const profile = member?.profile || {};
+
+  return (
+    profile.display_name ||
+    (profile.handle ? `@${profile.handle}` : "Triunely Member")
+  );
+}
+
+function openMemberActions(member) {
+  if (!member?.user_id) return;
+
+  setSelectedMemberForActions(member);
+  setMemberActionsVisible(true);
+}
+
+function closeMemberActions() {
+  if (managingMemberAction) return;
+
+  setMemberActionsVisible(false);
+  setSelectedMemberForActions(null);
+}
+
 const renderInviteMembersModal = () => (
   <Modal
     visible={inviteMembersVisible}
@@ -2393,6 +2586,7 @@ const renderInviteMembersModal = () => (
                         numberOfLines={1}
                       >
                         {isAdmin ? "Admin" : "Member"}
+                        {member.user_id === currentUserId ? " · You" : ""}
                       </Text>
                     </View>
 
@@ -2418,11 +2612,37 @@ const renderInviteMembersModal = () => (
                         </Text>
                       </View>
                     ) : null}
+
+                    {currentUserIsGroupAdmin ? (
+                      <Pressable
+                        onPress={() => openMemberActions(member)}
+                        hitSlop={8}
+                        style={({ pressed }) => ({
+                          width: 34,
+                          height: 34,
+                          borderRadius: 999,
+                          alignItems: "center",
+                          justifyContent: "center",
+                          marginLeft: 8,
+                          backgroundColor: pressed ? OLIVE_SOFT : SURFACE,
+                          borderWidth: 1,
+                          borderColor: CARD_BORDER,
+                          transform: [{ scale: pressed ? 0.96 : 1 }],
+                        })}
+                      >
+                        <Ionicons
+                          name="ellipsis-horizontal"
+                          size={18}
+                          color={MUTED}
+                        />
+                      </Pressable>
+                    ) : null}
                   </View>
                 );
               })}
 
-                            {!hasMemberSearch && filteredGroupMembers.length > memberPreviewLimit ? (
+              {!hasMemberSearch &&
+              filteredGroupMembers.length > memberPreviewLimit ? (
                 <Pressable
                   onPress={() => setShowAllGroupMembers((prev) => !prev)}
                   style={({ pressed }) => ({
@@ -2450,8 +2670,7 @@ const renderInviteMembersModal = () => (
                   </Text>
                 </Pressable>
               ) : null}
-
-            </View>
+                  </View>
 
             <View
               style={{
@@ -3447,6 +3666,281 @@ const renderEditNameModal = () => (
     </KeyboardAvoidingView>
   </Modal>
 );
+
+const renderMemberActionsModal = () => {
+  const member = selectedMemberForActions;
+  const profile = member?.profile || {};
+  const displayName = getMemberDisplayName(member);
+  const isAdmin = member?.role === "admin";
+  const isSelf = member?.user_id === currentUserId;
+  const isOnlyAdmin = isAdmin && groupAdminCount <= 1;
+
+  return (
+    <Modal
+      visible={memberActionsVisible}
+      animationType="fade"
+      transparent
+      onRequestClose={closeMemberActions}
+    >
+      <Pressable
+        onPress={closeMemberActions}
+        style={{
+          flex: 1,
+          backgroundColor: "rgba(15, 23, 42, 0.30)",
+          justifyContent: "flex-end",
+        }}
+      >
+        <Pressable
+          onPress={() => {}}
+          style={{
+            backgroundColor: PREMIUM_CREAM,
+            borderTopLeftRadius: 30,
+            borderTopRightRadius: 30,
+            paddingHorizontal: 18,
+            paddingTop: 16,
+            paddingBottom: Math.max(insets.bottom + 14, 26),
+            borderTopWidth: 1,
+            borderColor: CARD_BORDER,
+          }}
+        >
+          <View
+            style={{
+              width: 44,
+              height: 5,
+              borderRadius: 999,
+              backgroundColor: CARD_BORDER,
+              alignSelf: "center",
+              marginBottom: 16,
+            }}
+          />
+
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            {profile.avatar_url ? (
+              <Image
+                source={{ uri: profile.avatar_url }}
+                style={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: 999,
+                  marginRight: 12,
+                  backgroundColor: OLIVE_SOFT,
+                }}
+              />
+            ) : (
+              <View
+                style={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: 999,
+                  marginRight: 12,
+                  backgroundColor: isAdmin ? AMBER_SOFT : OLIVE_SOFT,
+                  borderWidth: 1,
+                  borderColor: isAdmin ? AMBER_BORDER : OLIVE_BORDER,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Text
+                  style={{
+                    color: isAdmin ? EVENT_AMBER : OLIVE,
+                    fontSize: 14,
+                    fontWeight: "900",
+                  }}
+                >
+                  {initialsFromName(displayName)}
+                </Text>
+              </View>
+            )}
+
+            <View style={{ flex: 1 }}>
+              <Text
+                style={[
+                  serifHeading,
+                  {
+                    fontSize: 23,
+                    lineHeight: 28,
+                  },
+                ]}
+                numberOfLines={1}
+              >
+                {displayName}
+              </Text>
+
+              <Text
+                style={{
+                  color: MUTED,
+                  marginTop: 2,
+                  fontSize: 12.5,
+                  lineHeight: 18,
+                  fontWeight: "700",
+                }}
+              >
+                {isAdmin ? "Admin" : "Member"}
+                {isSelf ? " · You" : ""}
+              </Text>
+            </View>
+          </View>
+
+          {!isAdmin ? (
+            <Pressable
+              onPress={() => confirmMakePrayerGroupAdmin(member)}
+              disabled={managingMemberAction}
+              style={({ pressed }) => ({
+                marginTop: 16,
+                padding: 15,
+                borderRadius: 22,
+                backgroundColor: SURFACE,
+                borderWidth: 1,
+                borderColor: AMBER_BORDER,
+                flexDirection: "row",
+                alignItems: "center",
+                opacity: managingMemberAction ? 0.55 : 1,
+                transform: [{ scale: pressed ? 0.985 : 1 }],
+              })}
+            >
+              <Ionicons
+                name="shield-checkmark-outline"
+                size={21}
+                color={EVENT_AMBER}
+              />
+
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={{ color: TEXT, fontSize: 15, fontWeight: "900" }}>
+                  Make admin
+                </Text>
+                <Text
+                  style={{
+                    color: MUTED,
+                    marginTop: 2,
+                    fontSize: 12,
+                    fontWeight: "700",
+                  }}
+                >
+                  Let this member manage the group.
+                </Text>
+              </View>
+            </Pressable>
+          ) : (
+            <Pressable
+              onPress={() => confirmRemovePrayerGroupAdmin(member)}
+              disabled={managingMemberAction || isOnlyAdmin}
+              style={({ pressed }) => ({
+                marginTop: 16,
+                padding: 15,
+                borderRadius: 22,
+                backgroundColor: SURFACE,
+                borderWidth: 1,
+                borderColor: isOnlyAdmin ? CARD_BORDER : DANGER_BORDER,
+                flexDirection: "row",
+                alignItems: "center",
+                opacity: managingMemberAction || isOnlyAdmin ? 0.55 : 1,
+                transform: [{ scale: pressed ? 0.985 : 1 }],
+              })}
+            >
+              <Ionicons
+                name="shield-outline"
+                size={21}
+                color={isOnlyAdmin ? MUTED : DANGER}
+              />
+
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text
+                  style={{
+                    color: isOnlyAdmin ? MUTED : DANGER,
+                    fontSize: 15,
+                    fontWeight: "900",
+                  }}
+                >
+                  Remove admin
+                </Text>
+                <Text
+                  style={{
+                    color: MUTED,
+                    marginTop: 2,
+                    fontSize: 12,
+                    fontWeight: "700",
+                  }}
+                >
+                  {isOnlyAdmin
+                    ? "This group must keep at least one admin."
+                    : "Keep them in the group as a member."}
+                </Text>
+              </View>
+            </Pressable>
+          )}
+
+          <Pressable
+            onPress={() => confirmRemovePrayerGroupMember(member)}
+            disabled={managingMemberAction || isOnlyAdmin}
+            style={({ pressed }) => ({
+              marginTop: 10,
+              padding: 15,
+              borderRadius: 22,
+              backgroundColor: SURFACE,
+              borderWidth: 1,
+              borderColor: isOnlyAdmin ? CARD_BORDER : DANGER_BORDER,
+              flexDirection: "row",
+              alignItems: "center",
+              opacity: managingMemberAction || isOnlyAdmin ? 0.55 : 1,
+              transform: [{ scale: pressed ? 0.985 : 1 }],
+            })}
+          >
+            <Ionicons
+              name="person-remove-outline"
+              size={21}
+              color={isOnlyAdmin ? MUTED : DANGER}
+            />
+
+            <View style={{ flex: 1, marginLeft: 12 }}>
+              <Text
+                style={{
+                  color: isOnlyAdmin ? MUTED : DANGER,
+                  fontSize: 15,
+                  fontWeight: "900",
+                }}
+              >
+                Remove from group
+              </Text>
+              <Text
+                style={{
+                  color: MUTED,
+                  marginTop: 2,
+                  fontSize: 12,
+                  fontWeight: "700",
+                }}
+              >
+                {isOnlyAdmin
+                  ? "You cannot remove the only admin."
+                  : "They will need a new invite to rejoin."}
+              </Text>
+            </View>
+          </Pressable>
+
+          <Pressable
+            onPress={closeMemberActions}
+            disabled={managingMemberAction}
+            style={({ pressed }) => ({
+              marginTop: 12,
+              paddingVertical: 13,
+              borderRadius: 999,
+              alignItems: "center",
+              backgroundColor: pressed ? OLIVE_SOFT : SURFACE,
+              borderWidth: 1,
+              borderColor: OLIVE_BORDER,
+              opacity: managingMemberAction ? 0.55 : 1,
+              transform: [{ scale: pressed ? 0.97 : 1 }],
+            })}
+          >
+            <Text style={{ color: OLIVE, fontSize: 14, fontWeight: "900" }}>
+              Cancel
+            </Text>
+          </Pressable>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+};
+
 const renderPrayerMenuModal = () => (
   <Modal
     visible={prayerMenuVisible}
@@ -4685,6 +5179,7 @@ const renderPrayedPeopleModal = () => (
         {renderInviteMembersModal()}
         {renderGroupMenuModal()}
         {renderEditNameModal()}
+        {renderMemberActionsModal()}
         {renderPrayerMenuModal()}
         {renderPrayedPeopleModal()}
 
