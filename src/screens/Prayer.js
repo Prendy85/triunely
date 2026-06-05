@@ -143,6 +143,11 @@ function PrayerGroupsFullScreen({
   visible,
   groups,
   loading,
+  pendingInvites = [],
+  invitesLoading = false,
+  respondingToInviteById = {},
+  onAcceptInvite,
+  onDeclineInvite,
   onClose,
   onCreateGroup,
   onRefresh,
@@ -355,6 +360,213 @@ function PrayerGroupsFullScreen({
                 </Text>
               </Pressable>
             </View>
+
+                        {invitesLoading ? (
+              <View
+                style={{
+                  marginBottom: 14,
+                  padding: 14,
+                  borderRadius: 24,
+                  backgroundColor: SURFACE,
+                  borderWidth: 1,
+                  borderColor: CARD_BORDER,
+                  flexDirection: "row",
+                  alignItems: "center",
+                }}
+              >
+                <ActivityIndicator color={EVENT_AMBER} />
+
+                <Text
+                  style={{
+                    color: MUTED,
+                    marginLeft: 10,
+                    fontSize: 13,
+                    fontWeight: "800",
+                  }}
+                >
+                  Checking prayer group invites…
+                </Text>
+              </View>
+            ) : null}
+
+            {!invitesLoading && pendingInvites.length > 0 ? (
+              <View style={{ marginBottom: 14 }}>
+                <Text
+                  style={[
+                    serifHeading,
+                    {
+                      fontSize: 21,
+                      lineHeight: 26,
+                      marginBottom: 8,
+                    },
+                  ]}
+                >
+                  Prayer group invites
+                </Text>
+
+                {pendingInvites.map((invite) => {
+                  const group = invite.group || {};
+                  const inviter = invite.inviter || {};
+
+                  const inviteGroupName = group.name || "Prayer group";
+
+                  const inviterName =
+                    inviter.display_name ||
+                    (inviter.handle ? `@${inviter.handle}` : "Someone on Triunely");
+
+                  const inviteIcon = groupTypeIcon(group.group_type);
+                  const responseState = respondingToInviteById[invite.id];
+                  const isResponding = !!responseState;
+
+                  return (
+                    <View
+                      key={invite.id}
+                      style={{
+                        marginBottom: 12,
+                        padding: 15,
+                        borderRadius: 26,
+                        backgroundColor: SURFACE,
+                        borderWidth: 1,
+                        borderColor: AMBER_BORDER,
+                        shadowColor: SHADOW,
+                        shadowOpacity: 0.07,
+                        shadowRadius: 13,
+                        shadowOffset: { width: 0, height: 5 },
+                        elevation: 2,
+                      }}
+                    >
+                      <View style={{ flexDirection: "row", alignItems: "center" }}>
+                        <View
+                          style={{
+                            width: 48,
+                            height: 48,
+                            borderRadius: 999,
+                            alignItems: "center",
+                            justifyContent: "center",
+                            backgroundColor: AMBER_SOFT,
+                            borderWidth: 1,
+                            borderColor: AMBER_BORDER,
+                            marginRight: 12,
+                          }}
+                        >
+                          <Ionicons
+                            name={inviteIcon}
+                            size={22}
+                            color={EVENT_AMBER}
+                          />
+                        </View>
+
+                        <View style={{ flex: 1 }}>
+                          <Text
+                            style={{
+                              color: TEXT,
+                              fontSize: 16,
+                              fontWeight: "900",
+                            }}
+                            numberOfLines={2}
+                          >
+                            {inviteGroupName}
+                          </Text>
+
+                          <Text
+                            style={{
+                              color: MUTED,
+                              marginTop: 4,
+                              fontSize: 12.5,
+                              lineHeight: 18,
+                              fontWeight: "700",
+                            }}
+                            numberOfLines={2}
+                          >
+                            {inviterName} invited you to join this prayer group.
+                          </Text>
+                        </View>
+                      </View>
+
+                      {group.description ? (
+                        <Text
+                          style={{
+                            color: MUTED,
+                            marginTop: 10,
+                            fontSize: 13,
+                            lineHeight: 19,
+                            fontWeight: "650",
+                          }}
+                          numberOfLines={3}
+                        >
+                          {group.description}
+                        </Text>
+                      ) : null}
+
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          marginTop: 13,
+                        }}
+                      >
+                        <Pressable
+                          onPress={() => onDeclineInvite?.(invite)}
+                          disabled={isResponding}
+                          style={({ pressed }) => ({
+                            flex: 1,
+                            paddingVertical: 11,
+                            borderRadius: 999,
+                            alignItems: "center",
+                            marginRight: 8,
+                            backgroundColor: SURFACE,
+                            borderWidth: 1,
+                            borderColor: CARD_BORDER,
+                            opacity: isResponding ? 0.6 : 1,
+                            transform: [{ scale: pressed ? 0.97 : 1 }],
+                          })}
+                        >
+                          <Text
+                            style={{
+                              color: MUTED,
+                              fontSize: 13,
+                              fontWeight: "900",
+                            }}
+                          >
+                            {responseState === "declining" ? "Declining…" : "Decline"}
+                          </Text>
+                        </Pressable>
+
+                        <Pressable
+                          onPress={() => onAcceptInvite?.(invite)}
+                          disabled={isResponding}
+                          style={({ pressed }) => ({
+                            flex: 1,
+                            paddingVertical: 11,
+                            borderRadius: 999,
+                            alignItems: "center",
+                            backgroundColor: EVENT_AMBER,
+                            borderWidth: 1,
+                            borderColor: AMBER_BORDER,
+                            opacity: isResponding ? 0.6 : 1,
+                            shadowColor: EVENT_AMBER,
+                            shadowOpacity: 0.14,
+                            shadowRadius: 9,
+                            shadowOffset: { width: 0, height: 4 },
+                            elevation: 2,
+                            transform: [{ scale: pressed ? 0.97 : 1 }],
+                          })}
+                        >
+                          <Text
+                            style={{
+                              color: "#FFFFFF",
+                              fontSize: 13,
+                              fontWeight: "900",
+                            }}
+                          >
+                            {responseState === "accepting" ? "Accepting…" : "Accept"}
+                          </Text>
+                        </Pressable>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            ) : null}
             <View
   style={{
     marginBottom: 14,
@@ -789,6 +1001,9 @@ const [creatingGroup, setCreatingGroup] = useState(false);
 
   const [myGroups, setMyGroups] = useState([]);
   const [groupsLoading, setGroupsLoading] = useState(false);
+  const [pendingGroupInvites, setPendingGroupInvites] = useState([]);
+const [groupInvitesLoading, setGroupInvitesLoading] = useState(false);
+const [respondingToInviteById, setRespondingToInviteById] = useState({});
 
   const [faithCoachVisible, setFaithCoachVisible] = useState(false);
   const [faithCoachLoading, setFaithCoachLoading] = useState(false);
@@ -812,10 +1027,11 @@ const [creatingGroup, setCreatingGroup] = useState(false);
           const userId = data?.session?.user?.id ?? null;
           setCurrentUserId(userId);
 
-          if (userId) {
-            await fetchMyGroups();
-            await fetchBookmarks(userId);
-          } else {
+         if (userId) {
+  await fetchMyGroups();
+  await fetchPendingPrayerGroupInvites(userId);
+  await fetchBookmarks(userId);
+} else {
             setBookmarkedById({});
             setBookmarksLoaded(true);
           }
@@ -949,6 +1165,158 @@ async function fetchMyGroups() {
   }
 }
 
+async function fetchPendingPrayerGroupInvites(userIdOverride = null) {
+  try {
+    setGroupInvitesLoading(true);
+
+    const userId = userIdOverride || (await ensureUserIdOrAlert());
+
+    if (!userId) {
+      setPendingGroupInvites([]);
+      return;
+    }
+
+    const { data: invites, error: invitesError } = await supabase
+      .from("prayer_group_invites")
+      .select("id, group_id, invited_by, status, created_at")
+      .eq("invited_user_id", userId)
+      .eq("status", "pending")
+      .order("created_at", { ascending: false });
+
+    if (invitesError) throw invitesError;
+
+    const inviteRows = invites || [];
+
+    if (inviteRows.length === 0) {
+      setPendingGroupInvites([]);
+      return;
+    }
+
+    const groupIds = Array.from(
+      new Set(inviteRows.map((row) => row.group_id).filter(Boolean))
+    );
+
+    const inviterIds = Array.from(
+      new Set(inviteRows.map((row) => row.invited_by).filter(Boolean))
+    );
+
+    let groupsById = {};
+    let invitersById = {};
+
+    if (groupIds.length > 0) {
+      const { data: groups, error: groupsError } = await supabase
+        .from("prayer_groups")
+        .select("id, name, description, privacy, group_type, created_at")
+        .in("id", groupIds);
+
+      if (groupsError) throw groupsError;
+
+      (groups || []).forEach((group) => {
+        if (group?.id) groupsById[group.id] = group;
+      });
+    }
+
+    if (inviterIds.length > 0) {
+      const { data: profiles, error: profilesError } = await supabase
+        .from("profiles")
+        .select("id, display_name, avatar_url, handle")
+        .in("id", inviterIds);
+
+      if (profilesError) throw profilesError;
+
+      (profiles || []).forEach((profile) => {
+        if (profile?.id) invitersById[profile.id] = profile;
+      });
+    }
+
+    const enrichedInvites = inviteRows.map((invite) => ({
+      ...invite,
+      group: groupsById[invite.group_id] || null,
+      inviter: invitersById[invite.invited_by] || null,
+    }));
+
+    setPendingGroupInvites(enrichedInvites);
+  } catch (e) {
+    console.log("Error loading pending prayer group invites", e);
+    setPendingGroupInvites([]);
+  } finally {
+    setGroupInvitesLoading(false);
+  }
+}
+
+async function handleAcceptPrayerGroupInvite(invite) {
+  if (!invite?.id) return;
+
+  try {
+    setRespondingToInviteById((prev) => ({
+      ...prev,
+      [invite.id]: "accepting",
+    }));
+
+    const { error } = await supabase.rpc("accept_prayer_group_invite", {
+      invite_id: invite.id,
+    });
+
+    if (error) throw error;
+
+    setPendingGroupInvites((prev) =>
+      prev.filter((item) => item.id !== invite.id)
+    );
+
+    await fetchMyGroups();
+
+    showToast("Prayer group invite accepted");
+  } catch (e) {
+    console.log("Error accepting prayer group invite", e);
+
+    Alert.alert(
+      "Could not accept invite",
+      e?.message || "Please try again in a moment."
+    );
+  } finally {
+    setRespondingToInviteById((prev) => {
+      const next = { ...prev };
+      delete next[invite.id];
+      return next;
+    });
+  }
+}
+
+async function handleDeclinePrayerGroupInvite(invite) {
+  if (!invite?.id) return;
+
+  try {
+    setRespondingToInviteById((prev) => ({
+      ...prev,
+      [invite.id]: "declining",
+    }));
+
+    const { error } = await supabase.rpc("decline_prayer_group_invite", {
+      invite_id: invite.id,
+    });
+
+    if (error) throw error;
+
+    setPendingGroupInvites((prev) =>
+      prev.filter((item) => item.id !== invite.id)
+    );
+
+    showToast("Prayer group invite declined");
+  } catch (e) {
+    console.log("Error declining prayer group invite", e);
+
+    Alert.alert(
+      "Could not decline invite",
+      e?.message || "Please try again in a moment."
+    );
+  } finally {
+    setRespondingToInviteById((prev) => {
+      const next = { ...prev };
+      delete next[invite.id];
+      return next;
+    });
+  }
+}
   async function fetchBookmarks(userId) {
     try {
       setBookmarksLoaded(false);
@@ -1099,9 +1467,10 @@ if (userId) {
     await fetchRequests(true);
 
     if (currentUserId) {
-      await fetchBookmarks(currentUserId);
-      await fetchMyGroups();
-    }
+  await fetchBookmarks(currentUserId);
+  await fetchMyGroups();
+  await fetchPendingPrayerGroupInvites(currentUserId);
+}
   }
 
   async function ensureUserIdOrAlert() {
@@ -3568,16 +3937,24 @@ const renderPrayerActionMenu = () => {
   showsVerticalScrollIndicator={false}
 />
 
-        <PrayerGroupsFullScreen
+<PrayerGroupsFullScreen
   visible={showGroupsScreen}
   groups={myGroups}
   loading={groupsLoading}
+  pendingInvites={pendingGroupInvites}
+  invitesLoading={groupInvitesLoading}
+  respondingToInviteById={respondingToInviteById}
+  onAcceptInvite={handleAcceptPrayerGroupInvite}
+  onDeclineInvite={handleDeclinePrayerGroupInvite}
   onClose={() => setShowGroupsScreen(false)}
   onCreateGroup={() => setShowGroupModal(true)}
-  onRefresh={fetchMyGroups}
-onOpenGroup={(group) => {
-  setSelectedPrayerGroup(group);
-}}
+  onRefresh={async () => {
+    await fetchMyGroups();
+    await fetchPendingPrayerGroupInvites(currentUserId);
+  }}
+  onOpenGroup={(group) => {
+    setSelectedPrayerGroup(group);
+  }}
 />
 
 <Modal
