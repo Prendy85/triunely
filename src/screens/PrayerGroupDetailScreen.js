@@ -10,6 +10,7 @@ import {
     Image,
     KeyboardAvoidingView,
     Modal,
+    PanResponder,
     Platform,
     Pressable,
     RefreshControl,
@@ -750,6 +751,63 @@ const [encourageLoading, setEncourageLoading] = useState(false);
 const [encourageTargetPrayer, setEncourageTargetPrayer] = useState(null);
 const [repliesByPrayerId, setRepliesByPrayerId] = useState({});
 const [expandedPrayerIds, setExpandedPrayerIds] = useState({});
+const [inviteMembersVisible, setInviteMembersVisible] = useState(false);
+const [inviteSearchText, setInviteSearchText] = useState("");
+const [inviteSearchLoading, setInviteSearchLoading] = useState(false);
+const [inviteResults, setInviteResults] = useState([]);
+const [sendingInviteByUserId, setSendingInviteByUserId] = useState({});
+
+const inviteSheetTranslateY = useRef(new Animated.Value(0)).current;
+
+function resetInviteMembersModal() {
+  setInviteSearchText("");
+  setInviteResults([]);
+  setInviteSearchLoading(false);
+  setSendingInviteByUserId({});
+}
+
+function closeInviteMembersModal() {
+  Animated.timing(inviteSheetTranslateY, {
+    toValue: 420,
+    duration: 170,
+    useNativeDriver: true,
+  }).start(() => {
+    setInviteMembersVisible(false);
+    resetInviteMembersModal();
+    inviteSheetTranslateY.setValue(0);
+  });
+}
+
+const inviteSheetPanResponder = useRef(
+  PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponder: (_, gestureState) =>
+      Math.abs(gestureState.dy) > 4,
+
+    onPanResponderMove: (_, gestureState) => {
+      const nextY =
+        gestureState.dy < 0
+          ? Math.max(gestureState.dy, -90)
+          : gestureState.dy;
+
+      inviteSheetTranslateY.setValue(nextY);
+    },
+
+    onPanResponderRelease: (_, gestureState) => {
+      if (gestureState.dy > 120 || gestureState.vy > 0.9) {
+        closeInviteMembersModal();
+        return;
+      }
+
+      Animated.spring(inviteSheetTranslateY, {
+        toValue: 0,
+        useNativeDriver: true,
+        tension: 85,
+        friction: 11,
+      }).start();
+    },
+  })
+).current;
 
   const groupName = group?.name || "Prayer Group";
   const icon = groupTypeIcon(group?.group_type);
@@ -968,6 +1026,88 @@ async function ensureUserIdOrAlert() {
   }
 
   return userId;
+}
+
+async function searchInviteMembers(searchText = inviteSearchText) {
+  const q = (searchText || "").trim();
+
+  if (q.length < 2) {
+    setInviteResults([]);
+    return;
+  }
+
+  try {
+    setInviteSearchLoading(true);
+
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("id, display_name, handle, avatar_url")
+      .or(`display_name.ilike.%${q}%,handle.ilike.%${q}%`)
+      .eq("is_searchable", true)
+      .limit(20);
+
+    if (error) throw error;
+
+    setInviteResults(data || []);
+  } catch (e) {
+    console.log("Error searching invite members", e);
+
+    Alert.alert(
+      "Could not search",
+      e?.message || "Please try searching again in a moment."
+    );
+  } finally {
+    setInviteSearchLoading(false);
+  }
+}
+
+async function handleSendPrayerGroupInvite(profile) {
+  if (!profile?.id) return;
+
+  if (!groupId) {
+    Alert.alert("No group selected", "Please go back and choose a prayer group.");
+    return;
+  }
+
+  try {
+    setSendingInviteByUserId((prev) => ({
+      ...prev,
+      [profile.id]: true,
+    }));
+
+    const { error } = await supabase.rpc("send_prayer_group_invite", {
+      target_group_id: groupId,
+      target_user_id: profile.id,
+    });
+
+    if (error) throw error;
+
+    setInviteResults((prev) =>
+      prev.map((item) =>
+        item.id === profile.id
+          ? {
+              ...item,
+              invite_sent: true,
+            }
+          : item
+      )
+    );
+
+    showToast(`Invite sent to ${profile.display_name || "this person"}`);
+  } catch (e) {
+    console.log("Error sending prayer group invite", e);
+
+    Alert.alert(
+      "Could not send invite",
+      e?.message || "Please try again in a moment."
+    );
+  } finally {
+    setSendingInviteByUserId((prev) => {
+      const next = { ...prev };
+      delete next[profile.id];
+      return next;
+    });
+  }
 }
 
   async function handleCreateGroupPrayer({ title, body, isAnonymous }) {
@@ -1539,6 +1679,369 @@ async function handleSubmitEncouragement(message) {
     }
   }
 
+const renderInviteMembersModal = () => (
+  <Modal
+    visible={inviteMembersVisible}
+    animationType="fade"
+    transparent
+    onRequestClose={closeInviteMembersModal}
+  >
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 18}
+    >
+      <View
+        style={{
+          flex: 1,
+          justifyContent: "flex-end",
+        }}
+      >
+        <Pressable
+          onPress={closeInviteMembersModal}
+          style={{
+            position: "absolute",
+            left: 0,
+            right: 0,
+            top: 0,
+            bottom: 0,
+            backgroundColor: "rgba(15, 23, 42, 0.30)",
+          }}
+        />
+
+        <Animated.View
+          style={{
+            backgroundColor: PREMIUM_CREAM,
+            borderTopLeftRadius: 30,
+            borderTopRightRadius: 30,
+            paddingHorizontal: 18,
+            paddingTop: 8,
+            paddingBottom: Math.max(insets.bottom + 14, 28),
+            borderTopWidth: 1,
+            borderColor: CARD_BORDER,
+            maxHeight: "88%",
+            transform: [{ translateY: inviteSheetTranslateY }],
+          }}
+        >
+          <View
+            {...inviteSheetPanResponder.panHandlers}
+            style={{
+              alignSelf: "center",
+              paddingHorizontal: 28,
+              paddingTop: 6,
+              paddingBottom: 14,
+              marginBottom: 2,
+            }}
+          >
+            <View
+              style={{
+                width: 46,
+                height: 5,
+                borderRadius: 999,
+                backgroundColor: CARD_BORDER,
+              }}
+            />
+          </View>
+
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <View
+              style={{
+                width: 48,
+                height: 48,
+                borderRadius: 999,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: OLIVE_SOFT,
+                borderWidth: 1,
+                borderColor: OLIVE_BORDER,
+                marginRight: 12,
+              }}
+            >
+              <Ionicons name="person-add-outline" size={23} color={OLIVE} />
+            </View>
+
+            <View style={{ flex: 1 }}>
+              <Text
+                style={[
+                  serifHeading,
+                  {
+                    fontSize: 24,
+                    lineHeight: 29,
+                  },
+                ]}
+              >
+                Invite members
+              </Text>
+
+              <Text
+                style={{
+                  color: MUTED,
+                  marginTop: 2,
+                  fontSize: 12.5,
+                  lineHeight: 18,
+                  fontWeight: "700",
+                }}
+                numberOfLines={2}
+              >
+                Invite people to join {groupName}.
+              </Text>
+            </View>
+          </View>
+
+          <View
+            style={{
+              marginTop: 16,
+              backgroundColor: SURFACE,
+              borderRadius: 22,
+              borderWidth: 1,
+              borderColor: CARD_BORDER,
+              paddingHorizontal: 13,
+              paddingVertical: 10,
+              flexDirection: "row",
+              alignItems: "center",
+            }}
+          >
+            <Ionicons name="search-outline" size={18} color={MUTED} />
+
+            <TextInput
+              value={inviteSearchText}
+              onChangeText={(text) => {
+                setInviteSearchText(text);
+                searchInviteMembers(text);
+              }}
+              placeholder="Search by name or handle"
+              placeholderTextColor="rgba(107, 114, 128, 0.72)"
+              autoCapitalize="none"
+              style={{
+                flex: 1,
+                marginLeft: 9,
+                color: TEXT,
+                fontSize: 14.5,
+                fontWeight: "700",
+                paddingVertical: 4,
+              }}
+            />
+
+            {inviteSearchLoading ? (
+              <ActivityIndicator size="small" color={EVENT_AMBER} />
+            ) : null}
+          </View>
+
+          <Text
+            style={{
+              color: MUTED,
+              marginTop: 8,
+              fontSize: 11.5,
+              lineHeight: 16,
+              fontWeight: "700",
+            }}
+          >
+            Search for existing Triunely profiles. Invites stay pending until accepted.
+          </Text>
+
+          <View style={{ marginTop: 14 }}>
+            {inviteSearchText.trim().length < 2 ? (
+              <View
+                style={{
+                  padding: 16,
+                  borderRadius: 22,
+                  backgroundColor: SURFACE,
+                  borderWidth: 1,
+                  borderColor: CARD_BORDER,
+                  alignItems: "center",
+                }}
+              >
+                <Ionicons name="people-outline" size={28} color={OLIVE} />
+
+                <Text
+                  style={{
+                    color: TEXT,
+                    marginTop: 8,
+                    fontSize: 15,
+                    fontWeight: "900",
+                    textAlign: "center",
+                  }}
+                >
+                  Search for someone to invite
+                </Text>
+
+                <Text
+                  style={{
+                    color: MUTED,
+                    marginTop: 5,
+                    fontSize: 12.5,
+                    lineHeight: 18,
+                    fontWeight: "700",
+                    textAlign: "center",
+                  }}
+                >
+                  Type at least 2 characters to find people.
+                </Text>
+              </View>
+            ) : inviteResults.length === 0 && !inviteSearchLoading ? (
+              <View
+                style={{
+                  padding: 16,
+                  borderRadius: 22,
+                  backgroundColor: SURFACE,
+                  borderWidth: 1,
+                  borderColor: CARD_BORDER,
+                  alignItems: "center",
+                }}
+              >
+                <Ionicons name="search-outline" size={28} color={MUTED} />
+
+                <Text
+                  style={{
+                    color: TEXT,
+                    marginTop: 8,
+                    fontSize: 15,
+                    fontWeight: "900",
+                    textAlign: "center",
+                  }}
+                >
+                  No people found
+                </Text>
+
+                <Text
+                  style={{
+                    color: MUTED,
+                    marginTop: 5,
+                    fontSize: 12.5,
+                    lineHeight: 18,
+                    fontWeight: "700",
+                    textAlign: "center",
+                  }}
+                >
+                  Try another name or handle.
+                </Text>
+              </View>
+            ) : (
+              <FlatList
+                data={inviteResults}
+                keyExtractor={(item) => item.id}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+                style={{ maxHeight: 340 }}
+                renderItem={({ item }) => {
+                  const displayName =
+                    item.display_name ||
+                    (item.handle ? `@${item.handle}` : "Triunely Member");
+
+                  const isSending = !!sendingInviteByUserId[item.id];
+                  const inviteSent = !!item.invite_sent;
+
+                  return (
+                    <View
+                      style={{
+                        padding: 13,
+                        borderRadius: 22,
+                        backgroundColor: SURFACE,
+                        borderWidth: 1,
+                        borderColor: inviteSent ? AMBER_BORDER : CARD_BORDER,
+                        flexDirection: "row",
+                        alignItems: "center",
+                        marginBottom: 10,
+                      }}
+                    >
+                      {item.avatar_url ? (
+                        <Image
+                          source={{ uri: item.avatar_url }}
+                          style={{
+                            width: 44,
+                            height: 44,
+                            borderRadius: 999,
+                            marginRight: 12,
+                            backgroundColor: OLIVE_SOFT,
+                          }}
+                        />
+                      ) : (
+                        <View
+                          style={{
+                            width: 44,
+                            height: 44,
+                            borderRadius: 999,
+                            marginRight: 12,
+                            backgroundColor: OLIVE_SOFT,
+                            borderWidth: 1,
+                            borderColor: OLIVE_BORDER,
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          <Text
+                            style={{
+                              color: OLIVE,
+                              fontSize: 13,
+                              fontWeight: "900",
+                            }}
+                          >
+                            {initialsFromName(displayName)}
+                          </Text>
+                        </View>
+                      )}
+
+                      <View style={{ flex: 1 }}>
+                        <Text
+                          style={{
+                            color: TEXT,
+                            fontSize: 14.5,
+                            fontWeight: "900",
+                          }}
+                          numberOfLines={1}
+                        >
+                          {displayName}
+                        </Text>
+
+                        <Text
+                          style={{
+                            color: MUTED,
+                            marginTop: 2,
+                            fontSize: 12,
+                            fontWeight: "700",
+                          }}
+                          numberOfLines={1}
+                        >
+                          {item.handle ? `@${item.handle}` : "Triunely profile"}
+                        </Text>
+                      </View>
+
+                      <Pressable
+                        onPress={() => handleSendPrayerGroupInvite(item)}
+                        disabled={isSending || inviteSent}
+                        style={({ pressed }) => ({
+                          paddingHorizontal: 13,
+                          paddingVertical: 8,
+                          borderRadius: 999,
+                          backgroundColor: inviteSent ? AMBER_SOFT : EVENT_AMBER,
+                          borderWidth: 1,
+                          borderColor: AMBER_BORDER,
+                          opacity: isSending ? 0.65 : 1,
+                          transform: [{ scale: pressed ? 0.96 : 1 }],
+                        })}
+                      >
+                        <Text
+                          style={{
+                            color: inviteSent ? EVENT_BROWN : "#FFFFFF",
+                            fontSize: 12,
+                            fontWeight: "900",
+                          }}
+                        >
+                          {isSending ? "Sending…" : inviteSent ? "Sent" : "Invite"}
+                        </Text>
+                      </Pressable>
+                    </View>
+                  );
+                }}
+              />
+            )}
+          </View>
+        </Animated.View>
+      </View>
+    </KeyboardAvoidingView>
+  </Modal>
+);
+
   const renderGroupMenuModal = () => (
   <Modal
     visible={menuVisible}
@@ -1651,13 +2154,10 @@ async function handleSubmitEncouragement(message) {
         </Pressable>
 
         <Pressable
-          onPress={() => {
-            setMenuVisible(false);
-            Alert.alert(
-              "Coming next",
-              "Members and admin management will be built after group chat."
-            );
-          }}
+         onPress={() => {
+  setMenuVisible(false);
+  setInviteMembersVisible(true);
+}}
           style={({ pressed }) => ({
             padding: 15,
             borderRadius: 22,
@@ -3128,6 +3628,7 @@ const renderPrayedPeopleModal = () => (
           </View>
         </Animated.View>
 
+        {renderInviteMembersModal()}
         {renderGroupMenuModal()}
         {renderEditNameModal()}
         {renderPrayerMenuModal()}

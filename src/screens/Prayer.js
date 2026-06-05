@@ -149,6 +149,18 @@ function PrayerGroupsFullScreen({
   onOpenGroup,
 }) {
   const insets = useSafeAreaInsets();
+  const [activeGroupTab, setActiveGroupTab] = useState("my");
+
+  const privateGroups = (groups || []).filter(
+    (group) => group.group_type !== "church"
+  );
+
+  const churchGroups = (groups || []).filter(
+    (group) => group.group_type === "church"
+  );
+
+  const visibleGroups =
+    activeGroupTab === "church" ? churchGroups : privateGroups;
 
   return (
     <Modal
@@ -343,6 +355,68 @@ function PrayerGroupsFullScreen({
                 </Text>
               </Pressable>
             </View>
+            <View
+  style={{
+    marginBottom: 14,
+    backgroundColor: SURFACE,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
+    padding: 5,
+    flexDirection: "row",
+    shadowColor: SHADOW,
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+  }}
+>
+  <Pressable
+    onPress={() => setActiveGroupTab("my")}
+    style={({ pressed }) => ({
+      flex: 1,
+      paddingVertical: 10,
+      borderRadius: 999,
+      alignItems: "center",
+      backgroundColor:
+        activeGroupTab === "my" ? EVENT_AMBER : "transparent",
+      transform: [{ scale: pressed ? 0.98 : 1 }],
+    })}
+  >
+    <Text
+      style={{
+        color: activeGroupTab === "my" ? "#FFFFFF" : MUTED,
+        fontSize: 13,
+        fontWeight: "900",
+      }}
+    >
+      My Groups
+    </Text>
+  </Pressable>
+
+  <Pressable
+    onPress={() => setActiveGroupTab("church")}
+    style={({ pressed }) => ({
+      flex: 1,
+      paddingVertical: 10,
+      borderRadius: 999,
+      alignItems: "center",
+      backgroundColor:
+        activeGroupTab === "church" ? EVENT_AMBER : "transparent",
+      transform: [{ scale: pressed ? 0.98 : 1 }],
+    })}
+  >
+    <Text
+      style={{
+        color: activeGroupTab === "church" ? "#FFFFFF" : MUTED,
+        fontSize: 13,
+        fontWeight: "900",
+      }}
+    >
+      Church Groups
+    </Text>
+  </Pressable>
+</View>
 
             {loading ? (
               <View
@@ -367,7 +441,7 @@ function PrayerGroupsFullScreen({
                   Loading prayer groups…
                 </Text>
               </View>
-            ) : groups.length === 0 ? (
+            ) : visibleGroups.length === 0? (
               <View
                 style={{
                   padding: 20,
@@ -399,16 +473,18 @@ function PrayerGroupsFullScreen({
                   <Ionicons name="people-outline" size={27} color={OLIVE} />
                 </View>
 
-                <Text
-                  style={{
-                    color: TEXT,
-                    fontSize: 17,
-                    fontWeight: "900",
-                    textAlign: "center",
-                  }}
-                >
-                  No prayer groups yet
-                </Text>
+               <Text
+  style={{
+    color: TEXT,
+    fontSize: 17,
+    fontWeight: "900",
+    textAlign: "center",
+  }}
+>
+  {activeGroupTab === "church"
+    ? "No church groups yet"
+    : "No private groups yet"}
+</Text>
 
                 <Text
                   style={{
@@ -420,12 +496,13 @@ function PrayerGroupsFullScreen({
                     textAlign: "center",
                   }}
                 >
-                  Create a group for your church, family, friends, youth group,
-                  or ministry team.
+                 {activeGroupTab === "church"
+  ? "Church prayer groups will appear here when your church creates official prayer spaces."
+  : "Create a private group for family, friends, youth, ministry, or trusted prayer partners."}
                 </Text>
               </View>
             ) : (
-              groups.map((group) => {
+              visibleGroups.map((group) => {
                 const icon = groupTypeIcon(group.group_type);
 
                 return (
@@ -476,59 +553,22 @@ function PrayerGroupsFullScreen({
                           {group.name}
                         </Text>
 
-                        <View
+                        <Text
                           style={{
-                            flexDirection: "row",
-                            alignItems: "center",
-                            marginTop: 7,
-                            flexWrap: "wrap",
+                            color: MUTED,
+                            marginTop: 5,
+                            fontSize: 12,
+                            lineHeight: 17,
+                            fontWeight: "800",
                           }}
+                          numberOfLines={1}
                         >
-                          <View
-                            style={{
-                              paddingHorizontal: 9,
-                              paddingVertical: 5,
-                              borderRadius: 999,
-                              backgroundColor: OLIVE_SOFT,
-                              borderWidth: 1,
-                              borderColor: OLIVE_BORDER,
-                              marginRight: 7,
-                              marginBottom: 5,
-                            }}
-                          >
-                            <Text
-                              style={{
-                                color: OLIVE,
-                                fontSize: 11,
-                                fontWeight: "900",
-                              }}
-                            >
-                              {prettyGroupType(group.group_type)}
-                            </Text>
-                          </View>
-
-                          <View
-                            style={{
-                              paddingHorizontal: 9,
-                              paddingVertical: 5,
-                              borderRadius: 999,
-                              backgroundColor: AMBER_SOFT,
-                              borderWidth: 1,
-                              borderColor: AMBER_BORDER,
-                              marginBottom: 5,
-                            }}
-                          >
-                            <Text
-                              style={{
-                                color: EVENT_BROWN,
-                                fontSize: 11,
-                                fontWeight: "900",
-                              }}
-                            >
-                              {prettyPrivacy(group.privacy)}
-                            </Text>
-                          </View>
-                        </View>
+                          {prettyGroupType(group.group_type)} ·{" "}
+                          {prettyPrivacy(group.privacy)} ·{" "}
+                          {(group.member_count || 0) === 1
+                            ? "1 member"
+                            : `${group.member_count || 0} members`}
+                                                </Text>
                       </View>
 
                       <Ionicons
@@ -833,7 +873,74 @@ async function fetchMyGroups() {
 
     if (groupsError) throw groupsError;
 
-    setMyGroups(groups || []);
+    const { data: members, error: membersError } = await supabase
+      .from("prayer_group_members")
+      .select("group_id, user_id")
+      .in("group_id", groupIds);
+
+    if (membersError) throw membersError;
+
+    const memberCountByGroupId = {};
+    const membersByGroupId = {};
+
+    (members || []).forEach((member) => {
+      if (!member?.group_id) return;
+
+      memberCountByGroupId[member.group_id] =
+        (memberCountByGroupId[member.group_id] || 0) + 1;
+
+      if (!membersByGroupId[member.group_id]) {
+        membersByGroupId[member.group_id] = [];
+      }
+
+      membersByGroupId[member.group_id].push(member);
+    });
+
+    const memberUserIds = Array.from(
+      new Set((members || []).map((member) => member.user_id).filter(Boolean))
+    );
+
+    let profilesByUserId = {};
+
+    if (memberUserIds.length > 0) {
+      const { data: profiles, error: profilesError } = await supabase
+        .from("profiles")
+        .select("id, display_name, avatar_url")
+        .in("id", memberUserIds);
+
+      if (profilesError) throw profilesError;
+
+      (profiles || []).forEach((profile) => {
+        if (!profile?.id) return;
+
+        profilesByUserId[profile.id] = {
+          display_name: profile.display_name || "Triunely Member",
+          avatar_url: profile.avatar_url || null,
+        };
+      });
+    }
+
+    const enrichedGroups = (groups || []).map((group) => {
+      const groupMembers = membersByGroupId[group.id] || [];
+
+      const member_preview = groupMembers.slice(0, 3).map((member) => {
+        const profile = profilesByUserId[member.user_id] || {};
+
+        return {
+          user_id: member.user_id,
+          display_name: profile.display_name || "Triunely Member",
+          avatar_url: profile.avatar_url || null,
+        };
+      });
+
+      return {
+        ...group,
+        member_count: memberCountByGroupId[group.id] || 0,
+        member_preview,
+      };
+    });
+
+    setMyGroups(enrichedGroups);
   } catch (e) {
     console.log("Error loading prayer groups", e);
     setMyGroups([]);
@@ -3234,76 +3341,6 @@ const renderPrayerActionMenu = () => {
         </View>
       </View>
 
-      <View style={{ flexDirection: "row", marginBottom: 12 }}>
-        <Pressable
-          onPress={() => setShowNewModal(true)}
-          disabled={posting}
-          style={({ pressed }) => ({
-            flex: 1,
-            marginRight: 8,
-            paddingVertical: 12,
-            borderRadius: 999,
-            backgroundColor: EVENT_AMBER,
-            borderWidth: 1,
-            borderColor: AMBER_BORDER,
-            alignItems: "center",
-            justifyContent: "center",
-            shadowColor: EVENT_AMBER,
-            shadowOpacity: 0.17,
-            shadowRadius: 10,
-            shadowOffset: { width: 0, height: 5 },
-            elevation: 3,
-            opacity: posting ? 0.6 : 1,
-            transform: [{ scale: pressed ? 0.97 : 1 }],
-          })}
-        >
-          <Text
-            style={{
-              color: "#FFFFFF",
-              fontWeight: "900",
-              fontSize: 13,
-            }}
-          >
-            {posting ? "Posting…" : "+ New request"}
-          </Text>
-        </Pressable>
-
-        <Pressable
-          onPress={() => {
-            setShowGroupsScreen(true);
-            fetchMyGroups();
-          }}
-          style={({ pressed }) => ({
-            flex: 1,
-            paddingVertical: 12,
-            borderRadius: 999,
-            backgroundColor: SURFACE,
-            borderWidth: 1,
-            borderColor: OLIVE_BORDER,
-            alignItems: "center",
-            justifyContent: "center",
-            transform: [{ scale: pressed ? 0.97 : 1 }],
-          })}
-        >
-          <Text
-            style={{
-              color: OLIVE,
-              fontWeight: "900",
-              fontSize: 13,
-            }}
-          >
-            Prayer Groups
-          </Text>
-        </Pressable>
-      </View>
-
-      <View
-        style={{
-          marginBottom: 10,
-          height: 1,
-          backgroundColor: CARD_BORDER,
-        }}
-      />
     </View>
   );
 
