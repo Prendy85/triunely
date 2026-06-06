@@ -78,6 +78,211 @@ function groupTypeIcon(value) {
   return "ellipse-outline";
 }
 
+function getPrayerGroupBannerTheme(value) {
+  if (value === "family") {
+    return {
+      label: "Family prayer",
+      icon: "home-outline",
+      imageUri:
+        "https://images.unsplash.com/photo-1511895426328-dc8714191300?auto=format&fit=crop&w=1400&q=90",
+      badgeText: "#7C2D12",
+      badgeBg: "rgba(255, 252, 245, 0.94)",
+      border: "rgba(180, 83, 9, 0.16)",
+    };
+  }
+
+  if (value === "friends") {
+    return {
+      label: "Fellowship",
+      icon: "people-outline",
+      imageUri:
+        "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?auto=format&fit=crop&w=1400&q=90",
+      badgeText: "#4F633B",
+      badgeBg: "rgba(255, 252, 245, 0.94)",
+      border: "rgba(79, 99, 59, 0.16)",
+    };
+  }
+
+  if (value === "church") {
+    return {
+      label: "Church prayer",
+      icon: "business-outline",
+   imageUri:
+  "https://images.pexels.com/photos/208315/pexels-photo-208315.jpeg?auto=compress&cs=tinysrgb&w=1400&churchBanner=v10",
+      badgeBg: "rgba(255, 252, 245, 0.95)",
+      border: "rgba(124, 45, 18, 0.16)",
+    };
+  }
+
+  if (value === "ministry") {
+    return {
+      label: "Mission & service",
+      icon: "heart-outline",
+      imageUri:
+        "https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?auto=format&fit=crop&w=1400&q=90",
+      badgeText: "#36583A",
+      badgeBg: "rgba(255, 252, 245, 0.94)",
+      border: "rgba(79, 99, 59, 0.16)",
+    };
+  }
+
+  if (value === "youth") {
+    return {
+      label: "Youth prayer",
+      icon: "sparkles-outline",
+      imageUri:
+        "https://images.unsplash.com/photo-1491438590914-bc09fcaaf77a?auto=format&fit=crop&w=1400&q=90",
+      badgeText: "#B45309",
+      badgeBg: "rgba(255, 252, 245, 0.94)",
+      border: "rgba(180, 83, 9, 0.16)",
+    };
+  }
+
+  return {
+    label: "Prayer space",
+    icon: "leaf-outline",
+    imageUri:
+      "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1400&q=90",
+    badgeText: "#4F633B",
+    badgeBg: "rgba(255, 252, 245, 0.94)",
+    border: "rgba(79, 99, 59, 0.16)",
+  };
+}
+
+function PrayerGroupBanner({
+  groupType,
+  title,
+  subtitle,
+  compact = false,
+  rightContent = null,
+}) {
+  const theme = getPrayerGroupBannerTheme(groupType);
+
+  return (
+    <View
+      style={{
+        overflow: "hidden",
+        borderTopLeftRadius: 28,
+        borderTopRightRadius: 28,
+        borderWidth: 1,
+        borderColor: theme.border,
+        backgroundColor: PREMIUM_CREAM,
+        height: compact ? 156 : 210,
+      }}
+    >
+      <Image
+  key={theme.imageUri}
+  source={{ uri: theme.imageUri, cache: "reload" }}
+  resizeMode="cover"
+        style={{
+          position: "absolute",
+          left: 0,
+          right: 0,
+          top: 0,
+          bottom: 0,
+          width: "100%",
+          height: "100%",
+        }}
+      />
+
+      <View
+        style={{
+          flex: 1,
+          padding: compact ? 14 : 17,
+          justifyContent: "space-between",
+        }}
+      >
+        <View
+          style={{
+            alignSelf: "flex-start",
+            flexDirection: "row",
+            alignItems: "center",
+            paddingHorizontal: 10,
+            paddingVertical: 6,
+            borderRadius: 999,
+            backgroundColor: theme.badgeBg,
+            borderWidth: 1,
+            borderColor: "rgba(255, 255, 255, 0.86)",
+            shadowColor: "#000",
+            shadowOpacity: 0.08,
+            shadowRadius: 8,
+            shadowOffset: { width: 0, height: 3 },
+            elevation: 2,
+          }}
+        >
+          <Ionicons
+            name={theme.icon}
+            size={compact ? 13 : 14}
+            color={theme.badgeText}
+          />
+
+          <Text
+            style={{
+              color: theme.badgeText,
+              fontSize: compact ? 10.5 : 11,
+              fontWeight: "900",
+              marginLeft: 5,
+              textTransform: "uppercase",
+              letterSpacing: 0.7,
+            }}
+            numberOfLines={1}
+          >
+            {theme.label}
+          </Text>
+        </View>
+
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "flex-end",
+          }}
+        >
+          <View style={{ flex: 1, paddingRight: 10 }}>
+            {title ? (
+              <Text
+                style={[
+                  serifHeading,
+                  {
+                    color: "#FFFFFF",
+                    fontSize: compact ? 22 : 28,
+                    lineHeight: compact ? 27 : 34,
+                    textShadowColor: "rgba(0, 0, 0, 0.45)",
+                    textShadowOffset: { width: 0, height: 2 },
+                    textShadowRadius: 7,
+                  },
+                ]}
+                numberOfLines={compact ? 1 : 2}
+              >
+                {title}
+              </Text>
+            ) : null}
+
+            {subtitle ? (
+              <Text
+                style={{
+                  marginTop: compact ? 3 : 5,
+                  color: "#FFFFFF",
+                  fontSize: compact ? 12.5 : 13.5,
+                  lineHeight: compact ? 17 : 19,
+                  fontWeight: "900",
+                  textShadowColor: "rgba(0, 0, 0, 0.50)",
+                  textShadowOffset: { width: 0, height: 1 },
+                  textShadowRadius: 5,
+                }}
+                numberOfLines={compact ? 1 : 2}
+              >
+                {subtitle}
+              </Text>
+            ) : null}
+          </View>
+
+          {rightContent}
+        </View>
+      </View>
+    </View>
+  );
+}
+
 function formatDateTime(ts) {
   if (!ts) return "";
 
@@ -4356,211 +4561,201 @@ const renderPrayedPeopleModal = () => (
   </Modal>
 );
 
-  const renderHeader = () => (
-    <View>
-      <View
-        style={{
-          padding: 16,
-          borderRadius: 28,
-          backgroundColor: SURFACE,
-          borderWidth: 1,
-          borderColor: AMBER_BORDER,
-          shadowColor: SHADOW,
-          shadowOpacity: 0.08,
-          shadowRadius: 14,
-          shadowOffset: { width: 0, height: 6 },
-          elevation: 3,
-          marginBottom: 14,
-        }}
-      >
-        <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
-          <View
-            style={{
-              width: 52,
-              height: 52,
-              borderRadius: 999,
-              alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: AMBER_SOFT,
-              borderWidth: 1,
-              borderColor: AMBER_BORDER,
-              marginRight: 12,
-            }}
-          >
-            <Ionicons name={icon} size={25} color={EVENT_AMBER} />
-          </View>
-                    <View style={{ flex: 1 }}>
-            <Text
-              style={[
-                serifHeading,
-                {
-                  fontSize: 27,
-                  lineHeight: 32,
-                },
-              ]}
-            >
-              {groupName}
-            </Text>
+  const renderHeader = () => {
+    const headerSubtitle = `${prettyGroupType(group?.group_type)} · ${prettyPrivacy(
+      group?.privacy
+    )} · ${requests.length} requests · ${totalPrayed} prayed`;
 
-            {group?.description ? (
-              <Text
-                style={{
-                  color: MUTED,
-                  marginTop: 6,
-                  fontSize: 13,
-                  lineHeight: 19,
-                  fontWeight: "700",
-                }}
-              >
-                {group.description}
-              </Text>
-            ) : (
-              <Text
-                style={{
-                  color: MUTED,
-                  marginTop: 6,
-                  fontSize: 13,
-                  lineHeight: 19,
-                  fontWeight: "700",
-                }}
-              >
-                A shared prayer space for this group.
-              </Text>
-            )}
-          </View>
-        </View>
-
+    return (
+      <View>
         <View
           style={{
-            flexDirection: "row",
-            flexWrap: "wrap",
-            marginTop: 14,
-          }}
-        >
-          <View
-            style={{
-              paddingHorizontal: 10,
-              paddingVertical: 6,
-              borderRadius: 999,
-              backgroundColor: OLIVE_SOFT,
-              borderWidth: 1,
-              borderColor: OLIVE_BORDER,
-              marginRight: 8,
-              marginBottom: 8,
-            }}
-          >
-            <Text
-              style={{
-                color: OLIVE,
-                fontSize: 11,
-                fontWeight: "900",
-              }}
-            >
-              {prettyGroupType(group?.group_type)}
-            </Text>
-          </View>
-
-          <View
-            style={{
-              paddingHorizontal: 10,
-              paddingVertical: 6,
-              borderRadius: 999,
-              backgroundColor: AMBER_SOFT,
-              borderWidth: 1,
-              borderColor: AMBER_BORDER,
-              marginRight: 8,
-              marginBottom: 8,
-            }}
-          >
-            <Text
-              style={{
-                color: EVENT_BROWN,
-                fontSize: 11,
-                fontWeight: "900",
-              }}
-            >
-              {prettyPrivacy(group?.privacy)}
-            </Text>
-          </View>
-
-          <View
-            style={{
-              paddingHorizontal: 10,
-              paddingVertical: 6,
-              borderRadius: 999,
-              backgroundColor: PREMIUM_CREAM,
-              borderWidth: 1,
-              borderColor: CARD_BORDER,
-              marginBottom: 8,
-            }}
-          >
-            <Text
-              style={{
-                color: MUTED,
-                fontSize: 11,
-                fontWeight: "900",
-              }}
-            >
-              {requests.length} requests · {totalPrayed} prayed
-            </Text>
-          </View>
-        </View>
-      </View>
-
-      <Pressable
-        onPress={() => setShowNewPrayer(true)}
-        style={({ pressed }) => ({
-          paddingVertical: 13,
-          borderRadius: 999,
-          alignItems: "center",
-          justifyContent: "center",
-          backgroundColor: EVENT_AMBER,
-          borderWidth: 1,
-          borderColor: AMBER_BORDER,
-          shadowColor: EVENT_AMBER,
-          shadowOpacity: 0.17,
-          shadowRadius: 10,
-          shadowOffset: { width: 0, height: 5 },
-          elevation: 3,
-          transform: [{ scale: pressed ? 0.97 : 1 }],
-          marginBottom: 14,
-        })}
-      >
-        <Text
-          style={{
-            color: "#FFFFFF",
-            fontSize: 14,
-            fontWeight: "900",
-          }}
-        >
-          + New group prayer
-        </Text>
-      </Pressable>
-
-      {errorText ? (
-        <View
-          style={{
-            padding: 14,
-            borderRadius: 22,
+            marginBottom: 14,
+            borderRadius: 28,
             backgroundColor: SURFACE,
             borderWidth: 1,
-            borderColor: DANGER_BORDER,
-            marginBottom: 12,
+            borderColor: CARD_BORDER,
+            shadowColor: SHADOW,
+            shadowOpacity: 0.08,
+            shadowRadius: 14,
+            shadowOffset: { width: 0, height: 6 },
+            elevation: 3,
+            overflow: "hidden",
           }}
+        >
+          <PrayerGroupBanner
+            groupType={group?.group_type}
+            title={groupName}
+            subtitle={headerSubtitle}
+          />
+
+          {group?.description ? (
+            <View
+              style={{
+                margin: 12,
+                marginTop: 12,
+                padding: 14,
+                borderRadius: 22,
+                backgroundColor: PREMIUM_CREAM,
+                borderWidth: 1,
+                borderColor: CARD_BORDER,
+                flexDirection: "row",
+                alignItems: "flex-start",
+              }}
+            >
+              <View
+                style={{
+                  width: 30,
+                  height: 30,
+                  borderRadius: 999,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: OLIVE_SOFT,
+                  borderWidth: 1,
+                  borderColor: OLIVE_BORDER,
+                  marginRight: 10,
+                  marginTop: 1,
+                }}
+              >
+                <Ionicons
+                  name="information-circle-outline"
+                  size={16}
+                  color={OLIVE}
+                />
+              </View>
+
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={{
+                    color: OLIVE,
+                    fontSize: 11,
+                    lineHeight: 14,
+                    fontWeight: "900",
+                    textTransform: "uppercase",
+                    letterSpacing: 0.5,
+                    marginBottom: 4,
+                  }}
+                >
+                  About this group
+                </Text>
+
+                <Text
+                  style={{
+                    color: TEXT,
+                    fontSize: 13.5,
+                    lineHeight: 20,
+                    fontWeight: "750",
+                  }}
+                >
+                  {group.description}
+                </Text>
+              </View>
+            </View>
+          ) : (
+            <View
+              style={{
+                margin: 12,
+                marginTop: 12,
+                padding: 14,
+                borderRadius: 22,
+                backgroundColor: PREMIUM_CREAM,
+                borderWidth: 1,
+                borderColor: CARD_BORDER,
+                flexDirection: "row",
+                alignItems: "center",
+              }}
+            >
+              <View
+                style={{
+                  width: 30,
+                  height: 30,
+                  borderRadius: 999,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: AMBER_SOFT,
+                  borderWidth: 1,
+                  borderColor: AMBER_BORDER,
+                  marginRight: 10,
+                }}
+              >
+                <Ionicons
+                  name="information-circle-outline"
+                  size={16}
+                  color={EVENT_AMBER}
+                />
+              </View>
+
+              <Text
+                style={{
+                  flex: 1,
+                  color: MUTED,
+                  fontSize: 13,
+                  lineHeight: 19,
+                  fontWeight: "700",
+                }}
+              >
+                Add a short description so members know the heart and purpose of
+                this group.
+              </Text>
+            </View>
+          )}
+        </View>
+
+        <Pressable
+          onPress={() => setShowNewPrayer(true)}
+          style={({ pressed }) => ({
+            paddingVertical: 13,
+            borderRadius: 999,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: EVENT_AMBER,
+            borderWidth: 1,
+            borderColor: AMBER_BORDER,
+            shadowColor: EVENT_AMBER,
+            shadowOpacity: 0.17,
+            shadowRadius: 10,
+            shadowOffset: { width: 0, height: 5 },
+            elevation: 3,
+            transform: [{ scale: pressed ? 0.97 : 1 }],
+            marginBottom: 14,
+          })}
         >
           <Text
             style={{
-              color: DANGER,
-              fontWeight: "800",
-              lineHeight: 19,
+              color: "#FFFFFF",
+              fontSize: 14,
+              fontWeight: "900",
             }}
           >
-            {errorText}
+            + New group prayer
           </Text>
-        </View>
-      ) : null}
-    </View>
-  );
+        </Pressable>
+
+        {errorText ? (
+          <View
+            style={{
+              padding: 14,
+              borderRadius: 22,
+              backgroundColor: SURFACE,
+              borderWidth: 1,
+              borderColor: DANGER_BORDER,
+              marginBottom: 12,
+            }}
+          >
+            <Text
+              style={{
+                color: DANGER,
+                fontWeight: "800",
+                lineHeight: 19,
+              }}
+            >
+              {errorText}
+            </Text>
+          </View>
+        ) : null}
+      </View>
+    );
+  };
 
   const renderPrayer = ({ item }) => {
   const createdLabel = formatDateTime(item.created_at);

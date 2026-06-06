@@ -139,6 +139,211 @@ function groupTypeIcon(value) {
   return "ellipse-outline";
 }
 
+function getPrayerGroupBannerTheme(value) {
+  if (value === "family") {
+    return {
+      label: "Family prayer",
+      icon: "home-outline",
+      imageUri:
+        "https://images.unsplash.com/photo-1511895426328-dc8714191300?auto=format&fit=crop&w=1400&q=90",
+      badgeText: "#7C2D12",
+      badgeBg: "rgba(255, 252, 245, 0.94)",
+      border: "rgba(180, 83, 9, 0.16)",
+    };
+  }
+
+  if (value === "friends") {
+    return {
+      label: "Fellowship",
+      icon: "people-outline",
+      imageUri:
+        "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?auto=format&fit=crop&w=1400&q=90",
+      badgeText: "#4F633B",
+      badgeBg: "rgba(255, 252, 245, 0.94)",
+      border: "rgba(79, 99, 59, 0.16)",
+    };
+  }
+
+  if (value === "church") {
+    return {
+      label: "Church prayer",
+      icon: "business-outline",
+imageUri:
+  "https://images.pexels.com/photos/208315/pexels-photo-208315.jpeg?auto=compress&cs=tinysrgb&w=1400&churchBanner=v10",
+      badgeText: "#7C2D12",
+      badgeBg: "rgba(255, 252, 245, 0.95)",
+      border: "rgba(124, 45, 18, 0.16)",
+    };
+  }
+
+  if (value === "ministry") {
+    return {
+      label: "Mission & service",
+      icon: "heart-outline",
+      imageUri:
+        "https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?auto=format&fit=crop&w=1400&q=90",
+      badgeText: "#36583A",
+      badgeBg: "rgba(255, 252, 245, 0.94)",
+      border: "rgba(79, 99, 59, 0.16)",
+    };
+  }
+
+  if (value === "youth") {
+    return {
+      label: "Youth prayer",
+      icon: "sparkles-outline",
+      imageUri:
+        "https://images.unsplash.com/photo-1491438590914-bc09fcaaf77a?auto=format&fit=crop&w=1400&q=90",
+      badgeText: "#B45309",
+      badgeBg: "rgba(255, 252, 245, 0.94)",
+      border: "rgba(180, 83, 9, 0.16)",
+    };
+  }
+
+  return {
+    label: "Prayer space",
+    icon: "leaf-outline",
+    imageUri:
+      "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1400&q=90",
+    badgeText: "#4F633B",
+    badgeBg: "rgba(255, 252, 245, 0.94)",
+    border: "rgba(79, 99, 59, 0.16)",
+  };
+}
+
+function PrayerGroupBanner({
+  groupType,
+  title,
+  subtitle,
+  compact = false,
+  rightContent = null,
+}) {
+  const theme = getPrayerGroupBannerTheme(groupType);
+
+  return (
+    <View
+      style={{
+        overflow: "hidden",
+        borderTopLeftRadius: 28,
+        borderTopRightRadius: 28,
+        borderWidth: 1,
+        borderColor: theme.border,
+        backgroundColor: PREMIUM_CREAM,
+        height: compact ? 156 : 210,
+      }}
+    >
+      <Image
+        source={{ uri: theme.imageUri }}
+        resizeMode="cover"
+        style={{
+          position: "absolute",
+          left: 0,
+          right: 0,
+          top: 0,
+          bottom: 0,
+          width: "100%",
+          height: "100%",
+        }}
+      />
+
+      <View
+        style={{
+          flex: 1,
+          padding: compact ? 14 : 17,
+          justifyContent: "space-between",
+        }}
+      >
+        <View
+          style={{
+            alignSelf: "flex-start",
+            flexDirection: "row",
+            alignItems: "center",
+            paddingHorizontal: 10,
+            paddingVertical: 6,
+            borderRadius: 999,
+            backgroundColor: theme.badgeBg,
+            borderWidth: 1,
+            borderColor: "rgba(255, 255, 255, 0.86)",
+            shadowColor: "#000",
+            shadowOpacity: 0.08,
+            shadowRadius: 8,
+            shadowOffset: { width: 0, height: 3 },
+            elevation: 2,
+          }}
+        >
+          <Ionicons
+            name={theme.icon}
+            size={compact ? 13 : 14}
+            color={theme.badgeText}
+          />
+
+          <Text
+            style={{
+              color: theme.badgeText,
+              fontSize: compact ? 10.5 : 11,
+              fontWeight: "900",
+              marginLeft: 5,
+              textTransform: "uppercase",
+              letterSpacing: 0.7,
+            }}
+            numberOfLines={1}
+          >
+            {theme.label}
+          </Text>
+        </View>
+
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "flex-end",
+          }}
+        >
+          <View style={{ flex: 1, paddingRight: 10 }}>
+            {title ? (
+              <Text
+                style={[
+                  serifHeading,
+                  {
+                    color: "#FFFFFF",
+                    fontSize: compact ? 22 : 28,
+                    lineHeight: compact ? 27 : 34,
+                    textShadowColor: "rgba(0, 0, 0, 0.45)",
+                    textShadowOffset: { width: 0, height: 2 },
+                    textShadowRadius: 7,
+                  },
+                ]}
+                numberOfLines={compact ? 1 : 2}
+              >
+                {title}
+              </Text>
+            ) : null}
+
+            {subtitle ? (
+              <Text
+                style={{
+                  marginTop: compact ? 3 : 5,
+                  color: "#FFFFFF",
+                  fontSize: compact ? 12.5 : 13.5,
+                  lineHeight: compact ? 17 : 19,
+                  fontWeight: "900",
+                  textShadowColor: "rgba(0, 0, 0, 0.50)",
+                  textShadowOffset: { width: 0, height: 1 },
+                  textShadowRadius: 5,
+                }}
+                numberOfLines={compact ? 1 : 2}
+              >
+                {subtitle}
+              </Text>
+            ) : null}
+          </View>
+
+          {rightContent}
+        </View>
+      </View>
+    </View>
+  );
+}
+
 function PrayerGroupsFullScreen({
   visible,
   groups,
@@ -714,99 +919,142 @@ function PrayerGroupsFullScreen({
                 </Text>
               </View>
             ) : (
-              visibleGroups.map((group) => {
-                const icon = groupTypeIcon(group.group_type);
+visibleGroups.map((group) => {
+  const memberLabel =
+    (group.member_count || 0) === 1
+      ? "1 member"
+      : `${group.member_count || 0} members`;
 
-                return (
-                  <Pressable
-                    key={group.id}
-                    onPress={() => onOpenGroup?.(group)}
-                    style={({ pressed }) => ({
-                      marginBottom: 12,
-                      padding: 15,
-                      borderRadius: 26,
-                      backgroundColor: SURFACE,
-                      borderWidth: 1,
-                      borderColor: CARD_BORDER,
-                      shadowColor: SHADOW,
-                      shadowOpacity: 0.06,
-                      shadowRadius: 12,
-                      shadowOffset: { width: 0, height: 5 },
-                      elevation: 2,
-                      transform: [{ scale: pressed ? 0.985 : 1 }],
-                    })}
-                  >
-                    <View style={{ flexDirection: "row", alignItems: "center" }}>
-                      <View
-                        style={{
-                          width: 48,
-                          height: 48,
-                          borderRadius: 999,
-                          alignItems: "center",
-                          justifyContent: "center",
-                          backgroundColor: AMBER_SOFT,
-                          borderWidth: 1,
-                          borderColor: AMBER_BORDER,
-                          marginRight: 12,
-                        }}
-                      >
-                        <Ionicons name={icon} size={22} color={EVENT_AMBER} />
-                      </View>
+  const subtitle = `${prettyGroupType(group.group_type)} · ${prettyPrivacy(
+    group.privacy
+  )} · ${memberLabel}`;
 
-                      <View style={{ flex: 1 }}>
-                        <Text
-                          style={{
-                            color: TEXT,
-                            fontSize: 16,
-                            fontWeight: "900",
-                          }}
-                          numberOfLines={2}
-                        >
-                          {group.name}
-                        </Text>
+  return (
+    <Pressable
+      key={group.id}
+      onPress={() => onOpenGroup?.(group)}
+      style={({ pressed }) => ({
+        marginBottom: 12,
+        padding: 0,
+        borderRadius: 28,
+        backgroundColor: SURFACE,
+        borderWidth: 1,
+        borderColor: CARD_BORDER,
+        shadowColor: SHADOW,
+        shadowOpacity: 0.07,
+        shadowRadius: 13,
+        shadowOffset: { width: 0, height: 5 },
+        elevation: 2,
+        overflow: "hidden",
+        transform: [{ scale: pressed ? 0.985 : 1 }],
+      })}
+    >
+      <PrayerGroupBanner
+        groupType={group.group_type}
+        title={group.name}
+        subtitle={subtitle}
+        compact
+        rightContent={
+          <View
+            style={{
+              width: 30,
+              height: 30,
+              borderRadius: 999,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: "rgba(255, 255, 255, 0.82)",
+              borderWidth: 1,
+              borderColor: "rgba(255, 255, 255, 0.84)",
+              marginLeft: 10,
+            }}
+          >
+            <Ionicons name="chevron-forward" size={16} color={TEXT} />
+          </View>
+        }
+      />
 
-                        <Text
-                          style={{
-                            color: MUTED,
-                            marginTop: 5,
-                            fontSize: 12,
-                            lineHeight: 17,
-                            fontWeight: "800",
-                          }}
-                          numberOfLines={1}
-                        >
-                          {prettyGroupType(group.group_type)} ·{" "}
-                          {prettyPrivacy(group.privacy)} ·{" "}
-                          {(group.member_count || 0) === 1
-                            ? "1 member"
-                            : `${group.member_count || 0} members`}
-                                                </Text>
-                      </View>
+      {group.description ? (
+        <View
+          style={{
+            margin: 12,
+            marginTop: 10,
+            paddingHorizontal: 15,
+            paddingVertical: 14,
+            borderRadius: 22,
+            backgroundColor: PREMIUM_CREAM,
+            borderWidth: 1,
+            borderColor: "rgba(15, 23, 42, 0.07)",
+          }}
+        >
+          <Text
+            style={{
+              color: OLIVE,
+              fontSize: 11,
+              lineHeight: 14,
+              fontWeight: "900",
+              textTransform: "uppercase",
+              letterSpacing: 0.55,
+              marginBottom: 5,
+            }}
+          >
+            About this group
+          </Text>
 
-                      <Ionicons
-                        name="chevron-forward"
-                        size={19}
-                        color={MUTED}
-                      />
-                    </View>
+          <Text
+            style={{
+              color: TEXT,
+              fontSize: 14,
+              lineHeight: 21,
+              fontWeight: "750",
+            }}
+            numberOfLines={3}
+          >
+            {group.description}
+          </Text>
+        </View>
+      ) : (
+        <View
+          style={{
+            margin: 12,
+            marginTop: 10,
+            paddingHorizontal: 15,
+            paddingVertical: 14,
+            borderRadius: 22,
+            backgroundColor: PREMIUM_CREAM,
+            borderWidth: 1,
+            borderColor: "rgba(15, 23, 42, 0.07)",
+          }}
+        >
+          <Text
+            style={{
+              color: OLIVE,
+              fontSize: 11,
+              lineHeight: 14,
+              fontWeight: "900",
+              textTransform: "uppercase",
+              letterSpacing: 0.55,
+              marginBottom: 5,
+            }}
+          >
+            About this group
+          </Text>
 
-                    {group.description ? (
-                      <Text
-                        style={{
-                          color: MUTED,
-                          marginTop: 10,
-                          fontSize: 13,
-                          lineHeight: 19,
-                          fontWeight: "650",
-                        }}
-                        numberOfLines={3}
-                      >
-                        {group.description}
-                      </Text>
-                    ) : null}
-                  </Pressable>
-                );
-              })
+          <Text
+            style={{
+              color: MUTED,
+              fontSize: 13.5,
+              lineHeight: 20,
+              fontWeight: "700",
+            }}
+            numberOfLines={2}
+          >
+            Add a short description so members know the heart and purpose of this group.
+          </Text>
+        </View>
+      )}
+    </Pressable>
+  );
+})
             )}
           </ScrollView>
         </View>
