@@ -772,6 +772,7 @@ const [managingMemberAction, setManagingMemberAction] = useState(false);
 
 const inviteSheetTranslateY = useRef(new Animated.Value(0)).current;
 const groupMenuTranslateY = useRef(new Animated.Value(0)).current;
+const memberActionsTranslateY = useRef(new Animated.Value(0)).current;
 
 function resetInviteMembersModal() {
   setInviteSearchText("");
@@ -891,6 +892,53 @@ const groupMenuPanResponder = useRef(
 
     onPanResponderTerminate: () => {
       Animated.spring(groupMenuTranslateY, {
+        toValue: 0,
+        useNativeDriver: true,
+        speed: 22,
+        bounciness: 4,
+      }).start();
+    },
+  })
+).current;
+
+const memberActionsPanResponder = useRef(
+  PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+
+    onMoveShouldSetPanResponder: (_, gestureState) =>
+      Math.abs(gestureState.dy) > 2,
+
+    onPanResponderGrant: () => {
+      memberActionsTranslateY.stopAnimation();
+    },
+
+    onPanResponderMove: (_, gestureState) => {
+      const nextY =
+        gestureState.dy < 0
+          ? Math.max(gestureState.dy, -80)
+          : gestureState.dy;
+
+      memberActionsTranslateY.setValue(nextY);
+    },
+
+    onPanResponderRelease: (_, gestureState) => {
+      const shouldClose = gestureState.dy > 85 || gestureState.vy > 0.55;
+
+      if (shouldClose) {
+        closeMemberActions();
+        return;
+      }
+
+      Animated.spring(memberActionsTranslateY, {
+        toValue: 0,
+        useNativeDriver: true,
+        speed: 22,
+        bounciness: 4,
+      }).start();
+    },
+
+    onPanResponderTerminate: () => {
+      Animated.spring(memberActionsTranslateY, {
         toValue: 0,
         useNativeDriver: true,
         speed: 22,
@@ -2174,8 +2222,15 @@ function openMemberActions(member) {
 function closeMemberActions() {
   if (managingMemberAction) return;
 
-  setMemberActionsVisible(false);
-  setSelectedMemberForActions(null);
+  Animated.timing(memberActionsTranslateY, {
+    toValue: 420,
+    duration: 145,
+    useNativeDriver: true,
+  }).start(() => {
+    setMemberActionsVisible(false);
+    setSelectedMemberForActions(null);
+    memberActionsTranslateY.setValue(0);
+  });
 }
 
 const renderInviteMembersModal = () => (
@@ -3690,29 +3745,38 @@ const renderMemberActionsModal = () => {
           justifyContent: "flex-end",
         }}
       >
-        <Pressable
-          onPress={() => {}}
+                <Animated.View
           style={{
             backgroundColor: PREMIUM_CREAM,
             borderTopLeftRadius: 30,
             borderTopRightRadius: 30,
             paddingHorizontal: 18,
-            paddingTop: 16,
+            paddingTop: 8,
             paddingBottom: Math.max(insets.bottom + 14, 26),
             borderTopWidth: 1,
             borderColor: CARD_BORDER,
+            transform: [{ translateY: memberActionsTranslateY }],
           }}
         >
-          <View
+                  <View
+            {...memberActionsPanResponder.panHandlers}
             style={{
-              width: 44,
-              height: 5,
-              borderRadius: 999,
-              backgroundColor: CARD_BORDER,
               alignSelf: "center",
-              marginBottom: 16,
+              paddingHorizontal: 42,
+              paddingTop: 8,
+              paddingBottom: 18,
+              marginBottom: 0,
             }}
-          />
+          >
+            <View
+              style={{
+                width: 46,
+                height: 5,
+                borderRadius: 999,
+                backgroundColor: CARD_BORDER,
+              }}
+            />
+          </View>
 
           <View style={{ flexDirection: "row", alignItems: "center" }}>
             {profile.avatar_url ? (
@@ -3935,7 +3999,7 @@ const renderMemberActionsModal = () => {
               Cancel
             </Text>
           </Pressable>
-        </Pressable>
+                </Animated.View>
       </Pressable>
     </Modal>
   );
