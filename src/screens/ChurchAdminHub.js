@@ -592,12 +592,17 @@ export default function ChurchAdminHub({ route, navigation }) {
                 justifyContent: "space-between",
               }}
             >
-              <AdminToolCard
-                icon="calendar-outline"
-                title="Create Event"
-                subtitle="Create church events, courses and registration forms."
-                onPress={openCreateEvent}
-              />
+<AdminToolCard
+  icon="calendar-outline"
+  title="Manage Events"
+  subtitle="Create and manage church events, courses, registrations and sign-up forms."
+  onPress={() =>
+    navigation.navigate("ChurchEventsAdmin", {
+      churchId,
+      churchName: name,
+    })
+  }
+/>
 
               <AdminToolCard
                 icon="megaphone-outline"

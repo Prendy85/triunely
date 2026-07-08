@@ -7,6 +7,7 @@ import {
   Alert,
   Image,
   Linking,
+  Modal,
   Pressable,
   ScrollView,
   Text,
@@ -20,6 +21,7 @@ import {
   fetchMyEventRegistration,
 } from "../services/eventRegistrationsService";
 import {
+  fetchCourseForEvent,
   fetchEventById,
   getCurrentUserId,
   getEventCounts,
@@ -708,6 +710,302 @@ function DateSummaryCard({ event }) {
   );
 }
 
+function CourseStructureCard({
+  course,
+  sessions,
+  linkedGroup,
+  navigation,
+  churchName,
+}) {
+  if (!course?.id) return null;
+
+  const visibleSessions = Array.isArray(sessions) ? sessions : [];
+  const shownSessions = visibleSessions.slice(0, 12);
+
+  function openLinkedGroup() {
+    if (!linkedGroup?.id) {
+      Alert.alert(
+        "Group not found",
+        "This course does not have a linked group yet."
+      );
+      return;
+    }
+
+    navigation.navigate("ChurchGroupDetail", {
+      churchId: linkedGroup.church_id || course.church_id,
+      churchName: churchName || "Church",
+      group: linkedGroup,
+    });
+  }
+
+  return (
+    <RaisedCard>
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "flex-start",
+          marginBottom: 12,
+        }}
+      >
+        <View
+          style={{
+            width: 44,
+            height: 44,
+            borderRadius: 22,
+            backgroundColor: "rgba(180, 83, 9, 0.10)",
+            borderWidth: 1,
+            borderColor: "rgba(180, 83, 9, 0.18)",
+            alignItems: "center",
+            justifyContent: "center",
+            marginRight: 12,
+          }}
+        >
+          <Ionicons name="school-outline" size={22} color={EVENT_AMBER} />
+        </View>
+
+        <View style={{ flex: 1 }}>
+          <Text
+            style={{
+              color: TEXT,
+              fontFamily: theme.fonts?.display,
+              fontSize: 22,
+              fontWeight: "900",
+              letterSpacing: -0.2,
+            }}
+          >
+            Course structure
+          </Text>
+
+          <Text
+            style={{
+              color: MUTED,
+              fontSize: 13,
+              fontWeight: "700",
+              lineHeight: 19,
+              marginTop: 4,
+            }}
+          >
+            This course has weekly sessions and a linked group space for
+            attendees.
+          </Text>
+        </View>
+      </View>
+
+      {linkedGroup?.id ? (
+        <Pressable
+          onPress={openLinkedGroup}
+          style={({ pressed }) => ({
+            borderRadius: 20,
+            padding: 13,
+            backgroundColor: pressed
+              ? "rgba(79, 99, 59, 0.10)"
+              : "rgba(79, 99, 59, 0.07)",
+            borderWidth: 1,
+            borderColor: "rgba(79, 99, 59, 0.16)",
+            flexDirection: "row",
+            alignItems: "center",
+            marginBottom: 12,
+            transform: [{ scale: pressed ? 0.99 : 1 }],
+          })}
+        >
+          <View
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: 19,
+              backgroundColor: WHITE,
+              borderWidth: 1,
+              borderColor: "rgba(79, 99, 59, 0.16)",
+              alignItems: "center",
+              justifyContent: "center",
+              marginRight: 11,
+            }}
+          >
+            <Ionicons name="people-outline" size={19} color={OLIVE} />
+          </View>
+
+          <View style={{ flex: 1 }}>
+            <Text
+              style={{
+                color: OLIVE,
+                fontSize: 14,
+                fontWeight: "900",
+              }}
+            >
+              Open linked group
+            </Text>
+
+            <Text
+              style={{
+                color: MUTED,
+                fontSize: 12.5,
+                fontWeight: "700",
+                lineHeight: 18,
+                marginTop: 3,
+              }}
+              numberOfLines={2}
+            >
+              {linkedGroup.name || course.title} — discussion, follow-up and
+              group connection.
+            </Text>
+          </View>
+
+          <Ionicons name="chevron-forward" size={18} color={OLIVE} />
+        </Pressable>
+      ) : null}
+
+      <Text
+        style={{
+          color: EVENT_BROWN,
+          fontSize: 11.5,
+          fontWeight: "900",
+          textTransform: "uppercase",
+          letterSpacing: 0.45,
+          marginBottom: 9,
+        }}
+      >
+        Sessions
+      </Text>
+
+      {shownSessions.length === 0 ? (
+        <View
+          style={{
+            padding: 13,
+            borderRadius: 18,
+            backgroundColor: "rgba(15, 23, 42, 0.03)",
+            borderWidth: 1,
+            borderColor: "rgba(15, 23, 42, 0.06)",
+          }}
+        >
+          <Text
+            style={{
+              color: MUTED,
+              fontSize: 13,
+              fontWeight: "800",
+              lineHeight: 19,
+            }}
+          >
+            No course sessions have been generated yet.
+          </Text>
+        </View>
+      ) : (
+        <View style={{ gap: 8 }}>
+          {shownSessions.map((session) => (
+            <View
+              key={session.id}
+              style={{
+                borderRadius: 18,
+                padding: 12,
+                backgroundColor: "rgba(180, 83, 9, 0.06)",
+                borderWidth: 1,
+                borderColor: "rgba(180, 83, 9, 0.12)",
+                flexDirection: "row",
+                alignItems: "flex-start",
+              }}
+            >
+              <View
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 17,
+                  backgroundColor: WHITE,
+                  borderWidth: 1,
+                  borderColor: "rgba(180, 83, 9, 0.16)",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginRight: 10,
+                }}
+              >
+                <Text
+                  style={{
+                    color: EVENT_AMBER,
+                    fontSize: 12,
+                    fontWeight: "900",
+                  }}
+                >
+                  {session.session_number}
+                </Text>
+              </View>
+
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={{
+                    color: TEXT,
+                    fontSize: 13.5,
+                    fontWeight: "900",
+                    lineHeight: 18,
+                  }}
+                  numberOfLines={1}
+                >
+                  {session.title || `Week ${session.session_number}`}
+                </Text>
+
+                {session.topic ? (
+                  <Text
+                    style={{
+                      color: EVENT_BROWN,
+                      fontSize: 12.5,
+                      fontWeight: "900",
+                      lineHeight: 17,
+                      marginTop: 4,
+                    }}
+                    numberOfLines={2}
+                  >
+                    {session.topic}
+                  </Text>
+                ) : null}
+
+                {session.description ? (
+                  <Text
+                    style={{
+                      color: MUTED,
+                      fontSize: 12,
+                      fontWeight: "700",
+                      lineHeight: 17,
+                      marginTop: 3,
+                    }}
+                    numberOfLines={3}
+                  >
+                    {session.description}
+                  </Text>
+                ) : null}
+
+                <Text
+                  style={{
+                    color: MUTED,
+                    fontSize: 12.2,
+                    fontWeight: "700",
+                    lineHeight: 17,
+                    marginTop: session.topic || session.description ? 6 : 3,
+                  }}
+                >
+                  {formatFullDate(session.starts_at)} ·{" "}
+                  {formatTime(session.starts_at)} - {formatTime(session.ends_at)}
+                </Text>
+
+                {session.location_name || session.location_address ? (
+                  <Text
+                    style={{
+                      color: MUTED,
+                      fontSize: 11.5,
+                      fontWeight: "700",
+                      lineHeight: 16,
+                      marginTop: 3,
+                    }}
+                    numberOfLines={1}
+                  >
+                    {session.location_name || session.location_address}
+                  </Text>
+                ) : null}
+              </View>
+            </View>
+          ))}
+        </View>
+      )}
+    </RaisedCard>
+  );
+}
+
 export default function EventDetailsScreen({ route, navigation }) {
   const { eventId, event: initialEvent } = route?.params || {};
 
@@ -715,8 +1013,13 @@ export default function EventDetailsScreen({ route, navigation }) {
   const [event, setEvent] = useState(initialEvent || null);
   const [currentUserId, setCurrentUserId] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [adminMenuVisible, setAdminMenuVisible] = useState(false);
   const [myRegistration, setMyRegistration] = useState(null);
-
+  const [courseDetails, setCourseDetails] = useState({
+    course: null,
+    sessions: [],
+    linkedGroup: null,
+  });
   const loadEvent = useCallback(async () => {
     try {
       setLoading(true);
@@ -730,10 +1033,40 @@ export default function EventDetailsScreen({ route, navigation }) {
         Alert.alert("Event", res.error || "Could not load this event.");
         setEvent(null);
         setMyRegistration(null);
+        setCourseDetails({
+          course: null,
+          sessions: [],
+          linkedGroup: null,
+        });
         return;
       }
 
       setEvent(res.event);
+
+      if (res.event?.event_type === "course_programme") {
+        const courseRes = await fetchCourseForEvent(res.event.id);
+
+        if (courseRes.ok) {
+          setCourseDetails({
+            course: courseRes.course || null,
+            sessions: courseRes.sessions || [],
+            linkedGroup: courseRes.linkedGroup || null,
+          });
+        } else {
+          console.log("EventDetailsScreen course load error:", courseRes.error);
+          setCourseDetails({
+            course: null,
+            sessions: [],
+            linkedGroup: null,
+          });
+        }
+      } else {
+        setCourseDetails({
+          course: null,
+          sessions: [],
+          linkedGroup: null,
+        });
+      }
 
       if (requiresRegistration(res.event)) {
         const regRes = await fetchMyEventRegistration(res.event.id);
@@ -751,6 +1084,11 @@ export default function EventDetailsScreen({ route, navigation }) {
       Alert.alert("Event", "Could not load this event right now.");
       setEvent(null);
       setMyRegistration(null);
+      setCourseDetails({
+        course: null,
+        sessions: [],
+        linkedGroup: null,
+      });
     } finally {
       setLoading(false);
     }
@@ -773,6 +1111,7 @@ export default function EventDetailsScreen({ route, navigation }) {
       ? "Switch to invite-only"
       : "Switch to public";
   const canInvitePeople = event?.visibility === "public" || isCreator;
+    const canShowAdminMenu = isCreator;
 
   const church = Array.isArray(event?.churches)
     ? event?.churches?.[0]
@@ -796,6 +1135,10 @@ export default function EventDetailsScreen({ route, navigation }) {
   const attendanceDescription = getAttendanceDescription(event);
   const eventRequiresRegistration = requiresRegistration(event);
   const isRegistered = !!myRegistration;
+
+  const linkedCourse = courseDetails.course;
+  const courseSessions = courseDetails.sessions || [];
+  const linkedCourseGroup = courseDetails.linkedGroup;
 
   async function handleRsvp(status) {
     if (!event?.id) return;
@@ -942,6 +1285,53 @@ export default function EventDetailsScreen({ route, navigation }) {
     }
   }
 
+  function openAdminMenu() {
+    if (!event?.id) return;
+    setAdminMenuVisible(true);
+  }
+
+  function closeAdminMenu() {
+    setAdminMenuVisible(false);
+  }
+
+  function goToEditCourse() {
+    closeAdminMenu();
+
+    if (!linkedCourse?.id) {
+      Alert.alert("Course", "This course could not be found.");
+      return;
+    }
+
+    navigation.navigate("ChurchCourseEdit", {
+      courseId: linkedCourse.id,
+      churchId: linkedCourse.church_id || event.church_id,
+      churchName,
+    });
+  }
+
+  function goToInvitePeople() {
+    closeAdminMenu();
+
+    navigation.navigate("EventInvitePeople", {
+      eventId: event.id,
+    });
+  }
+
+  function openLinkedGroupFromAdminMenu() {
+    closeAdminMenu();
+
+    if (!linkedCourseGroup?.id) {
+      Alert.alert("Group not found", "This course does not have a linked group yet.");
+      return;
+    }
+
+    navigation.navigate("ChurchGroupDetail", {
+      churchId: linkedCourseGroup.church_id || linkedCourse?.church_id || event.church_id,
+      churchName: churchName || "Church",
+      group: linkedCourseGroup,
+    });
+  }
+
   function renderAttendeeRow(attendee, type = "going") {
     const profile = Array.isArray(attendee.profiles)
       ? attendee.profiles?.[0]
@@ -1021,7 +1411,8 @@ export default function EventDetailsScreen({ route, navigation }) {
   return (
     <Screen backgroundColor={CREAM} padded={false} style={{ flex: 1 }}>
       {({ bottomPad }) => (
-        <ScrollView
+        <>
+          <ScrollView
           style={{ flex: 1 }}
           contentContainerStyle={{
             paddingBottom: bottomPad + 20,
@@ -1083,6 +1474,32 @@ export default function EventDetailsScreen({ route, navigation }) {
                 Details, guests and RSVP
               </Text>
             </View>
+
+            {canShowAdminMenu ? (
+              <Pressable
+                onPress={openAdminMenu}
+                hitSlop={12}
+                style={({ pressed }) => ({
+                  width: 44,
+                  height: 44,
+                  borderRadius: 22,
+                  backgroundColor: pressed ? "rgba(180, 83, 9, 0.10)" : WHITE,
+                  borderWidth: 1,
+                  borderColor: CARD_BORDER,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginLeft: 10,
+                  shadowColor: "rgba(15, 23, 42, 0.08)",
+                  shadowOpacity: pressed ? 0.04 : 0.1,
+                  shadowRadius: pressed ? 5 : 8,
+                  shadowOffset: { width: 0, height: pressed ? 2 : 3 },
+                  elevation: pressed ? 1 : 2,
+                  transform: [{ scale: pressed ? 0.975 : 1 }],
+                })}
+              >
+                <Ionicons name="ellipsis-vertical" size={21} color={OLIVE} />
+              </Pressable>
+            ) : null}
           </View>
 
           {loading ? (
@@ -1455,6 +1872,16 @@ export default function EventDetailsScreen({ route, navigation }) {
                 </Text>
               </RaisedCard>
 
+              {programme ? (
+                <CourseStructureCard
+                  course={linkedCourse}
+                  sessions={courseSessions}
+                  linkedGroup={linkedCourseGroup}
+                  navigation={navigation}
+                  churchName={churchName}
+                />
+              ) : null}
+
               {/* Who's going */}
               <RaisedCard>
                 <View
@@ -1681,7 +2108,305 @@ export default function EventDetailsScreen({ route, navigation }) {
               </View>
             </>
           )}
-        </ScrollView>
+          </ScrollView>
+
+          <Modal
+        visible={adminMenuVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={closeAdminMenu}
+      >
+        <Pressable
+          onPress={closeAdminMenu}
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(15, 23, 42, 0.34)",
+            justifyContent: "flex-end",
+          }}
+        >
+          <Pressable
+            onPress={() => {}}
+            style={{
+              marginHorizontal: 14,
+              marginBottom: 18,
+              backgroundColor: CREAM,
+              borderRadius: 30,
+              padding: 16,
+              borderWidth: 1,
+              borderColor: "rgba(255, 255, 255, 0.82)",
+              shadowColor: "#000",
+              shadowOpacity: 0.22,
+              shadowRadius: 18,
+              shadowOffset: { width: 0, height: 8 },
+              elevation: 8,
+            }}
+          >
+            <View
+              style={{
+                width: 42,
+                height: 5,
+                borderRadius: 999,
+                backgroundColor: "rgba(107, 114, 128, 0.32)",
+                alignSelf: "center",
+                marginBottom: 14,
+              }}
+            />
+
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "flex-start",
+                marginBottom: 14,
+              }}
+            >
+              <View
+                style={{
+                  width: 46,
+                  height: 46,
+                  borderRadius: 23,
+                  backgroundColor: "rgba(180, 83, 9, 0.10)",
+                  borderWidth: 1,
+                  borderColor: "rgba(180, 83, 9, 0.18)",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginRight: 12,
+                }}
+              >
+                <Ionicons name="ellipsis-vertical" size={22} color={EVENT_AMBER} />
+              </View>
+
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={{
+                    color: TEXT,
+                    fontSize: 21,
+                    fontWeight: "900",
+                    letterSpacing: -0.3,
+                  }}
+                >
+                  Admin actions
+                </Text>
+
+                <Text
+                  style={{
+                    color: MUTED,
+                    fontSize: 13,
+                    fontWeight: "700",
+                    lineHeight: 18,
+                    marginTop: 4,
+                  }}
+                  numberOfLines={2}
+                >
+                  {event?.title || "Manage this event"}
+                </Text>
+              </View>
+            </View>
+
+            <View style={{ gap: 10 }}>
+              {programme && linkedCourse?.id ? (
+                <Pressable
+                  onPress={goToEditCourse}
+                  style={({ pressed }) => ({
+                    borderRadius: 20,
+                    padding: 14,
+                    backgroundColor: pressed
+                      ? "rgba(180, 83, 9, 0.14)"
+                      : "rgba(180, 83, 9, 0.08)",
+                    borderWidth: 1,
+                    borderColor: "rgba(180, 83, 9, 0.16)",
+                    flexDirection: "row",
+                    alignItems: "center",
+                  })}
+                >
+                  <View
+                    style={{
+                      width: 38,
+                      height: 38,
+                      borderRadius: 19,
+                      backgroundColor: WHITE,
+                      borderWidth: 1,
+                      borderColor: "rgba(180, 83, 9, 0.16)",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      marginRight: 11,
+                    }}
+                  >
+                    <Ionicons name="create-outline" size={19} color={EVENT_AMBER} />
+                  </View>
+
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={{
+                        color: TEXT,
+                        fontSize: 14,
+                        fontWeight: "900",
+                      }}
+                    >
+                      Edit course
+                    </Text>
+
+                    <Text
+                      style={{
+                        color: MUTED,
+                        fontSize: 12.5,
+                        fontWeight: "700",
+                        marginTop: 3,
+                      }}
+                    >
+                      Change course details, topics and weekly sessions.
+                    </Text>
+                  </View>
+
+                  <Ionicons name="chevron-forward" size={18} color={EVENT_AMBER} />
+                </Pressable>
+              ) : null}
+
+              {programme && linkedCourseGroup?.id ? (
+                <Pressable
+                  onPress={openLinkedGroupFromAdminMenu}
+                  style={({ pressed }) => ({
+                    borderRadius: 20,
+                    padding: 14,
+                    backgroundColor: pressed
+                      ? "rgba(79, 99, 59, 0.14)"
+                      : "rgba(79, 99, 59, 0.08)",
+                    borderWidth: 1,
+                    borderColor: "rgba(79, 99, 59, 0.16)",
+                    flexDirection: "row",
+                    alignItems: "center",
+                  })}
+                >
+                  <View
+                    style={{
+                      width: 38,
+                      height: 38,
+                      borderRadius: 19,
+                      backgroundColor: WHITE,
+                      borderWidth: 1,
+                      borderColor: "rgba(79, 99, 59, 0.16)",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      marginRight: 11,
+                    }}
+                  >
+                    <Ionicons name="people-outline" size={19} color={OLIVE} />
+                  </View>
+
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={{
+                        color: TEXT,
+                        fontSize: 14,
+                        fontWeight: "900",
+                      }}
+                    >
+                      Open linked group
+                    </Text>
+
+                    <Text
+                      style={{
+                        color: MUTED,
+                        fontSize: 12.5,
+                        fontWeight: "700",
+                        marginTop: 3,
+                      }}
+                    >
+                      Go to the connected course group space.
+                    </Text>
+                  </View>
+
+                  <Ionicons name="chevron-forward" size={18} color={OLIVE} />
+                </Pressable>
+              ) : null}
+
+              {canInvitePeople ? (
+                <Pressable
+                  onPress={goToInvitePeople}
+                  style={({ pressed }) => ({
+                    borderRadius: 20,
+                    padding: 14,
+                    backgroundColor: pressed
+                      ? "rgba(79, 99, 59, 0.14)"
+                      : "rgba(79, 99, 59, 0.08)",
+                    borderWidth: 1,
+                    borderColor: "rgba(79, 99, 59, 0.16)",
+                    flexDirection: "row",
+                    alignItems: "center",
+                  })}
+                >
+                  <View
+                    style={{
+                      width: 38,
+                      height: 38,
+                      borderRadius: 19,
+                      backgroundColor: WHITE,
+                      borderWidth: 1,
+                      borderColor: "rgba(79, 99, 59, 0.16)",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      marginRight: 11,
+                    }}
+                  >
+                    <Ionicons name="person-add-outline" size={19} color={OLIVE} />
+                  </View>
+
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={{
+                        color: TEXT,
+                        fontSize: 14,
+                        fontWeight: "900",
+                      }}
+                    >
+                      Invite people
+                    </Text>
+
+                    <Text
+                      style={{
+                        color: MUTED,
+                        fontSize: 12.5,
+                        fontWeight: "700",
+                        marginTop: 3,
+                      }}
+                    >
+                      Search members and send event invites.
+                    </Text>
+                  </View>
+
+                  <Ionicons name="chevron-forward" size={18} color={OLIVE} />
+                </Pressable>
+              ) : null}
+
+              <Pressable
+                onPress={closeAdminMenu}
+                style={({ pressed }) => ({
+                  borderRadius: 18,
+                  paddingVertical: 13,
+                  paddingHorizontal: 14,
+                  backgroundColor: pressed
+                    ? "rgba(107, 114, 128, 0.13)"
+                    : "rgba(107, 114, 128, 0.08)",
+                  borderWidth: 1,
+                  borderColor: "rgba(107, 114, 128, 0.14)",
+                  alignItems: "center",
+                  justifyContent: "center",
+                })}
+              >
+                <Text
+                  style={{
+                    color: MUTED,
+                    fontSize: 13,
+                    fontWeight: "900",
+                  }}
+                >
+                  Cancel
+                </Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+          </Modal>
+        </>
       )}
     </Screen>
   );

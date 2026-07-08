@@ -16,6 +16,7 @@ import Screen from "../../../components/Screen";
 import { theme } from "../../../theme/theme";
 import {
   fetchUpcomingEvents,
+  fetchUpcomingEventsForChurch,
   getCurrentUserId,
 } from "../services/eventsService";
 
@@ -891,11 +892,17 @@ function EventPosterCard({ event, onPress }) {
   );
 }
 
-export default function EventsScreen({ navigation }) {
+export default function EventsScreen({ route, navigation }) {
   const [loading, setLoading] = useState(true);
   const [events, setEvents] = useState([]);
   const [currentUserId, setCurrentUserId] = useState(null);
   const [activeFilter, setActiveFilter] = useState("upcoming");
+
+  const adminMode = route?.params?.adminMode === true;
+  const churchId = route?.params?.churchId || null;
+  const churchName = route?.params?.churchName || null;
+  const scopedToChurch = Boolean(churchId);
+  const canGoBack = navigation.canGoBack();
 
   const loadEvents = useCallback(async () => {
     try {
@@ -904,7 +911,13 @@ export default function EventsScreen({ navigation }) {
       const uid = await getCurrentUserId();
       setCurrentUserId(uid);
 
-      const res = await fetchUpcomingEvents({ limit: 50 });
+      const res = churchId
+        ? await fetchUpcomingEventsForChurch({
+            churchId,
+            limit: 50,
+            includeInviteOnly: adminMode === true,
+          })
+        : await fetchUpcomingEvents({ limit: 50 });
 
       if (!res.ok) {
         Alert.alert("Events", res.error || "Could not load events.");
@@ -920,7 +933,7 @@ export default function EventsScreen({ navigation }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [adminMode, churchId]);
 
   useFocusEffect(
     useCallback(() => {
@@ -958,15 +971,35 @@ export default function EventsScreen({ navigation }) {
             paddingBottom: bottomPad + 22,
           }}
         >
-          {/* Header */}
+            {/* Header */}
           <View
             style={{
               flexDirection: "row",
               alignItems: "center",
-              justifyContent: "space-between",
               marginBottom: 16,
             }}
           >
+            {canGoBack ? (
+              <Pressable
+                onPress={() => navigation.goBack()}
+                hitSlop={10}
+                style={({ pressed }) => ({
+                  width: 42,
+                  height: 42,
+                  borderRadius: 21,
+                  backgroundColor: WHITE,
+                  borderWidth: 1,
+                  borderColor: CARD_BORDER,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginRight: 12,
+                  opacity: pressed ? 0.75 : 1,
+                })}
+              >
+                <Ionicons name="chevron-back" size={22} color={TEXT} />
+              </Pressable>
+            ) : null}
+
             <View style={{ flex: 1, paddingRight: 14 }}>
               <Text
                 style={{
@@ -976,7 +1009,11 @@ export default function EventsScreen({ navigation }) {
                 }}
                 numberOfLines={1}
               >
-                Events
+                {adminMode
+                  ? "Upcoming Events"
+                  : scopedToChurch && churchName
+                  ? `${churchName} Events`
+                  : "Events"}
               </Text>
 
               <Text
@@ -987,33 +1024,41 @@ export default function EventsScreen({ navigation }) {
                   lineHeight: 19,
                   marginTop: 4,
                 }}
+                numberOfLines={2}
               >
-                Gatherings, church events and moments worth showing up for.
+                {adminMode
+                  ? churchName
+                    ? `Manage upcoming events for ${churchName}.`
+                    : "Manage upcoming church events."
+                  : scopedToChurch && churchName
+                  ? `Upcoming services, courses and gatherings from ${churchName}.`
+                  : "Gatherings, church events and moments worth showing up for."}
               </Text>
             </View>
 
-            <Pressable
-              onPress={() => navigation.navigate("CreateEvent")}
-              hitSlop={10}
-              style={({ pressed }) => ({
-                width: 46,
-                height: 46,
-                borderRadius: 23,
-                backgroundColor: pressed
-                  ? "rgba(180, 83, 9, 0.88)"
-                  : EVENT_AMBER,
-                alignItems: "center",
-                justifyContent: "center",
-                shadowColor: EVENT_AMBER,
-                shadowOpacity: pressed ? 0.12 : 0.22,
-                shadowRadius: pressed ? 6 : 10,
-                shadowOffset: { width: 0, height: pressed ? 2 : 4 },
-                elevation: pressed ? 2 : 4,
-                transform: [{ scale: pressed ? 0.97 : 1 }],
-              })}
-            >
-              <Ionicons name="add" size={28} color="#fff" />
-            </Pressable>
+            {!adminMode && !scopedToChurch ? (
+              <Pressable
+                onPress={() => navigation.navigate("CreateEvent")}
+                hitSlop={10}
+                style={({ pressed }) => ({
+                  width: 46,
+                  height: 46,
+                  borderRadius: 23,
+                  backgroundColor: pressed
+                    ? "rgba(180, 83, 9, 0.88)"
+                    : EVENT_AMBER,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  shadowColor: EVENT_AMBER,
+                  shadowOpacity: pressed ? 0.12 : 0.22,
+                  shadowRadius: pressed ? 6 : 10,
+                  shadowOffset: { width: 0, height: pressed ? 2 : 4 },
+                  elevation: pressed ? 2 : 4,
+                })}
+              >
+                <Ionicons name="add" size={25} color="#fff" />
+              </Pressable>
+            ) : null}
           </View>
 
           {/* Filters */}

@@ -22,7 +22,6 @@ import {
   respondToChurchJoinRequest,
 } from "../lib/notifications";
 
-import { supabase } from "../lib/supabase";
 import { theme } from "../theme/theme";
 
 function formatTime(ts) {
@@ -219,80 +218,54 @@ export default function NotificationsScreen() {
     [navigation, load]
   );
 
-  const handleOpenChurchGroupInvite = useCallback(
-    async (item) => {
-      try {
-        if (!item?.id) return;
+const handleOpenChurchGroupInvite = useCallback(
+  async (item) => {
+    try {
+      if (!item?.id) return;
 
-        console.log("GROUP INVITE NOTIFICATION PRESSED:", {
-          id: item?.id,
-          type: item?.type,
-          church_id: item?.church_id,
-          church_group_id: item?.church_group_id,
-          church_group_member_id: item?.church_group_member_id,
-          payload: item?.payload,
-        });
+      console.log("GROUP INVITE NOTIFICATION PRESSED:", {
+        id: item?.id,
+        type: item?.type,
+        church_id: item?.church_id,
+        church_group_id: item?.church_group_id,
+        church_group_member_id: item?.church_group_member_id,
+        payload: item?.payload,
+      });
 
-        if (item.is_read === false) {
-          await markNotificationRead(item.id);
-        }
-
-        const churchId = getNotificationChurchId(item);
-        const churchName = getNotificationChurchName(item);
-        const churchGroupId = getNotificationChurchGroupId(item);
-        const churchGroupMemberId = getNotificationChurchGroupMemberId(item);
-
-        if (!churchGroupId) {
-          setErrorText("This group invite is missing its group link.");
-          await load();
-          return;
-        }
-
-        const { data: groupData, error: groupError } = await supabase
-          .from("church_groups")
-          .select("*")
-          .eq("id", churchGroupId)
-          .maybeSingle();
-
-        if (groupError) {
-          console.log("handleOpenChurchGroupInvite group error:", groupError);
-        }
-
-        const finalChurchId = churchId || groupData?.church_id || null;
-
-        console.log("OPENING CHURCH GROUP DETAIL FROM NOTIFICATION:", {
-          routeName: "ChurchGroupDetail",
-          churchId: finalChurchId,
-          churchName,
-          churchGroupId,
-          churchGroupMemberId,
-          groupName: groupData?.name,
-        });
-
-        navigation.navigate("ChurchGroupDetail", {
-          churchId: finalChurchId,
-          churchName,
-          group:
-            groupData || {
-              id: churchGroupId,
-              church_id: finalChurchId,
-              name: "Church Group",
-            },
-          fromNotification: true,
-          notificationId: item.id,
-          churchGroupId,
-          churchGroupMemberId,
-          membershipStatus: "invited",
-        });
-
-        await load();
-      } catch (e) {
-        console.log("handleOpenChurchGroupInvite error:", e);
-        setErrorText(e?.message || "Failed to open group invite");
+      if (item.is_read === false) {
+        await markNotificationRead(item.id);
       }
-    },
-    [navigation, load]
-  );
+
+      const churchId = getNotificationChurchId(item);
+      const churchName = getNotificationChurchName(item);
+      const churchGroupId = getNotificationChurchGroupId(item);
+      const churchGroupMemberId = getNotificationChurchGroupMemberId(item);
+
+      if (!churchGroupId && !churchGroupMemberId) {
+        setErrorText("This group invite is missing its invite details.");
+        await load();
+        return;
+      }
+
+      navigation.navigate("ChurchGroupInviteResponse", {
+        invitationId: churchGroupMemberId,
+        inviteId: churchGroupMemberId,
+        membershipId: churchGroupMemberId,
+        groupId: churchGroupId,
+        churchId,
+        churchName,
+        fromNotification: true,
+        notificationId: item.id,
+      });
+
+      await load();
+    } catch (e) {
+      console.log("handleOpenChurchGroupInvite error:", e);
+      setErrorText(e?.message || "Failed to open group invite");
+    }
+  },
+  [navigation, load]
+);
 
   const handleAcceptJoin = useCallback(
     async (item) => {

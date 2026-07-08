@@ -63,6 +63,8 @@ import ChurchAdminHome from "./src/screens/ChurchAdminHome";
 import ChurchAdminHub from "./src/screens/ChurchAdminHub";
 import ChurchAdminInbox from "./src/screens/ChurchAdminInbox";
 import ChurchAdminThread from "./src/screens/ChurchAdminThread";
+import ChurchCourseEdit from "./src/screens/ChurchCourseEdit";
+import ChurchCoursesAdmin from "./src/screens/ChurchCoursesAdmin";
 import ChurchCreateChurch from "./src/screens/ChurchCreateChurch";
 import ChurchCreateGroup from "./src/screens/ChurchCreateGroup";
 import ChurchEdit from "./src/screens/ChurchEdit";
@@ -70,10 +72,12 @@ import ChurchEventAttendeeViewer from "./src/screens/ChurchEventAttendeeViewer";
 import ChurchEventRegistrationDetail from "./src/screens/ChurchEventRegistrationDetail";
 import ChurchEventRegistrationList from "./src/screens/ChurchEventRegistrationList";
 import ChurchEventRegistrations from "./src/screens/ChurchEventRegistrations";
+import ChurchEventsAdmin from "./src/screens/ChurchEventsAdmin";
 import ChurchFeed from "./src/screens/ChurchFeed";
 import ChurchFind from "./src/screens/ChurchFind";
 import ChurchGiving from "./src/screens/ChurchGiving";
 import ChurchGroupDetail from "./src/screens/ChurchGroupDetail";
+import ChurchGroupInviteResponseScreen from "./src/screens/ChurchGroupInviteResponseScreen";
 import ChurchGroupManage from "./src/screens/ChurchGroupManage";
 import ChurchGroupsAdmin from "./src/screens/ChurchGroupsAdmin";
 import ChurchGroupsMember from "./src/screens/ChurchGroupsMember";
@@ -83,6 +87,7 @@ import ChurchProfilePublic from "./src/screens/ChurchProfilePublic";
 import MinistryOperationsScreen from "./src/screens/MinistryOperationsScreen";
 import WeeklyChallengeEditor from "./src/screens/WeeklyChallengeEditor";
 import WeeklyMessageEditor from "./src/screens/WeeklyMessageEditor";
+import WeeklyMessageVideoEditor from "./src/screens/WeeklyMessageVideoEditor";
 
 // Event screens
 import CreateEventScreen from "./src/features/events/screens/CreateEventScreen";
@@ -536,6 +541,24 @@ function ChurchStackNavigator() {
         options={{ animation: "slide_from_right" }}
       />
 
+            <ChurchStack.Screen
+        name="ChurchEventsAdmin"
+        component={ChurchEventsAdmin}
+        options={{ animation: "slide_from_right" }}
+      />
+
+            <ChurchStack.Screen
+        name="ChurchCoursesAdmin"
+        component={ChurchCoursesAdmin}
+        options={{ animation: "slide_from_right" }}
+      />
+
+            <ChurchStack.Screen
+        name="ChurchCourseEdit"
+        component={ChurchCourseEdit}
+        options={{ animation: "slide_from_right" }}
+      />
+
       <ChurchStack.Screen
         name="ChurchEventRegistrations"
         component={ChurchEventRegistrations}
@@ -835,6 +858,24 @@ function RootNavigator({ initialTabName = "Daily" }) {
       />
 
       <RootStack.Screen
+  name="ChurchEventsAdmin"
+  component={ChurchEventsAdmin}
+  options={{ animation: "slide_from_right" }}
+/>
+
+<RootStack.Screen
+  name="ChurchCoursesAdmin"
+  component={ChurchCoursesAdmin}
+  options={{ animation: "slide_from_right" }}
+/>
+
+<RootStack.Screen
+  name="ChurchCourseEdit"
+  component={ChurchCourseEdit}
+  options={{ animation: "slide_from_right" }}
+/>
+
+      <RootStack.Screen
         name="ChurchEventRegistrations"
         component={ChurchEventRegistrations}
         options={{ animation: "slide_from_right" }}
@@ -889,6 +930,12 @@ function RootNavigator({ initialTabName = "Daily" }) {
       />
 
       <RootStack.Screen
+  name="WeeklyMessageVideoEditor"
+  component={WeeklyMessageVideoEditor}
+  options={{ animation: "slide_from_right" }}
+/>
+
+      <RootStack.Screen
         name="WeeklyChallengeEditor"
         component={WeeklyChallengeEditor}
         options={{ animation: "slide_from_right" }}
@@ -917,6 +964,12 @@ function RootNavigator({ initialTabName = "Daily" }) {
         component={ChurchGroupDetail}
         options={{ animation: "slide_from_right" }}
       />
+
+      <RootStack.Screen
+  name="ChurchGroupInviteResponse"
+  component={ChurchGroupInviteResponseScreen}
+  options={{ animation: "slide_from_right" }}
+/>
 
       <RootStack.Screen
         name="ChurchGroupsAdmin"

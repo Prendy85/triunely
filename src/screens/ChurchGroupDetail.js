@@ -14,28 +14,39 @@ import {
 import Screen from "../components/Screen";
 import { getOrCreateChurchGroupConversation } from "../lib/messages";
 import { supabase } from "../lib/supabase";
-import { theme } from "../theme/theme";
 
-const HEAVENLY_GOLD = "#D99400";
-const DEEP_OLIVE = "#4F633B";
-const SOFT_GOLD_BG = "rgba(217, 148, 0, 0.10)";
-const SOFT_OLIVE_BG = "rgba(79, 99, 59, 0.10)";
-const CARD_BORDER = "rgba(217, 148, 0, 0.18)";
+const PREMIUM_CREAM = "#FFFCF5";
+const SURFACE = "#FFFFFF";
+const EVENT_AMBER = "#B45309";
+const EVENT_BROWN = "#7C2D12";
+const OLIVE = "#4F633B";
+const TEXT = "#1F2933";
+const TEXT_SOFT = "#374151";
+const MUTED = "#6B7280";
+
+const CARD_BORDER = "rgba(15, 23, 42, 0.08)";
+const AMBER_SOFT = "rgba(180, 83, 9, 0.10)";
+const AMBER_BORDER = "rgba(180, 83, 9, 0.18)";
+const OLIVE_SOFT = "rgba(79, 99, 59, 0.10)";
+const OLIVE_BORDER = "rgba(79, 99, 59, 0.18)";
+const SHADOW = "rgba(15, 23, 42, 0.10)";
 
 function formatGroupType(type) {
   if (!type) return "Church group";
+
   return String(type)
     .replace(/_/g, " ")
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 function formatMeeting(group) {
-  const day = group?.meeting_day || "";
-  const time = group?.meeting_time || "";
+  const day = group?.meeting_day || group?.meetingDay || "";
+  const time = group?.meeting_time || group?.meetingTime || "";
 
   if (day && time) return `${day} · ${time}`;
   if (day) return day;
   if (time) return time;
+
   return "Meeting time to be confirmed";
 }
 
@@ -115,7 +126,7 @@ function getGroupVisual(group) {
       image:
         "https://images.unsplash.com/photo-1507692049790-de58290a4334?q=80&w=1200&auto=format&fit=crop",
       icon: "hand-left-outline",
-      tone: "gold",
+      tone: "amber",
       label: "Women’s Prayer",
     };
   }
@@ -130,7 +141,7 @@ function getGroupVisual(group) {
       image:
         "https://images.unsplash.com/photo-1507692049790-de58290a4334?q=80&w=1200&auto=format&fit=crop",
       icon: "hand-left-outline",
-      tone: "gold",
+      tone: "amber",
       label: "Men’s Prayer",
     };
   }
@@ -140,7 +151,7 @@ function getGroupVisual(group) {
       image:
         "https://images.unsplash.com/photo-1507692049790-de58290a4334?q=80&w=1200&auto=format&fit=crop",
       icon: "hand-left-outline",
-      tone: "gold",
+      tone: "amber",
       label: "Prayer",
     };
   }
@@ -155,7 +166,7 @@ function getGroupVisual(group) {
       image:
         "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?q=80&w=1200&auto=format&fit=crop",
       icon: "sparkles-outline",
-      tone: "gold",
+      tone: "amber",
       label: "Young Adults",
     };
   }
@@ -188,7 +199,7 @@ function getGroupVisual(group) {
       image:
         "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?q=80&w=1200&auto=format&fit=crop",
       icon: "heart-outline",
-      tone: "gold",
+      tone: "amber",
       label: "Women",
     };
   }
@@ -218,6 +229,26 @@ function getGroupVisual(group) {
   };
 }
 
+function toneColors(tone) {
+  const isAmber = tone === "amber" || tone === "gold";
+
+  if (isAmber) {
+    return {
+      accent: EVENT_AMBER,
+      strong: EVENT_BROWN,
+      soft: AMBER_SOFT,
+      border: AMBER_BORDER,
+    };
+  }
+
+  return {
+    accent: OLIVE,
+    strong: OLIVE,
+    soft: OLIVE_SOFT,
+    border: OLIVE_BORDER,
+  };
+}
+
 function DetailRow({ icon, label, value }) {
   if (!value) return null;
 
@@ -228,7 +259,7 @@ function DetailRow({ icon, label, value }) {
         alignItems: "flex-start",
         paddingVertical: 10,
         borderBottomWidth: 1,
-        borderBottomColor: "rgba(79, 99, 59, 0.10)",
+        borderBottomColor: CARD_BORDER,
       }}
     >
       <View
@@ -236,19 +267,21 @@ function DetailRow({ icon, label, value }) {
           width: 34,
           height: 34,
           borderRadius: 17,
-          backgroundColor: SOFT_OLIVE_BG,
+          backgroundColor: OLIVE_SOFT,
+          borderWidth: 1,
+          borderColor: OLIVE_BORDER,
           alignItems: "center",
           justifyContent: "center",
           marginRight: 10,
         }}
       >
-        <Ionicons name={icon} size={17} color={DEEP_OLIVE} />
+        <Ionicons name={icon} size={17} color={OLIVE} />
       </View>
 
       <View style={{ flex: 1 }}>
         <Text
           style={{
-            color: theme.colors.muted,
+            color: MUTED,
             fontSize: 11.5,
             fontWeight: "900",
             marginBottom: 2,
@@ -259,7 +292,7 @@ function DetailRow({ icon, label, value }) {
 
         <Text
           style={{
-            color: theme.colors.text,
+            color: TEXT,
             fontSize: 14,
             fontWeight: "800",
             lineHeight: 19,
@@ -272,18 +305,16 @@ function DetailRow({ icon, label, value }) {
   );
 }
 
-function InfoBox({ icon, title, body, tone = "gold" }) {
-  const isGold = tone === "gold";
-  const accent = isGold ? HEAVENLY_GOLD : DEEP_OLIVE;
-  const bg = isGold ? SOFT_GOLD_BG : SOFT_OLIVE_BG;
+function InfoBox({ icon, title, body, tone = "amber" }) {
+  const colors = toneColors(tone);
 
   return (
     <View
       style={{
-        backgroundColor: bg,
+        backgroundColor: colors.soft,
         borderRadius: 18,
         borderWidth: 1,
-        borderColor: CARD_BORDER,
+        borderColor: colors.border,
         padding: 14,
         flexDirection: "row",
         alignItems: "center",
@@ -295,25 +326,25 @@ function InfoBox({ icon, title, body, tone = "gold" }) {
           width: 42,
           height: 42,
           borderRadius: 21,
-          backgroundColor: theme.colors.surface,
+          backgroundColor: SURFACE,
           alignItems: "center",
           justifyContent: "center",
           marginRight: 12,
           borderWidth: 1,
-          borderColor: CARD_BORDER,
+          borderColor: colors.border,
         }}
       >
-        <Ionicons name={icon} size={21} color={accent} />
+        <Ionicons name={icon} size={21} color={colors.accent} />
       </View>
 
       <View style={{ flex: 1 }}>
-        <Text style={{ color: theme.colors.text, fontSize: 15, fontWeight: "900" }}>
+        <Text style={{ color: TEXT, fontSize: 15, fontWeight: "900" }}>
           {title}
         </Text>
 
         <Text
           style={{
-            color: theme.colors.muted,
+            color: MUTED,
             fontSize: 12.5,
             fontWeight: "700",
             lineHeight: 18,
@@ -329,25 +360,29 @@ function InfoBox({ icon, title, body, tone = "gold" }) {
 
 export default function ChurchGroupDetail({ navigation, route }) {
   const group = route?.params?.group || null;
-  const churchId = route?.params?.churchId || group?.church_id || null;
+  const churchId = route?.params?.churchId || group?.church_id || group?.churchId || null;
   const churchName = route?.params?.churchName || "Church";
   const initialMembershipStatus = route?.params?.membershipStatus || "";
 
   const [viewerId, setViewerId] = useState(null);
-const [membership, setMembership] = useState(null);
-const [membershipStatus, setMembershipStatus] = useState(initialMembershipStatus);
-const [loadingMembership, setLoadingMembership] = useState(true);
-const [acting, setActing] = useState(false);
-const [isChurchAdmin, setIsChurchAdmin] = useState(false);
-const [openingChat, setOpeningChat] = useState(false);
+  const [membership, setMembership] = useState(null);
+  const [membershipStatus, setMembershipStatus] = useState(initialMembershipStatus);
+  const [loadingMembership, setLoadingMembership] = useState(true);
+  const [acting, setActing] = useState(false);
+  const [isChurchAdmin, setIsChurchAdmin] = useState(false);
+  const [openingChat, setOpeningChat] = useState(false);
 
   const visual = getGroupVisual(group);
-  const isGoldVisual = visual.tone === "gold";
-  const visualAccent = isGoldVisual ? HEAVENLY_GOLD : DEEP_OLIVE;
-  const visualBg = isGoldVisual ? SOFT_GOLD_BG : SOFT_OLIVE_BG;
+  const visualTheme = toneColors(visual.tone);
+  const visualAccent = visualTheme.accent;
+  const visualBg = visualTheme.soft;
+  const visualBorder = visualTheme.border;
 
   const groupVisibility = String(group?.visibility || "church").toLowerCase();
   const groupAudience = String(group?.audience || "everyone").toLowerCase();
+
+  const leaderName = group?.leader_name || group?.leader || "";
+  const groupArea = group?.area || "";
 
   const canRequestToJoin = useMemo(() => {
     const status = String(membershipStatus || "").toLowerCase();
@@ -362,13 +397,20 @@ const [openingChat, setOpeningChat] = useState(false);
       groupVisibility === "church" &&
       groupAudience === "everyone"
     );
-  }, [group?.id, churchId, viewerId, membershipStatus, groupVisibility, groupAudience]);
+  }, [
+    group?.id,
+    churchId,
+    viewerId,
+    membershipStatus,
+    groupVisibility,
+    groupAudience,
+  ]);
 
   const canOpenGroupChat = useMemo(() => {
-  const status = String(membershipStatus || "").toLowerCase();
+    const status = String(membershipStatus || "").toLowerCase();
 
-  return !!group?.id && !!viewerId && (status === "approved" || isChurchAdmin);
-}, [group?.id, viewerId, membershipStatus, isChurchAdmin]);
+    return !!group?.id && !!viewerId && (status === "approved" || isChurchAdmin);
+  }, [group?.id, viewerId, membershipStatus, isChurchAdmin]);
 
   useEffect(() => {
     let alive = true;
@@ -390,29 +432,29 @@ const [openingChat, setOpeningChat] = useState(false);
         setViewerId(uid);
 
         if (!uid || !group?.id || !churchId) {
-  setMembership(null);
-  setMembershipStatus(initialMembershipStatus || "");
-  setIsChurchAdmin(false);
-  return;
-}
+          setMembership(null);
+          setMembershipStatus(initialMembershipStatus || "");
+          setIsChurchAdmin(false);
+          return;
+        }
 
-const { data: adminRows, error: adminError } = await supabase
-  .from("church_admins")
-  .select("user_id")
-  .eq("church_id", churchId)
-  .eq("user_id", uid)
-  .limit(1);
+        const { data: adminRows, error: adminError } = await supabase
+          .from("church_admins")
+          .select("user_id")
+          .eq("church_id", churchId)
+          .eq("user_id", uid)
+          .limit(1);
 
-if (adminError) {
-  console.log("ChurchGroupDetail admin check error:", adminError);
-}
+        if (adminError) {
+          console.log("ChurchGroupDetail admin check error:", adminError);
+        }
 
-if (!alive) return;
+        if (!alive) return;
 
-setIsChurchAdmin(Array.isArray(adminRows) && adminRows.length > 0);
+        setIsChurchAdmin(Array.isArray(adminRows) && adminRows.length > 0);
 
-const { data, error } = await supabase
-  .from("church_group_members")
+        const { data, error } = await supabase
+          .from("church_group_members")
           .select("id, group_id, church_id, user_id, role, status, created_at")
           .eq("church_id", churchId)
           .eq("group_id", group.id)
@@ -449,7 +491,10 @@ const { data, error } = await supabase
     if (!group?.id || !churchId) return;
 
     if (!viewerId) {
-      Alert.alert("Please sign in", "You need to be signed in to request to join a group.");
+      Alert.alert(
+        "Please sign in",
+        "You need to be signed in to request to join a group."
+      );
       return;
     }
 
@@ -474,7 +519,10 @@ const { data, error } = await supabase
     }
 
     if (existingStatus === "pending") {
-      Alert.alert("Request pending", "Your request to join this group is already waiting for approval.");
+      Alert.alert(
+        "Request pending",
+        "Your request to join this group is already waiting for approval."
+      );
       return;
     }
 
@@ -495,7 +543,10 @@ const { data, error } = await supabase
 
       if (error) {
         console.log("ChurchGroupDetail request insert error:", error);
-        Alert.alert("Could not request to join", error?.message || "Please try again.");
+        Alert.alert(
+          "Could not request to join",
+          error?.message || "Please try again."
+        );
         return;
       }
 
@@ -513,7 +564,10 @@ const { data, error } = await supabase
 
   async function handleAcceptInvite() {
     if (!membership?.id) {
-      Alert.alert("Invite not found", "We could not find this invite. Please refresh and try again.");
+      Alert.alert(
+        "Invite not found",
+        "We could not find this invite. Please refresh and try again."
+      );
       return;
     }
 
@@ -535,7 +589,10 @@ const { data, error } = await supabase
       setMembership(data);
       setMembershipStatus("approved");
 
-      Alert.alert("Invite accepted", `You’re now in ${group?.name || "this group"}.`);
+      Alert.alert(
+        "Invite accepted",
+        `You’re now in ${group?.name || "this group"}.`
+      );
     } catch (e) {
       console.log("ChurchGroupDetail accept invite error:", e);
       Alert.alert("Could not accept invite", e?.message || "Please try again.");
@@ -546,7 +603,10 @@ const { data, error } = await supabase
 
   async function handleDeclineInvite() {
     if (!membership?.id) {
-      Alert.alert("Invite not found", "We could not find this invite. Please refresh and try again.");
+      Alert.alert(
+        "Invite not found",
+        "We could not find this invite. Please refresh and try again."
+      );
       return;
     }
 
@@ -578,39 +638,40 @@ const { data, error } = await supabase
   }
 
   async function handleOpenGroupChat() {
-  if (!group?.id) {
-    Alert.alert("Group not found", "We could not find this group.");
-    return;
+    if (!group?.id) {
+      Alert.alert("Group not found", "We could not find this group.");
+      return;
+    }
+
+    if (!canOpenGroupChat) {
+      Alert.alert(
+        "Group chat unavailable",
+        "Only approved group members and church admins can open this group chat."
+      );
+      return;
+    }
+
+    try {
+      setOpeningChat(true);
+
+      const conversationId = await getOrCreateChurchGroupConversation(group.id);
+
+      navigation.navigate("Chat", {
+        conversationId,
+        type: "church_group",
+        title: group?.name || "Group chat",
+      });
+    } catch (e) {
+      console.log("ChurchGroupDetail open group chat error:", e);
+
+      Alert.alert(
+        "Could not open group chat",
+        e?.message || "Please try again."
+      );
+    } finally {
+      setOpeningChat(false);
+    }
   }
-
-  if (!canOpenGroupChat) {
-    Alert.alert(
-      "Group chat unavailable",
-      "Only approved group members and church admins can open this group chat."
-    );
-    return;
-  }
-
-  try {
-    setOpeningChat(true);
-
-    const conversationId = await getOrCreateChurchGroupConversation(group.id);
-
-    navigation.navigate("Chat", {
-      conversationId,
-      type: "church_group",
-      title: group?.name || "Group chat",
-    });
-  } catch (e) {
-    console.log("ChurchGroupDetail open group chat error:", e);
-    Alert.alert(
-      "Could not open group chat",
-      e?.message || "Please try again."
-    );
-  } finally {
-    setOpeningChat(false);
-  }
-}
 
   function renderActionPanel() {
     const status = String(membershipStatus || "").toLowerCase();
@@ -621,32 +682,32 @@ const { data, error } = await supabase
           icon="time-outline"
           title="Checking group status"
           body="We’re checking whether you’re already linked to this group."
-          tone="gold"
+          tone="amber"
         />
       );
     }
 
-   if (status === "approved") {
-  return (
-    <InfoBox
-      icon="checkmark-circle-outline"
-      title="You’re in this group"
-      body="You can now join the group conversation, prayer, care and discipleship life here."
-      tone="olive"
-    />
-  );
-}
+    if (status === "approved") {
+      return (
+        <InfoBox
+          icon="checkmark-circle-outline"
+          title="You’re in this group"
+          body="You can now join the group conversation, prayer, care and discipleship life here."
+          tone="olive"
+        />
+      );
+    }
 
-if (isChurchAdmin) {
-  return (
-    <InfoBox
-      icon="shield-checkmark-outline"
-      title="Church admin access"
-      body="As a church admin, you can open this group chat and support the group’s communication."
-      tone="olive"
-    />
-  );
-}
+    if (isChurchAdmin) {
+      return (
+        <InfoBox
+          icon="shield-checkmark-outline"
+          title="Church admin access"
+          body="As a church admin, you can open this group chat and support the group’s communication."
+          tone="olive"
+        />
+      );
+    }
 
     if (status === "pending") {
       return (
@@ -654,7 +715,7 @@ if (isChurchAdmin) {
           icon="time-outline"
           title="Request pending"
           body="Your request is waiting for a church leader or group leader to approve."
-          tone="gold"
+          tone="amber"
         />
       );
     }
@@ -666,36 +727,46 @@ if (isChurchAdmin) {
             marginTop: 14,
             padding: 14,
             borderRadius: 18,
-            backgroundColor: SOFT_GOLD_BG,
+            backgroundColor: AMBER_SOFT,
             borderWidth: 1,
-            borderColor: CARD_BORDER,
+            borderColor: AMBER_BORDER,
           }}
         >
-          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 12 }}>
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              marginBottom: 12,
+            }}
+          >
             <View
               style={{
                 width: 42,
                 height: 42,
                 borderRadius: 21,
-                backgroundColor: theme.colors.surface,
+                backgroundColor: SURFACE,
                 alignItems: "center",
                 justifyContent: "center",
                 marginRight: 12,
                 borderWidth: 1,
-                borderColor: CARD_BORDER,
+                borderColor: AMBER_BORDER,
               }}
             >
-              <Ionicons name="mail-unread-outline" size={21} color={HEAVENLY_GOLD} />
+              <Ionicons
+                name="mail-unread-outline"
+                size={21}
+                color={EVENT_AMBER}
+              />
             </View>
 
             <View style={{ flex: 1 }}>
-              <Text style={{ color: theme.colors.text, fontSize: 15, fontWeight: "900" }}>
+              <Text style={{ color: TEXT, fontSize: 15, fontWeight: "900" }}>
                 Invite waiting
               </Text>
 
               <Text
                 style={{
-                  color: theme.colors.muted,
+                  color: MUTED,
                   fontSize: 12.5,
                   fontWeight: "700",
                   lineHeight: 18,
@@ -717,15 +788,13 @@ if (isChurchAdmin) {
                 paddingVertical: 12,
                 alignItems: "center",
                 justifyContent: "center",
-                backgroundColor: theme.colors.surface,
+                backgroundColor: SURFACE,
                 borderWidth: 1,
                 borderColor: CARD_BORDER,
                 opacity: pressed || acting ? 0.75 : 1,
               })}
             >
-              <Text style={{ color: theme.colors.muted, fontWeight: "900" }}>
-                Decline
-              </Text>
+              <Text style={{ color: MUTED, fontWeight: "900" }}>Decline</Text>
             </Pressable>
 
             <Pressable
@@ -737,7 +806,7 @@ if (isChurchAdmin) {
                 paddingVertical: 12,
                 alignItems: "center",
                 justifyContent: "center",
-                backgroundColor: HEAVENLY_GOLD,
+                backgroundColor: EVENT_AMBER,
                 opacity: pressed || acting ? 0.75 : 1,
                 flexDirection: "row",
                 gap: 8,
@@ -746,12 +815,14 @@ if (isChurchAdmin) {
               {acting ? (
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
-                <Ionicons name="checkmark-circle-outline" size={18} color="#fff" />
+                <Ionicons
+                  name="checkmark-circle-outline"
+                  size={18}
+                  color="#fff"
+                />
               )}
 
-              <Text style={{ color: "#fff", fontWeight: "900" }}>
-                Accept
-              </Text>
+              <Text style={{ color: "#fff", fontWeight: "900" }}>Accept</Text>
             </Pressable>
           </View>
         </View>
@@ -764,7 +835,7 @@ if (isChurchAdmin) {
           icon="close-circle-outline"
           title="Invite declined"
           body="You declined this invite. A church leader can invite you again if needed."
-          tone="gold"
+          tone="amber"
         />
       );
     }
@@ -775,7 +846,7 @@ if (isChurchAdmin) {
           icon="lock-closed-outline"
           title="Invite-only or restricted"
           body="This group is not currently open for public requests. Please speak to a church leader if you think you should be added."
-          tone="gold"
+          tone="amber"
         />
       );
     }
@@ -790,7 +861,7 @@ if (isChurchAdmin) {
           paddingVertical: 13,
           alignItems: "center",
           justifyContent: "center",
-          backgroundColor: HEAVENLY_GOLD,
+          backgroundColor: EVENT_AMBER,
           opacity: pressed || acting ? 0.75 : 1,
           flexDirection: "row",
           gap: 8,
@@ -811,7 +882,7 @@ if (isChurchAdmin) {
 
   if (!group) {
     return (
-      <Screen backgroundColor={theme.colors.bg} padded={false} style={{ flex: 1 }}>
+      <Screen backgroundColor={PREMIUM_CREAM} padded={false} style={{ flex: 1 }}>
         <View
           style={{
             flex: 1,
@@ -820,15 +891,22 @@ if (isChurchAdmin) {
             alignItems: "center",
           }}
         >
-          <Text style={{ color: theme.colors.text, fontSize: 18, fontWeight: "900" }}>
+          <Text style={{ color: TEXT, fontSize: 18, fontWeight: "900" }}>
             Group not found
           </Text>
 
           <Pressable
             onPress={() => navigation.goBack()}
-            style={[theme.button.primary, { marginTop: 14, borderRadius: 999 }]}
+            style={({ pressed }) => ({
+              marginTop: 14,
+              borderRadius: 999,
+              paddingVertical: 12,
+              paddingHorizontal: 18,
+              backgroundColor: EVENT_AMBER,
+              opacity: pressed ? 0.78 : 1,
+            })}
           >
-            <Text style={theme.button.primaryText}>Go back</Text>
+            <Text style={{ color: "#fff", fontWeight: "900" }}>Go back</Text>
           </Pressable>
         </View>
       </Screen>
@@ -836,13 +914,13 @@ if (isChurchAdmin) {
   }
 
   return (
-    <Screen backgroundColor={theme.colors.bg} padded={false} style={{ flex: 1 }}>
+    <Screen backgroundColor={PREMIUM_CREAM} padded={false} style={{ flex: 1 }}>
       {({ bottomPad }) => (
         <ScrollView
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: bottomPad + 24 }}
         >
-          <View style={{ height: 245, backgroundColor: theme.colors.surfaceAlt }}>
+          <View style={{ height: 245, backgroundColor: PREMIUM_CREAM }}>
             <Image
               source={{ uri: visual.image }}
               style={{ width: "100%", height: "100%" }}
@@ -883,9 +961,11 @@ if (isChurchAdmin) {
                     : "rgba(255,255,255,0.92)",
                   alignItems: "center",
                   justifyContent: "center",
+                  borderWidth: 1,
+                  borderColor: "rgba(255,255,255,0.55)",
                 })}
               >
-                <Ionicons name="chevron-back" size={24} color={DEEP_OLIVE} />
+                <Ionicons name="chevron-back" size={24} color={OLIVE} />
               </Pressable>
 
               <View
@@ -894,6 +974,8 @@ if (isChurchAdmin) {
                   paddingVertical: 7,
                   borderRadius: 999,
                   backgroundColor: "rgba(255,255,255,0.92)",
+                  borderWidth: 1,
+                  borderColor: visualBorder,
                 }}
               >
                 <Text
@@ -912,13 +994,13 @@ if (isChurchAdmin) {
           <View style={{ paddingHorizontal: 16, marginTop: -38 }}>
             <View
               style={{
-                backgroundColor: theme.colors.surface,
+                backgroundColor: SURFACE,
                 borderRadius: 24,
                 borderWidth: 1,
                 borderColor: CARD_BORDER,
                 padding: 16,
-                shadowColor: HEAVENLY_GOLD,
-                shadowOpacity: 0.12,
+                shadowColor: SHADOW,
+                shadowOpacity: 0.16,
                 shadowRadius: 14,
                 shadowOffset: { width: 0, height: 6 },
                 elevation: 5,
@@ -935,7 +1017,7 @@ if (isChurchAdmin) {
                     justifyContent: "center",
                     marginRight: 12,
                     borderWidth: 3,
-                    borderColor: theme.colors.surface,
+                    borderColor: SURFACE,
                   }}
                 >
                   <Ionicons name={visual.icon} size={27} color="#fff" />
@@ -944,7 +1026,7 @@ if (isChurchAdmin) {
                 <View style={{ flex: 1 }}>
                   <Text
                     style={{
-                      color: theme.colors.text,
+                      color: TEXT,
                       fontSize: 25,
                       fontWeight: "900",
                       lineHeight: 30,
@@ -956,7 +1038,7 @@ if (isChurchAdmin) {
 
                   <Text
                     style={{
-                      color: theme.colors.muted,
+                      color: MUTED,
                       fontSize: 13,
                       fontWeight: "800",
                       marginTop: 5,
@@ -982,7 +1064,7 @@ if (isChurchAdmin) {
                     borderRadius: 999,
                     backgroundColor: visualBg,
                     borderWidth: 1,
-                    borderColor: CARD_BORDER,
+                    borderColor: visualBorder,
                   }}
                 >
                   <Text
@@ -1001,14 +1083,14 @@ if (isChurchAdmin) {
                     paddingHorizontal: 10,
                     paddingVertical: 6,
                     borderRadius: 999,
-                    backgroundColor: SOFT_GOLD_BG,
+                    backgroundColor: AMBER_SOFT,
                     borderWidth: 1,
-                    borderColor: CARD_BORDER,
+                    borderColor: AMBER_BORDER,
                   }}
                 >
                   <Text
                     style={{
-                      color: HEAVENLY_GOLD,
+                      color: EVENT_AMBER,
                       fontSize: 11,
                       fontWeight: "900",
                     }}
@@ -1021,7 +1103,7 @@ if (isChurchAdmin) {
               {group.description ? (
                 <Text
                   style={{
-                    color: theme.colors.text2,
+                    color: TEXT_SOFT,
                     fontSize: 14,
                     fontWeight: "700",
                     lineHeight: 21,
@@ -1033,7 +1115,7 @@ if (isChurchAdmin) {
               ) : (
                 <Text
                   style={{
-                    color: theme.colors.muted,
+                    color: MUTED,
                     fontSize: 14,
                     fontWeight: "700",
                     lineHeight: 21,
@@ -1049,7 +1131,7 @@ if (isChurchAdmin) {
 
             <View
               style={{
-                backgroundColor: theme.colors.surface,
+                backgroundColor: SURFACE,
                 borderRadius: 20,
                 borderWidth: 1,
                 borderColor: CARD_BORDER,
@@ -1059,7 +1141,7 @@ if (isChurchAdmin) {
             >
               <Text
                 style={{
-                  color: theme.colors.text,
+                  color: TEXT,
                   fontSize: 19,
                   fontWeight: "900",
                   marginBottom: 4,
@@ -1077,13 +1159,13 @@ if (isChurchAdmin) {
               <DetailRow
                 icon="location-outline"
                 label="Location / area"
-                value={group.area || "Location to be confirmed"}
+                value={groupArea || "Location to be confirmed"}
               />
 
               <DetailRow
                 icon="person-outline"
                 label="Leader"
-                value={group.leader_name || "Leader to be confirmed"}
+                value={leaderName || "Leader to be confirmed"}
               />
 
               <DetailRow
@@ -1098,93 +1180,98 @@ if (isChurchAdmin) {
             </View>
 
             <View
-  style={{
-    backgroundColor: theme.colors.surface,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: CARD_BORDER,
-    padding: 15,
-    marginTop: 16,
-  }}
->
-  <Text
-    style={{
-      color: theme.colors.text,
-      fontSize: 19,
-      fontWeight: "900",
-      marginBottom: 6,
-    }}
-  >
-    Group chat
-  </Text>
+              style={{
+                backgroundColor: SURFACE,
+                borderRadius: 20,
+                borderWidth: 1,
+                borderColor: CARD_BORDER,
+                padding: 15,
+                marginTop: 16,
+              }}
+            >
+              <Text
+                style={{
+                  color: TEXT,
+                  fontSize: 19,
+                  fontWeight: "900",
+                  marginBottom: 6,
+                }}
+              >
+                Group chat
+              </Text>
 
-  <Text
-    style={{
-      color: theme.colors.muted,
-      fontSize: 13,
-      fontWeight: "700",
-      lineHeight: 20,
-    }}
-  >
-    A shared conversation for approved members, leaders and church admins.
-  </Text>
+              <Text
+                style={{
+                  color: MUTED,
+                  fontSize: 13,
+                  fontWeight: "700",
+                  lineHeight: 20,
+                }}
+              >
+                A shared conversation for approved members, leaders and church
+                admins.
+              </Text>
 
-  {canOpenGroupChat ? (
-    <Pressable
-      onPress={handleOpenGroupChat}
-      disabled={openingChat}
-      style={({ pressed }) => ({
-        marginTop: 14,
-        borderRadius: 999,
-        paddingVertical: 13,
-        alignItems: "center",
-        justifyContent: "center",
-        backgroundColor: HEAVENLY_GOLD,
-        opacity: pressed || openingChat ? 0.75 : 1,
-        flexDirection: "row",
-        gap: 8,
-      })}
-    >
-      {openingChat ? (
-        <ActivityIndicator size="small" color="#fff" />
-      ) : (
-        <Ionicons name="chatbubbles-outline" size={19} color="#fff" />
-      )}
+              {canOpenGroupChat ? (
+                <Pressable
+                  onPress={handleOpenGroupChat}
+                  disabled={openingChat}
+                  style={({ pressed }) => ({
+                    marginTop: 14,
+                    borderRadius: 999,
+                    paddingVertical: 13,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: EVENT_AMBER,
+                    opacity: pressed || openingChat ? 0.75 : 1,
+                    flexDirection: "row",
+                    gap: 8,
+                  })}
+                >
+                  {openingChat ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Ionicons name="chatbubbles-outline" size={19} color="#fff" />
+                  )}
 
-      <Text style={{ color: "#fff", fontWeight: "900" }}>
-        {openingChat ? "Opening chat…" : "Message group"}
-      </Text>
-    </Pressable>
-  ) : (
-    <View
-      style={{
-        marginTop: 14,
-        borderRadius: 16,
-        padding: 12,
-        backgroundColor: SOFT_OLIVE_BG,
-        borderWidth: 1,
-        borderColor: "rgba(79, 99, 59, 0.14)",
-        flexDirection: "row",
-        alignItems: "center",
-      }}
-    >
-      <Ionicons name="lock-closed-outline" size={18} color={DEEP_OLIVE} />
+                  <Text style={{ color: "#fff", fontWeight: "900" }}>
+                    {openingChat ? "Opening chat…" : "Message group"}
+                  </Text>
+                </Pressable>
+              ) : (
+                <View
+                  style={{
+                    marginTop: 14,
+                    borderRadius: 16,
+                    padding: 12,
+                    backgroundColor: OLIVE_SOFT,
+                    borderWidth: 1,
+                    borderColor: OLIVE_BORDER,
+                    flexDirection: "row",
+                    alignItems: "center",
+                  }}
+                >
+                  <Ionicons
+                    name="lock-closed-outline"
+                    size={18}
+                    color={OLIVE}
+                  />
 
-      <Text
-        style={{
-          flex: 1,
-          marginLeft: 8,
-          color: theme.colors.muted,
-          fontSize: 12.5,
-          fontWeight: "800",
-          lineHeight: 18,
-        }}
-      >
-        Group chat unlocks once you’re an approved group member.
-      </Text>
-    </View>
-  )}
-</View>
+                  <Text
+                    style={{
+                      flex: 1,
+                      marginLeft: 8,
+                      color: MUTED,
+                      fontSize: 12.5,
+                      fontWeight: "800",
+                      lineHeight: 18,
+                    }}
+                  >
+                    Group chat unlocks once you’re an approved group member.
+                  </Text>
+                </View>
+              )}
+            </View>
           </View>
         </ScrollView>
       )}

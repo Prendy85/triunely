@@ -14,13 +14,23 @@ import {
 
 import Screen from "../components/Screen";
 import { supabase } from "../lib/supabase";
-import { theme } from "../theme/theme";
 
-const HEAVENLY_GOLD = "#D99400";
-const DEEP_OLIVE = "#4F633B";
-const SOFT_GOLD_BG = "rgba(217, 148, 0, 0.10)";
-const SOFT_OLIVE_BG = "rgba(79, 99, 59, 0.10)";
-const CARD_BORDER = "rgba(217, 148, 0, 0.18)";
+const PREMIUM_CREAM = "#FFFCF5";
+const SURFACE = "#FFFFFF";
+const EVENT_AMBER = "#B45309";
+const EVENT_BROWN = "#7C2D12";
+const OLIVE = "#4F633B";
+const TEXT = "#1F2933";
+const TEXT_SOFT = "#374151";
+const MUTED = "#6B7280";
+
+const CARD_BORDER = "rgba(15, 23, 42, 0.08)";
+const AMBER_SOFT = "rgba(180, 83, 9, 0.10)";
+const AMBER_BORDER = "rgba(180, 83, 9, 0.18)";
+const OLIVE_SOFT = "rgba(79, 99, 59, 0.10)";
+const OLIVE_BORDER = "rgba(79, 99, 59, 0.18)";
+const SHADOW = "rgba(15, 23, 42, 0.10)";
+
 const GROUP_VISUALS = {
   tables: {
     image:
@@ -38,7 +48,7 @@ const GROUP_VISUALS = {
     image:
       "https://images.unsplash.com/photo-1507692049790-de58290a4334?q=80&w=1200&auto=format&fit=crop",
     icon: "hand-left-outline",
-    tone: "gold",
+    tone: "amber",
   },
   "men’s groups": {
     image:
@@ -56,19 +66,19 @@ const GROUP_VISUALS = {
     image:
       "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?q=80&w=1200&auto=format&fit=crop",
     icon: "heart-outline",
-    tone: "gold",
+    tone: "amber",
   },
   "womens groups": {
     image:
       "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?q=80&w=1200&auto=format&fit=crop",
     icon: "heart-outline",
-    tone: "gold",
+    tone: "amber",
   },
   "young adults": {
     image:
       "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?q=80&w=1200&auto=format&fit=crop",
     icon: "sparkles-outline",
-    tone: "gold",
+    tone: "amber",
   },
 };
 
@@ -108,8 +118,11 @@ const FILTERS = [
 
 function safeInitials(name) {
   if (!name) return "?";
+
   const parts = String(name).trim().split(" ").filter(Boolean);
+
   if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+
   return String(name).trim()[0]?.toUpperCase() || "?";
 }
 
@@ -119,9 +132,11 @@ function getGroupVisual(group) {
   const rawDescription = String(group?.description || "").trim().toLowerCase();
   const rawAudience = String(group?.audience || "").trim().toLowerCase();
 
+  const direct = GROUP_VISUALS[rawType];
+  if (direct) return direct;
+
   const haystack = `${rawName} ${rawDescription} ${rawType} ${rawAudience}`;
 
-  // Very specific matching first
   if (
     haystack.includes("pool") ||
     haystack.includes("billiard") ||
@@ -175,7 +190,7 @@ function getGroupVisual(group) {
       image:
         "https://images.unsplash.com/photo-1507692049790-de58290a4334?q=80&w=1200&auto=format&fit=crop",
       icon: "hand-left-outline",
-      tone: "gold",
+      tone: "amber",
       label: "Women’s Prayer",
     };
   }
@@ -190,7 +205,7 @@ function getGroupVisual(group) {
       image:
         "https://images.unsplash.com/photo-1507692049790-de58290a4334?q=80&w=1200&auto=format&fit=crop",
       icon: "hand-left-outline",
-      tone: "gold",
+      tone: "amber",
       label: "Men’s Prayer",
     };
   }
@@ -200,7 +215,7 @@ function getGroupVisual(group) {
       image:
         "https://images.unsplash.com/photo-1507692049790-de58290a4334?q=80&w=1200&auto=format&fit=crop",
       icon: "hand-left-outline",
-      tone: "gold",
+      tone: "amber",
       label: "Prayer",
     };
   }
@@ -215,7 +230,7 @@ function getGroupVisual(group) {
       image:
         "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?q=80&w=1200&auto=format&fit=crop",
       icon: "sparkles-outline",
-      tone: "gold",
+      tone: "amber",
       label: "Young Adults",
     };
   }
@@ -248,7 +263,7 @@ function getGroupVisual(group) {
       image:
         "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?q=80&w=1200&auto=format&fit=crop",
       icon: "heart-outline",
-      tone: "gold",
+      tone: "amber",
       label: "Women",
     };
   }
@@ -270,16 +285,14 @@ function getGroupVisual(group) {
   }
 
   return {
-    image:
-      "https://images.unsplash.com/photo-1528605248644-14dd04022da1?q=80&w=1200&auto=format&fit=crop",
-    icon: "people-outline",
-    tone: "olive",
+    ...DEFAULT_GROUP_VISUAL,
     label: "Group",
   };
 }
 
 function formatGroupType(type) {
   if (!type) return "Church group";
+
   return String(type)
     .replace(/_/g, " ")
     .replace(/\b\w/g, (c) => c.toUpperCase());
@@ -292,6 +305,7 @@ function formatMeeting(group) {
   if (day && time) return `${day} · ${time}`;
   if (day) return day;
   if (time) return time;
+
   return "Meeting time to be confirmed";
 }
 
@@ -320,12 +334,12 @@ function StatusBadge({ status }) {
           paddingHorizontal: 10,
           paddingVertical: 6,
           borderRadius: 999,
-          backgroundColor: SOFT_OLIVE_BG,
+          backgroundColor: OLIVE_SOFT,
           borderWidth: 1,
-          borderColor: CARD_BORDER,
+          borderColor: OLIVE_BORDER,
         }}
       >
-        <Text style={{ color: DEEP_OLIVE, fontSize: 11, fontWeight: "900" }}>
+        <Text style={{ color: OLIVE, fontSize: 11, fontWeight: "900" }}>
           Joined
         </Text>
       </View>
@@ -339,12 +353,12 @@ function StatusBadge({ status }) {
           paddingHorizontal: 10,
           paddingVertical: 6,
           borderRadius: 999,
-          backgroundColor: SOFT_GOLD_BG,
+          backgroundColor: AMBER_SOFT,
           borderWidth: 1,
-          borderColor: CARD_BORDER,
+          borderColor: AMBER_BORDER,
         }}
       >
-        <Text style={{ color: HEAVENLY_GOLD, fontSize: 11, fontWeight: "900" }}>
+        <Text style={{ color: EVENT_AMBER, fontSize: 11, fontWeight: "900" }}>
           Invited
         </Text>
       </View>
@@ -358,12 +372,12 @@ function StatusBadge({ status }) {
           paddingHorizontal: 10,
           paddingVertical: 6,
           borderRadius: 999,
-          backgroundColor: SOFT_GOLD_BG,
+          backgroundColor: AMBER_SOFT,
           borderWidth: 1,
-          borderColor: CARD_BORDER,
+          borderColor: AMBER_BORDER,
         }}
       >
-        <Text style={{ color: HEAVENLY_GOLD, fontSize: 11, fontWeight: "900" }}>
+        <Text style={{ color: EVENT_AMBER, fontSize: 11, fontWeight: "900" }}>
           Pending
         </Text>
       </View>
@@ -383,30 +397,40 @@ function FilterCard({ label, description, icon, selected, count, onPress }) {
         borderRadius: 20,
         padding: 12,
         borderWidth: selected ? 2 : 1,
-        borderColor: selected ? HEAVENLY_GOLD : CARD_BORDER,
-        backgroundColor: theme.colors.surface,
+        borderColor: selected ? AMBER_BORDER : CARD_BORDER,
+        backgroundColor: SURFACE,
         opacity: pressed ? 0.82 : 1,
-        shadowColor: selected ? HEAVENLY_GOLD : "#000",
-        shadowOpacity: selected ? 0.09 : 0.04,
+        shadowColor: SHADOW,
+        shadowOpacity: selected ? 0.14 : 0.06,
         shadowRadius: 8,
         shadowOffset: { width: 0, height: 3 },
         elevation: selected ? 3 : 1,
       })}
     >
-      <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }}>
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+        }}
+      >
         <View
           style={{
             width: 34,
             height: 34,
             borderRadius: 17,
-            backgroundColor: selected ? SOFT_GOLD_BG : SOFT_OLIVE_BG,
+            backgroundColor: selected ? AMBER_SOFT : OLIVE_SOFT,
             alignItems: "center",
             justifyContent: "center",
             borderWidth: 1,
-            borderColor: selected ? HEAVENLY_GOLD : CARD_BORDER,
+            borderColor: selected ? AMBER_BORDER : OLIVE_BORDER,
           }}
         >
-          <Ionicons name={icon} size={18} color={selected ? HEAVENLY_GOLD : DEEP_OLIVE} />
+          <Ionicons
+            name={icon}
+            size={18}
+            color={selected ? EVENT_AMBER : OLIVE}
+          />
         </View>
 
         <View
@@ -417,14 +441,14 @@ function FilterCard({ label, description, icon, selected, count, onPress }) {
             paddingHorizontal: 7,
             alignItems: "center",
             justifyContent: "center",
-            backgroundColor: selected ? SOFT_GOLD_BG : SOFT_OLIVE_BG,
-            borderWidth: selected ? 1 : 0,
-            borderColor: selected ? CARD_BORDER : "transparent",
+            backgroundColor: selected ? AMBER_SOFT : OLIVE_SOFT,
+            borderWidth: 1,
+            borderColor: selected ? AMBER_BORDER : OLIVE_BORDER,
           }}
         >
           <Text
             style={{
-              color: selected ? HEAVENLY_GOLD : DEEP_OLIVE,
+              color: selected ? EVENT_AMBER : OLIVE,
               fontWeight: "900",
               fontSize: 12,
             }}
@@ -436,7 +460,7 @@ function FilterCard({ label, description, icon, selected, count, onPress }) {
 
       <Text
         style={{
-          color: selected ? HEAVENLY_GOLD : theme.colors.text,
+          color: selected ? EVENT_BROWN : TEXT,
           fontWeight: "900",
           fontSize: 14,
           marginTop: 10,
@@ -448,7 +472,7 @@ function FilterCard({ label, description, icon, selected, count, onPress }) {
 
       <Text
         style={{
-          color: theme.colors.muted,
+          color: MUTED,
           fontWeight: "700",
           fontSize: 11.5,
           lineHeight: 16,
@@ -475,35 +499,49 @@ export default function ChurchGroupsMember({ route, navigation }) {
   const [respondingInviteId, setRespondingInviteId] = useState(null);
   const [activeFilter, setActiveFilter] = useState("suggested");
   const [isAdmin, setIsAdmin] = useState(false);
-const [pendingAdminRequestCount, setPendingAdminRequestCount] = useState(0);
+  const [pendingAdminRequestCount, setPendingAdminRequestCount] = useState(0);
 
-  const churchName = church?.display_name || church?.name || routeChurchName || "Church";
+  const churchName =
+    church?.display_name || church?.name || routeChurchName || "Church";
+
   const initials = useMemo(() => safeInitials(churchName), [churchName]);
 
   const joinedGroups = useMemo(() => {
     return (groups || []).filter((group) => {
-      const status = String(membershipsByGroup?.[group.id]?.status || "").toLowerCase();
+      const status = String(
+        membershipsByGroup?.[group.id]?.status || ""
+      ).toLowerCase();
+
       return status === "approved";
     });
   }, [groups, membershipsByGroup]);
 
   const invitedGroups = useMemo(() => {
     return (groups || []).filter((group) => {
-      const status = String(membershipsByGroup?.[group.id]?.status || "").toLowerCase();
+      const status = String(
+        membershipsByGroup?.[group.id]?.status || ""
+      ).toLowerCase();
+
       return status === "invited";
     });
   }, [groups, membershipsByGroup]);
 
   const pendingGroups = useMemo(() => {
     return (groups || []).filter((group) => {
-      const status = String(membershipsByGroup?.[group.id]?.status || "").toLowerCase();
+      const status = String(
+        membershipsByGroup?.[group.id]?.status || ""
+      ).toLowerCase();
+
       return status === "pending";
     });
   }, [groups, membershipsByGroup]);
 
   const suggestedGroups = useMemo(() => {
     return (groups || []).filter((group) => {
-      const membershipStatus = String(membershipsByGroup?.[group.id]?.status || "").toLowerCase();
+      const membershipStatus = String(
+        membershipsByGroup?.[group.id]?.status || ""
+      ).toLowerCase();
+
       const visibility = String(group?.visibility || "church").toLowerCase();
       const audience = String(group?.audience || "everyone").toLowerCase();
 
@@ -521,6 +559,7 @@ const [pendingAdminRequestCount, setPendingAdminRequestCount] = useState(0);
     if (activeFilter === "joined") return joinedGroups;
     if (activeFilter === "invited") return invitedGroups;
     if (activeFilter === "pending") return pendingGroups;
+
     return suggestedGroups;
   }, [activeFilter, joinedGroups, invitedGroups, pendingGroups, suggestedGroups]);
 
@@ -531,7 +570,12 @@ const [pendingAdminRequestCount, setPendingAdminRequestCount] = useState(0);
       pending: pendingGroups.length,
       suggested: suggestedGroups.length,
     }),
-    [joinedGroups.length, invitedGroups.length, pendingGroups.length, suggestedGroups.length]
+    [
+      joinedGroups.length,
+      invitedGroups.length,
+      pendingGroups.length,
+      suggestedGroups.length,
+    ]
   );
 
   useEffect(() => {
@@ -541,7 +585,8 @@ const [pendingAdminRequestCount, setPendingAdminRequestCount] = useState(0);
       try {
         setLoading(true);
 
-        const { data: userData, error: userError } = await supabase.auth.getUser();
+        const { data: userData, error: userError } =
+          await supabase.auth.getUser();
 
         if (userError) {
           console.log("ChurchGroupsMember get user error:", userError);
@@ -554,19 +599,19 @@ const [pendingAdminRequestCount, setPendingAdminRequestCount] = useState(0);
         }
 
         if (churchId) {
-  const admin = await checkIsAdmin(churchId);
+          const admin = await checkIsAdmin(churchId);
 
-  await Promise.all([
-    loadChurch(churchId, alive),
-    loadGroups(churchId, alive),
-    uid ? loadMemberships(churchId, uid, alive) : Promise.resolve(),
-    admin ? loadPendingAdminRequestCount(churchId) : Promise.resolve(),
-  ]);
+          await Promise.all([
+            loadChurch(churchId, alive),
+            loadGroups(churchId, alive),
+            uid ? loadMemberships(churchId, uid, alive) : Promise.resolve(),
+            admin ? loadPendingAdminRequestCount(churchId) : Promise.resolve(),
+          ]);
 
-  if (!admin) {
-    setPendingAdminRequestCount(0);
-  }
-}
+          if (!admin) {
+            setPendingAdminRequestCount(0);
+          }
+        }
       } catch (e) {
         console.log("ChurchGroupsMember load error:", e);
         Alert.alert("Groups", "Could not load church groups right now.");
@@ -591,7 +636,9 @@ const [pendingAdminRequestCount, setPendingAdminRequestCount] = useState(0);
 
     if (error) {
       console.log("ChurchGroupsMember load church error:", error);
+
       if (alive) setChurch(null);
+
       return;
     }
 
@@ -609,12 +656,15 @@ const [pendingAdminRequestCount, setPendingAdminRequestCount] = useState(0);
 
     if (error) {
       console.log("ChurchGroupsMember load groups error:", error);
+
       if (alive) setGroups([]);
+
       return;
     }
 
     const visibleGroups = (data || []).filter((group) => {
       const status = String(group?.status || "").toLowerCase();
+
       return status !== "archived";
     });
 
@@ -630,11 +680,14 @@ const [pendingAdminRequestCount, setPendingAdminRequestCount] = useState(0);
 
     if (error) {
       console.log("ChurchGroupsMember load memberships error:", error);
+
       if (alive) setMembershipsByGroup({});
+
       return;
     }
 
     const map = {};
+
     (data || []).forEach((row) => {
       if (row?.group_id) {
         map[row.group_id] = row;
@@ -645,63 +698,68 @@ const [pendingAdminRequestCount, setPendingAdminRequestCount] = useState(0);
   }
 
   async function checkIsAdmin(id) {
-  try {
-    if (!id) {
+    try {
+      if (!id) {
+        setIsAdmin(false);
+        return false;
+      }
+
+      const { data, error } = await supabase.rpc("is_church_admin", {
+        target_church_id: id,
+      });
+
+      if (error) {
+        console.log("ChurchGroupsMember admin check error:", error);
+        setIsAdmin(false);
+        return false;
+      }
+
+      const admin = Boolean(data);
+
+      setIsAdmin(admin);
+
+      return admin;
+    } catch (e) {
+      console.log("ChurchGroupsMember admin check exception:", e);
       setIsAdmin(false);
       return false;
     }
-
-    const { data, error } = await supabase.rpc("is_church_admin", {
-      target_church_id: id,
-    });
-
-    if (error) {
-      console.log("ChurchGroupsMember admin check error:", error);
-      setIsAdmin(false);
-      return false;
-    }
-
-    const admin = Boolean(data);
-    setIsAdmin(admin);
-    return admin;
-  } catch (e) {
-    console.log("ChurchGroupsMember admin check exception:", e);
-    setIsAdmin(false);
-    return false;
   }
-}
 
-async function loadPendingAdminRequestCount(id) {
-  try {
-    if (!id) {
+  async function loadPendingAdminRequestCount(id) {
+    try {
+      if (!id) {
+        setPendingAdminRequestCount(0);
+        return;
+      }
+
+      const { count, error } = await supabase
+        .from("church_group_members")
+        .select("id", { count: "exact", head: true })
+        .eq("church_id", id)
+        .eq("status", "pending");
+
+      if (error) {
+        console.log("ChurchGroupsMember pending admin request count error:", error);
+        setPendingAdminRequestCount(0);
+        return;
+      }
+
+      setPendingAdminRequestCount(count || 0);
+    } catch (e) {
+      console.log("ChurchGroupsMember pending admin request count exception:", e);
       setPendingAdminRequestCount(0);
-      return;
     }
-
-    const { count, error } = await supabase
-      .from("church_group_members")
-      .select("id", { count: "exact", head: true })
-      .eq("church_id", id)
-      .eq("status", "pending");
-
-    if (error) {
-      console.log("ChurchGroupsMember pending admin request count error:", error);
-      setPendingAdminRequestCount(0);
-      return;
-    }
-
-    setPendingAdminRequestCount(count || 0);
-  } catch (e) {
-    console.log("ChurchGroupsMember pending admin request count exception:", e);
-    setPendingAdminRequestCount(0);
   }
-}
 
   async function handleAcceptInvite(group) {
     const membership = membershipsByGroup?.[group?.id];
 
     if (!membership?.id) {
-      Alert.alert("Invite not found", "We could not find this invite. Please refresh and try again.");
+      Alert.alert(
+        "Invite not found",
+        "We could not find this invite. Please refresh and try again."
+      );
       return;
     }
 
@@ -726,7 +784,11 @@ async function loadPendingAdminRequestCount(id) {
       }));
 
       setActiveFilter("joined");
-      Alert.alert("Invite accepted", `You’re now in ${group?.name || "this group"}.`);
+
+      Alert.alert(
+        "Invite accepted",
+        `You’re now in ${group?.name || "this group"}.`
+      );
     } catch (e) {
       console.log("ChurchGroupsMember accept invite error:", e);
       Alert.alert("Could not accept invite", e?.message || "Please try again.");
@@ -739,7 +801,10 @@ async function loadPendingAdminRequestCount(id) {
     const membership = membershipsByGroup?.[group?.id];
 
     if (!membership?.id) {
-      Alert.alert("Invite not found", "We could not find this invite. Please refresh and try again.");
+      Alert.alert(
+        "Invite not found",
+        "We could not find this invite. Please refresh and try again."
+      );
       return;
     }
 
@@ -776,7 +841,10 @@ async function loadPendingAdminRequestCount(id) {
     if (!group?.id || !churchId) return;
 
     if (!viewerId) {
-      Alert.alert("Please sign in", "You need to be signed in to request to join a group.");
+      Alert.alert(
+        "Please sign in",
+        "You need to be signed in to request to join a group."
+      );
       return;
     }
 
@@ -806,7 +874,10 @@ async function loadPendingAdminRequestCount(id) {
     }
 
     if (existingStatus === "pending") {
-      Alert.alert("Request pending", "Your request to join this group is already waiting for approval.");
+      Alert.alert(
+        "Request pending",
+        "Your request to join this group is already waiting for approval."
+      );
       return;
     }
 
@@ -827,7 +898,10 @@ async function loadPendingAdminRequestCount(id) {
 
       if (error) {
         console.log("ChurchGroupsMember request insert error:", error);
-        Alert.alert("Could not request to join", error?.message || "Please try again.");
+        Alert.alert(
+          "Could not request to join",
+          error?.message || "Please try again."
+        );
         return;
       }
 
@@ -848,38 +922,38 @@ async function loadPendingAdminRequestCount(id) {
   }
 
   useFocusEffect(
-  useCallback(() => {
-    if (!churchId) return;
+    useCallback(() => {
+      if (!churchId) return;
 
-    let alive = true;
+      let alive = true;
 
-    async function refreshOnFocus() {
-      try {
-        await loadGroups(churchId, alive);
+      async function refreshOnFocus() {
+        try {
+          await loadGroups(churchId, alive);
 
-        if (viewerId) {
-          await loadMemberships(churchId, viewerId, alive);
+          if (viewerId) {
+            await loadMemberships(churchId, viewerId, alive);
+          }
+
+          const admin = await checkIsAdmin(churchId);
+
+          if (admin) {
+            await loadPendingAdminRequestCount(churchId);
+          } else {
+            setPendingAdminRequestCount(0);
+          }
+        } catch (e) {
+          console.log("ChurchGroupsMember focus refresh error:", e);
         }
-
-        const admin = await checkIsAdmin(churchId);
-
-        if (admin) {
-          await loadPendingAdminRequestCount(churchId);
-        } else {
-          setPendingAdminRequestCount(0);
-        }
-      } catch (e) {
-        console.log("ChurchGroupsMember focus refresh error:", e);
       }
-    }
 
-    refreshOnFocus();
+      refreshOnFocus();
 
-    return () => {
-      alive = false;
-    };
-  }, [churchId, viewerId])
-);
+      return () => {
+        alive = false;
+      };
+    }, [churchId, viewerId])
+  );
 
   function renderChurchAvatar(size = 48) {
     const radius = size / 2;
@@ -894,7 +968,7 @@ async function loadPendingAdminRequestCount(id) {
             borderRadius: radius,
             borderWidth: 1,
             borderColor: CARD_BORDER,
-            backgroundColor: theme.colors.surfaceAlt,
+            backgroundColor: PREMIUM_CREAM,
           }}
         />
       );
@@ -906,14 +980,20 @@ async function loadPendingAdminRequestCount(id) {
           width: size,
           height: size,
           borderRadius: radius,
-          backgroundColor: SOFT_OLIVE_BG,
+          backgroundColor: OLIVE_SOFT,
           borderWidth: 1,
-          borderColor: CARD_BORDER,
+          borderColor: OLIVE_BORDER,
           alignItems: "center",
           justifyContent: "center",
         }}
       >
-        <Text style={{ color: DEEP_OLIVE, fontWeight: "900", fontSize: size > 40 ? 16 : 13 }}>
+        <Text
+          style={{
+            color: OLIVE,
+            fontWeight: "900",
+            fontSize: size > 40 ? 16 : 13,
+          }}
+        >
           {initials}
         </Text>
       </View>
@@ -925,6 +1005,7 @@ async function loadPendingAdminRequestCount(id) {
     let body =
       "There are no open groups to suggest right now. Restricted groups may be available by invitation or through a church leader.";
     let icon = "sparkles-outline";
+    let isAmberState = false;
 
     if (activeFilter === "joined") {
       title = "No groups joined yet";
@@ -934,14 +1015,18 @@ async function loadPendingAdminRequestCount(id) {
 
     if (activeFilter === "invited") {
       title = "No group invites";
-      body = "When a church leader invites you to a group, it will appear here for you to accept or decline.";
+      body =
+        "When a church leader invites you to a group, it will appear here for you to accept or decline.";
       icon = "mail-unread-outline";
+      isAmberState = true;
     }
 
     if (activeFilter === "pending") {
       title = "No pending requests";
-      body = "When you request to join a group, it will appear here while it waits for approval.";
+      body =
+        "When you request to join a group, it will appear here while it waits for approval.";
       icon = "time-outline";
+      isAmberState = true;
     }
 
     return (
@@ -950,7 +1035,7 @@ async function loadPendingAdminRequestCount(id) {
           marginTop: 8,
           padding: 18,
           borderRadius: 20,
-          backgroundColor: theme.colors.surface,
+          backgroundColor: SURFACE,
           borderWidth: 1,
           borderColor: CARD_BORDER,
           alignItems: "center",
@@ -961,9 +1046,9 @@ async function loadPendingAdminRequestCount(id) {
             width: 46,
             height: 46,
             borderRadius: 23,
-            backgroundColor: activeFilter === "pending" || activeFilter === "invited" ? SOFT_GOLD_BG : SOFT_OLIVE_BG,
+            backgroundColor: isAmberState ? AMBER_SOFT : OLIVE_SOFT,
             borderWidth: 1,
-            borderColor: CARD_BORDER,
+            borderColor: isAmberState ? AMBER_BORDER : OLIVE_BORDER,
             alignItems: "center",
             justifyContent: "center",
             marginBottom: 10,
@@ -972,17 +1057,17 @@ async function loadPendingAdminRequestCount(id) {
           <Ionicons
             name={icon}
             size={22}
-            color={activeFilter === "pending" || activeFilter === "invited" ? HEAVENLY_GOLD : DEEP_OLIVE}
+            color={isAmberState ? EVENT_AMBER : OLIVE}
           />
         </View>
 
-        <Text style={{ color: theme.colors.text, fontWeight: "900", fontSize: 16 }}>
+        <Text style={{ color: TEXT, fontWeight: "900", fontSize: 16 }}>
           {title}
         </Text>
 
         <Text
           style={{
-            color: theme.colors.muted,
+            color: MUTED,
             textAlign: "center",
             marginTop: 6,
             fontWeight: "700",
@@ -995,349 +1080,367 @@ async function loadPendingAdminRequestCount(id) {
     );
   }
 
-function renderGroupCard(group) {
-  const membership = membershipsByGroup[group.id] || null;
-  const membershipStatus = String(membership?.status || "").toLowerCase();
-  const isJoined = membershipStatus === "approved";
-  const isInvited = membershipStatus === "invited";
-  const isPending = membershipStatus === "pending";
-  const isRequesting = requestingGroupId === group.id;
-  const isResponding = respondingInviteId === group.id;
-  const audienceLabel = formatAudience(group?.audience);
-  const visual = getGroupVisual(group);
-  const isGoldVisual = visual.tone === "gold";
-  const visualAccent = isGoldVisual ? HEAVENLY_GOLD : DEEP_OLIVE;
-  const visualBg = isGoldVisual ? SOFT_GOLD_BG : SOFT_OLIVE_BG;
+  function renderGroupCard(group) {
+    const membership = membershipsByGroup[group.id] || null;
+    const membershipStatus = String(membership?.status || "").toLowerCase();
 
-  return (
-  <Pressable
-    key={group.id}
-    onPress={() =>
-      navigation.navigate("ChurchGroupDetail", {
-        churchId,
-        churchName,
-        group,
-        membershipStatus,
-      })
-    }
-      style={{
-        backgroundColor: theme.colors.surface,
-        borderRadius: 22,
-        borderWidth: 1,
-        borderColor: CARD_BORDER,
-        overflow: "hidden",
-        shadowColor: HEAVENLY_GOLD,
-        shadowOpacity: 0.07,
-        shadowRadius: 9,
-        shadowOffset: { width: 0, height: 4 },
-        elevation: 3,
-        marginBottom: 16,
-      }}
-    >
-      <View
-        style={{
-          height: 138,
-          width: "100%",
-          backgroundColor: theme.colors.surfaceAlt,
-        }}
+    const isJoined = membershipStatus === "approved";
+    const isInvited = membershipStatus === "invited";
+    const isPending = membershipStatus === "pending";
+    const isRequesting = requestingGroupId === group.id;
+    const isResponding = respondingInviteId === group.id;
+
+    const audienceLabel = formatAudience(group?.audience);
+    const visual = getGroupVisual(group);
+
+    const isAmberVisual = visual.tone === "amber" || visual.tone === "gold";
+    const visualAccent = isAmberVisual ? EVENT_AMBER : OLIVE;
+    const visualBg = isAmberVisual ? AMBER_SOFT : OLIVE_SOFT;
+    const visualBorder = isAmberVisual ? AMBER_BORDER : OLIVE_BORDER;
+
+    return (
+      <Pressable
+        key={group.id}
+        onPress={() =>
+          navigation.navigate("ChurchGroupDetail", {
+            churchId,
+            churchName,
+            group,
+            membershipStatus,
+          })
+        }
+        style={({ pressed }) => ({
+          backgroundColor: SURFACE,
+          borderRadius: 22,
+          borderWidth: 1,
+          borderColor: CARD_BORDER,
+          overflow: "hidden",
+          shadowColor: SHADOW,
+          shadowOpacity: 0.12,
+          shadowRadius: 9,
+          shadowOffset: { width: 0, height: 4 },
+          elevation: 3,
+          marginBottom: 16,
+          opacity: pressed ? 0.92 : 1,
+        })}
       >
-        <Image
-          source={{ uri: visual.image }}
-          style={{ width: "100%", height: 138 }}
-          resizeMode="cover"
-        />
-
         <View
           style={{
-            position: "absolute",
-            left: 0,
-            right: 0,
-            top: 0,
-            bottom: 0,
-            backgroundColor: "rgba(0,0,0,0.14)",
-          }}
-        />
-
-        <View
-          style={{
-            position: "absolute",
-            left: 14,
-            bottom: 14,
-            width: 44,
-            height: 44,
-            borderRadius: 22,
-            backgroundColor: visualAccent,
-            borderWidth: 2,
-            borderColor: theme.colors.surface,
-            alignItems: "center",
-            justifyContent: "center",
+            height: 138,
+            width: "100%",
+            backgroundColor: PREMIUM_CREAM,
           }}
         >
-          <Ionicons name={visual.icon} size={21} color="#fff" />
-        </View>
+          <Image
+            source={{ uri: visual.image }}
+            style={{ width: "100%", height: 138 }}
+            resizeMode="cover"
+          />
 
-        <View
-          style={{
-            position: "absolute",
-            right: 14,
-            bottom: 14,
-          }}
-        >
-          <StatusBadge status={membershipStatus} />
-        </View>
-      </View>
-
-      <View style={{ padding: 15 }}>
-        <Text
-          style={{
-            color: theme.colors.text,
-            fontSize: 20,
-            fontWeight: "900",
-            lineHeight: 25,
-          }}
-          numberOfLines={2}
-        >
-          {group.name || "Church group"}
-        </Text>
-
-        <Text
-          style={{
-            color: theme.colors.muted,
-            fontSize: 12.5,
-            fontWeight: "800",
-            marginTop: 4,
-          }}
-          numberOfLines={1}
-        >
-          {formatGroupType(group.type)}
-        </Text>
-
-        <View
-          style={{
-            flexDirection: "row",
-            flexWrap: "wrap",
-            gap: 7,
-            marginTop: 11,
-          }}
-        >
           <View
             style={{
-              paddingHorizontal: 10,
-              paddingVertical: 6,
-              borderRadius: 999,
-              backgroundColor: visualBg,
-              borderWidth: 1,
-              borderColor: CARD_BORDER,
+              position: "absolute",
+              left: 0,
+              right: 0,
+              top: 0,
+              bottom: 0,
+              backgroundColor: "rgba(0,0,0,0.14)",
+            }}
+          />
+
+          <View
+            style={{
+              position: "absolute",
+              left: 14,
+              bottom: 14,
+              width: 44,
+              height: 44,
+              borderRadius: 22,
+              backgroundColor: visualAccent,
+              borderWidth: 2,
+              borderColor: SURFACE,
+              alignItems: "center",
+              justifyContent: "center",
             }}
           >
-            <Text
-              style={{
-                color: visualAccent,
-                fontSize: 11,
-                fontWeight: "900",
-              }}
-            >
-              {visual.label || formatGroupType(group.type)}
-            </Text>
+            <Ionicons name={visual.icon} size={21} color="#fff" />
           </View>
 
-          {audienceLabel ? (
+          <View
+            style={{
+              position: "absolute",
+              right: 14,
+              bottom: 14,
+            }}
+          >
+            <StatusBadge status={membershipStatus} />
+          </View>
+        </View>
+
+        <View style={{ padding: 15 }}>
+          <Text
+            style={{
+              color: TEXT,
+              fontSize: 20,
+              fontWeight: "900",
+              lineHeight: 25,
+            }}
+            numberOfLines={2}
+          >
+            {group.name || "Church group"}
+          </Text>
+
+          <Text
+            style={{
+              color: MUTED,
+              fontSize: 12.5,
+              fontWeight: "800",
+              marginTop: 4,
+            }}
+            numberOfLines={1}
+          >
+            {formatGroupType(group.type)}
+          </Text>
+
+          <View
+            style={{
+              flexDirection: "row",
+              flexWrap: "wrap",
+              gap: 7,
+              marginTop: 11,
+            }}
+          >
             <View
               style={{
                 paddingHorizontal: 10,
                 paddingVertical: 6,
                 borderRadius: 999,
-                backgroundColor: SOFT_GOLD_BG,
+                backgroundColor: visualBg,
                 borderWidth: 1,
-                borderColor: CARD_BORDER,
+                borderColor: visualBorder,
               }}
             >
               <Text
                 style={{
-                  color: HEAVENLY_GOLD,
+                  color: visualAccent,
                   fontSize: 11,
                   fontWeight: "900",
                 }}
               >
-                {audienceLabel}
+                {visual.label || formatGroupType(group.type)}
               </Text>
             </View>
-          ) : null}
-        </View>
 
-        {group.description ? (
-          <Text
-            style={{
-              color: theme.colors.text2,
-              fontSize: 14,
-              fontWeight: "700",
-              lineHeight: 21,
-              marginTop: 12,
-            }}
-          >
-            {group.description}
-          </Text>
-        ) : null}
-
-        <View style={{ marginTop: 14, gap: 8 }}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-            <Ionicons name="calendar-outline" size={16} color={DEEP_OLIVE} />
-            <Text
-              style={{
-                color: theme.colors.muted,
-                fontSize: 13,
-                fontWeight: "800",
-                flex: 1,
-              }}
-            >
-              {formatMeeting(group)}
-            </Text>
+            {audienceLabel ? (
+              <View
+                style={{
+                  paddingHorizontal: 10,
+                  paddingVertical: 6,
+                  borderRadius: 999,
+                  backgroundColor: AMBER_SOFT,
+                  borderWidth: 1,
+                  borderColor: AMBER_BORDER,
+                }}
+              >
+                <Text
+                  style={{
+                    color: EVENT_AMBER,
+                    fontSize: 11,
+                    fontWeight: "900",
+                  }}
+                >
+                  {audienceLabel}
+                </Text>
+              </View>
+            ) : null}
           </View>
 
-          {group.area ? (
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-              <Ionicons name="location-outline" size={16} color={DEEP_OLIVE} />
-              <Text
-                style={{
-                  color: theme.colors.muted,
-                  fontSize: 13,
-                  fontWeight: "800",
-                  flex: 1,
-                }}
-              >
-                {group.area}
-              </Text>
-            </View>
-          ) : null}
-
-          {group.leader_name ? (
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-              <Ionicons name="person-outline" size={16} color={DEEP_OLIVE} />
-              <Text
-                style={{
-                  color: theme.colors.muted,
-                  fontSize: 13,
-                  fontWeight: "800",
-                  flex: 1,
-                }}
-              >
-                Led by {group.leader_name}
-              </Text>
-            </View>
-          ) : null}
-        </View>
-
-        <View style={{ marginTop: 15 }}>
-          {isJoined ? (
-            <View
+          {group.description ? (
+            <Text
               style={{
-                borderRadius: 999,
-                paddingVertical: 11,
-                alignItems: "center",
-                backgroundColor: SOFT_OLIVE_BG,
-                borderWidth: 1,
-                borderColor: CARD_BORDER,
+                color: TEXT_SOFT,
+                fontSize: 14,
+                fontWeight: "700",
+                lineHeight: 21,
+                marginTop: 12,
               }}
             >
-              <Text style={{ color: DEEP_OLIVE, fontWeight: "900" }}>
-                You’re in this group
+              {group.description}
+            </Text>
+          ) : null}
+
+          <View style={{ marginTop: 14, gap: 8 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <Ionicons name="calendar-outline" size={16} color={OLIVE} />
+
+              <Text
+                style={{
+                  color: MUTED,
+                  fontSize: 13,
+                  fontWeight: "800",
+                  flex: 1,
+                }}
+              >
+                {formatMeeting(group)}
               </Text>
             </View>
-          ) : isInvited ? (
-            <View style={{ flexDirection: "row", gap: 10 }}>
-              <Pressable
-                onPress={() => handleDeclineInvite(group)}
-                disabled={isResponding}
-                style={({ pressed }) => ({
-                  flex: 1,
-                  borderRadius: 999,
-                  paddingVertical: 11,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  backgroundColor: theme.colors.surface,
-                  borderWidth: 1,
-                  borderColor: CARD_BORDER,
-                  opacity: pressed || isResponding ? 0.75 : 1,
-                })}
-              >
-                <Text style={{ color: theme.colors.muted, fontWeight: "900" }}>
-                  Decline
-                </Text>
-              </Pressable>
 
-              <Pressable
-                onPress={() => handleAcceptInvite(group)}
-                disabled={isResponding}
-                style={({ pressed }) => ({
-                  flex: 1,
+            {group.area ? (
+              <View
+                style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
+              >
+                <Ionicons name="location-outline" size={16} color={OLIVE} />
+
+                <Text
+                  style={{
+                    color: MUTED,
+                    fontSize: 13,
+                    fontWeight: "800",
+                    flex: 1,
+                  }}
+                >
+                  {group.area}
+                </Text>
+              </View>
+            ) : null}
+
+            {group.leader_name ? (
+              <View
+                style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
+              >
+                <Ionicons name="person-outline" size={16} color={OLIVE} />
+
+                <Text
+                  style={{
+                    color: MUTED,
+                    fontSize: 13,
+                    fontWeight: "800",
+                    flex: 1,
+                  }}
+                >
+                  Led by {group.leader_name}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+
+          <View style={{ marginTop: 15 }}>
+            {isJoined ? (
+              <View
+                style={{
                   borderRadius: 999,
                   paddingVertical: 11,
                   alignItems: "center",
+                  backgroundColor: OLIVE_SOFT,
+                  borderWidth: 1,
+                  borderColor: OLIVE_BORDER,
+                }}
+              >
+                <Text style={{ color: OLIVE, fontWeight: "900" }}>
+                  You’re in this group
+                </Text>
+              </View>
+            ) : isInvited ? (
+              <View style={{ flexDirection: "row", gap: 10 }}>
+                <Pressable
+                  onPress={() => handleDeclineInvite(group)}
+                  disabled={isResponding}
+                  style={({ pressed }) => ({
+                    flex: 1,
+                    borderRadius: 999,
+                    paddingVertical: 11,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: SURFACE,
+                    borderWidth: 1,
+                    borderColor: CARD_BORDER,
+                    opacity: pressed || isResponding ? 0.75 : 1,
+                  })}
+                >
+                  <Text style={{ color: MUTED, fontWeight: "900" }}>
+                    Decline
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  onPress={() => handleAcceptInvite(group)}
+                  disabled={isResponding}
+                  style={({ pressed }) => ({
+                    flex: 1,
+                    borderRadius: 999,
+                    paddingVertical: 11,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: EVENT_AMBER,
+                    opacity: pressed || isResponding ? 0.75 : 1,
+                    flexDirection: "row",
+                    gap: 7,
+                  })}
+                >
+                  {isResponding ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Ionicons
+                      name="checkmark-circle-outline"
+                      size={17}
+                      color="#fff"
+                    />
+                  )}
+
+                  <Text style={{ color: "#fff", fontWeight: "900" }}>
+                    Accept
+                  </Text>
+                </Pressable>
+              </View>
+            ) : isPending ? (
+              <View
+                style={{
+                  borderRadius: 999,
+                  paddingVertical: 11,
+                  alignItems: "center",
+                  backgroundColor: AMBER_SOFT,
+                  borderWidth: 1,
+                  borderColor: AMBER_BORDER,
+                }}
+              >
+                <Text style={{ color: EVENT_AMBER, fontWeight: "900" }}>
+                  Request pending approval
+                </Text>
+              </View>
+            ) : (
+              <Pressable
+                onPress={() => handleRequestToJoin(group)}
+                disabled={isRequesting}
+                style={({ pressed }) => ({
+                  borderRadius: 999,
+                  paddingVertical: 12,
+                  alignItems: "center",
                   justifyContent: "center",
-                  backgroundColor: HEAVENLY_GOLD,
-                  opacity: pressed || isResponding ? 0.75 : 1,
+                  backgroundColor: EVENT_AMBER,
+                  opacity: pressed || isRequesting ? 0.75 : 1,
                   flexDirection: "row",
-                  gap: 7,
+                  gap: 8,
                 })}
               >
-                {isResponding ? (
+                {isRequesting ? (
                   <ActivityIndicator size="small" color="#fff" />
                 ) : (
-                  <Ionicons name="checkmark-circle-outline" size={17} color="#fff" />
+                  <Ionicons name="add-circle-outline" size={18} color="#fff" />
                 )}
 
-                <Text style={{ color: "#fff", fontWeight: "900" }}>Accept</Text>
+                <Text style={{ color: "#fff", fontWeight: "900" }}>
+                  {isRequesting ? "Sending request…" : "Request to join"}
+                </Text>
               </Pressable>
-            </View>
-          ) : isPending ? (
-            <View
-              style={{
-                borderRadius: 999,
-                paddingVertical: 11,
-                alignItems: "center",
-                backgroundColor: SOFT_GOLD_BG,
-                borderWidth: 1,
-                borderColor: CARD_BORDER,
-              }}
-            >
-              <Text style={{ color: HEAVENLY_GOLD, fontWeight: "900" }}>
-                Request pending approval
-              </Text>
-            </View>
-          ) : (
-            <Pressable
-              onPress={() => handleRequestToJoin(group)}
-              disabled={isRequesting}
-              style={({ pressed }) => ({
-                borderRadius: 999,
-                paddingVertical: 12,
-                alignItems: "center",
-                justifyContent: "center",
-                backgroundColor: HEAVENLY_GOLD,
-                opacity: pressed || isRequesting ? 0.75 : 1,
-                flexDirection: "row",
-                gap: 8,
-              })}
-            >
-              {isRequesting ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <Ionicons name="add-circle-outline" size={18} color="#fff" />
-              )}
-
-              <Text style={{ color: "#fff", fontWeight: "900" }}>
-                {isRequesting ? "Sending request…" : "Request to join"}
-              </Text>
-            </Pressable>
-          )}
+            )}
+          </View>
         </View>
-      </View>
-    </Pressable>
-  );
-}
+      </Pressable>
+    );
+  }
 
   return (
-    <Screen backgroundColor={theme.colors.bg} padded={false} style={{ flex: 1 }}>
+    <Screen backgroundColor={PREMIUM_CREAM} padded={false} style={{ flex: 1 }}>
       {({ bottomPad }) => (
         <ScrollView
           style={{ flex: 1 }}
@@ -1359,21 +1462,21 @@ function renderGroupCard(group) {
             <Pressable
               onPress={() => navigation.goBack()}
               hitSlop={10}
-              style={{
+              style={({ pressed }) => ({
                 width: 38,
                 height: 38,
                 borderRadius: 19,
-                backgroundColor: theme.colors.surface,
+                backgroundColor: pressed ? PREMIUM_CREAM : SURFACE,
                 borderWidth: 1,
-                borderColor: theme.colors.divider,
+                borderColor: CARD_BORDER,
                 alignItems: "center",
                 justifyContent: "center",
-              }}
+              })}
             >
-              <Ionicons name="chevron-back" size={22} color={DEEP_OLIVE} />
+              <Ionicons name="chevron-back" size={22} color={OLIVE} />
             </Pressable>
 
-            <Text style={{ color: theme.colors.text, fontSize: 18, fontWeight: "900" }}>
+            <Text style={{ color: TEXT, fontSize: 18, fontWeight: "900" }}>
               Groups
             </Text>
 
@@ -1382,13 +1485,13 @@ function renderGroupCard(group) {
 
           <View
             style={{
-              backgroundColor: theme.colors.surface,
+              backgroundColor: SURFACE,
               borderRadius: 22,
               padding: 16,
               borderWidth: 1,
               borderColor: CARD_BORDER,
-              shadowColor: HEAVENLY_GOLD,
-              shadowOpacity: 0.08,
+              shadowColor: SHADOW,
+              shadowOpacity: 0.18,
               shadowRadius: 9,
               shadowOffset: { width: 0, height: 3 },
               elevation: 3,
@@ -1405,7 +1508,7 @@ function renderGroupCard(group) {
                 width: 180,
                 height: 130,
                 borderRadius: 40,
-                backgroundColor: SOFT_GOLD_BG,
+                backgroundColor: AMBER_SOFT,
               }}
             />
 
@@ -1418,7 +1521,7 @@ function renderGroupCard(group) {
                 width: 130,
                 height: 130,
                 borderRadius: 65,
-                backgroundColor: SOFT_OLIVE_BG,
+                backgroundColor: OLIVE_SOFT,
               }}
             />
 
@@ -1426,13 +1529,13 @@ function renderGroupCard(group) {
               {renderChurchAvatar(48)}
 
               <View style={{ flex: 1 }}>
-                <Text style={{ color: theme.colors.text, fontSize: 22, fontWeight: "900" }}>
+                <Text style={{ color: TEXT, fontSize: 22, fontWeight: "900" }}>
                   Church Groups
                 </Text>
 
                 <Text
                   style={{
-                    color: theme.colors.muted,
+                    color: MUTED,
                     fontSize: 12.5,
                     fontWeight: "800",
                     marginTop: 2,
@@ -1448,101 +1551,106 @@ function renderGroupCard(group) {
                   width: 38,
                   height: 38,
                   borderRadius: 19,
-                  backgroundColor: SOFT_GOLD_BG,
+                  backgroundColor: AMBER_SOFT,
                   borderWidth: 1,
-                  borderColor: CARD_BORDER,
+                  borderColor: AMBER_BORDER,
                   alignItems: "center",
                   justifyContent: "center",
                 }}
               >
-                <Ionicons name="people-outline" size={20} color={HEAVENLY_GOLD} />
+                <Ionicons name="people-outline" size={20} color={EVENT_AMBER} />
               </View>
             </View>
 
             <Text
               style={{
-                color: theme.colors.muted,
+                color: MUTED,
                 fontSize: 14,
                 fontWeight: "700",
                 lineHeight: 20,
                 marginTop: 14,
               }}
             >
-              Check the groups you’re part of, respond to invites, see requests waiting
-              for approval, and discover suggested groups from your church.
+              Check the groups you’re part of, respond to invites, see requests
+              waiting for approval, and discover suggested groups from your
+              church.
             </Text>
           </View>
 
           {isAdmin && pendingAdminRequestCount > 0 ? (
-  <View
-    style={{
-      backgroundColor: SOFT_GOLD_BG,
-      borderRadius: 20,
-      borderWidth: 1,
-      borderColor: CARD_BORDER,
-      padding: 14,
-      marginBottom: 14,
-      flexDirection: "row",
-      alignItems: "center",
-    }}
-  >
-    <View
-      style={{
-        width: 42,
-        height: 42,
-        borderRadius: 21,
-        backgroundColor: theme.colors.surface,
-        borderWidth: 1,
-        borderColor: CARD_BORDER,
-        alignItems: "center",
-        justifyContent: "center",
-        marginRight: 12,
-      }}
-    >
-      <Ionicons name="alert-circle-outline" size={22} color={HEAVENLY_GOLD} />
-    </View>
+            <View
+              style={{
+                backgroundColor: AMBER_SOFT,
+                borderRadius: 20,
+                borderWidth: 1,
+                borderColor: AMBER_BORDER,
+                padding: 14,
+                marginBottom: 14,
+                flexDirection: "row",
+                alignItems: "center",
+              }}
+            >
+              <View
+                style={{
+                  width: 42,
+                  height: 42,
+                  borderRadius: 21,
+                  backgroundColor: SURFACE,
+                  borderWidth: 1,
+                  borderColor: CARD_BORDER,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginRight: 12,
+                }}
+              >
+                <Ionicons
+                  name="alert-circle-outline"
+                  size={22}
+                  color={EVENT_AMBER}
+                />
+              </View>
 
-    <View style={{ flex: 1 }}>
-      <Text style={{ color: theme.colors.text, fontSize: 15, fontWeight: "900" }}>
-        {pendingAdminRequestCount} group request
-        {pendingAdminRequestCount === 1 ? "" : "s"} need review
-      </Text>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: TEXT, fontSize: 15, fontWeight: "900" }}>
+                  {pendingAdminRequestCount} group request
+                  {pendingAdminRequestCount === 1 ? "" : "s"} need review
+                </Text>
 
-      <Text
-        style={{
-          color: theme.colors.muted,
-          fontSize: 12.5,
-          fontWeight: "700",
-          lineHeight: 18,
-          marginTop: 3,
-        }}
-      >
-        Review pending requests from your church group admin area.
-      </Text>
-    </View>
+                <Text
+                  style={{
+                    color: MUTED,
+                    fontSize: 12.5,
+                    fontWeight: "700",
+                    lineHeight: 18,
+                    marginTop: 3,
+                  }}
+                >
+                  Review pending requests from your church group admin area.
+                </Text>
+              </View>
 
-    <Pressable
-      onPress={() =>
-        navigation.navigate("ChurchGroupsAdmin", {
-          churchId,
-          churchName,
-        })
-      }
-      style={({ pressed }) => ({
-        marginLeft: 10,
-        paddingVertical: 8,
-        paddingHorizontal: 11,
-        borderRadius: 999,
-        backgroundColor: HEAVENLY_GOLD,
-        opacity: pressed ? 0.75 : 1,
-      })}
-    >
-      <Text style={{ color: "#fff", fontSize: 12, fontWeight: "900" }}>
-        Review
-      </Text>
-    </Pressable>
-  </View>
-) : null}
+              <Pressable
+                onPress={() =>
+                  navigation.navigate("ChurchGroupsAdmin", {
+                    churchId,
+                    churchName,
+                  })
+                }
+                style={({ pressed }) => ({
+                  marginLeft: 10,
+                  paddingVertical: 8,
+                  paddingHorizontal: 11,
+                  borderRadius: 999,
+                  backgroundColor: EVENT_AMBER,
+                  opacity: pressed ? 0.75 : 1,
+                })}
+              >
+                <Text style={{ color: "#fff", fontSize: 12, fontWeight: "900" }}>
+                  Review
+                </Text>
+              </Pressable>
+            </View>
+          ) : null}
 
           <View
             style={{
@@ -1568,14 +1676,17 @@ function renderGroupCard(group) {
 
           {loading ? (
             <View style={{ paddingVertical: 30, alignItems: "center" }}>
-              <ActivityIndicator size="large" color={HEAVENLY_GOLD} />
-              <Text style={{ color: theme.colors.muted, marginTop: 8, fontWeight: "700" }}>
+              <ActivityIndicator size="large" color={EVENT_AMBER} />
+
+              <Text style={{ color: MUTED, marginTop: 8, fontWeight: "700" }}>
                 Loading groups…
               </Text>
             </View>
           ) : null}
 
-          {!loading && filteredGroups.length === 0 ? renderFilterEmptyState() : null}
+          {!loading && filteredGroups.length === 0
+            ? renderFilterEmptyState()
+            : null}
 
           {!loading ? filteredGroups.map((group) => renderGroupCard(group)) : null}
         </ScrollView>

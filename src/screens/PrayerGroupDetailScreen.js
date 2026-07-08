@@ -283,6 +283,36 @@ function PrayerGroupBanner({
   );
 }
 
+function formatChurchMeeting(group) {
+  const day = group?.meeting_day || "";
+  const time = group?.meeting_time || "";
+
+  if (day && time) return `${day} · ${time}`;
+  if (day) return day;
+  if (time) return time;
+
+  return "Meeting time to be confirmed";
+}
+
+function formatChurchMeetingFormat(value) {
+  const format = String(value || "").toLowerCase();
+
+  if (format === "physical") return "In person";
+  if (format === "online") return "Online";
+  if (format === "hybrid") return "In person + online";
+  if (format === "app_only") return "App-only prayer space";
+
+  return "Format to be confirmed";
+}
+
+function buildChurchPrayerSpaceText(churchGroup) {
+  if (!churchGroup) {
+    return "This official church prayer space is open for prayer requests when the group meets and when a member would like prayer during the week.";
+  }
+
+  return "This prayer space is open for prayer requests when the group meets and when a member would like prayer during the week.";
+}
+
 function formatDateTime(ts) {
   if (!ts) return "";
 
@@ -440,7 +470,7 @@ function NewGroupPrayerModal({
                     numberOfLines={1}
                     adjustsFontSizeToFit
                   >
-                    Group prayer
+                    Prayer request
                   </Text>
 
                   <Text
@@ -453,7 +483,7 @@ function NewGroupPrayerModal({
                     }}
                     numberOfLines={2}
                   >
-                    Share a request inside {groupName || "this prayer group"}.
+                    Share a prayer request inside {groupName || "this Prayer Space"}.
                   </Text>
                 </View>
               </View>
@@ -911,8 +941,9 @@ export default function PrayerGroupDetailScreen({
   const routeGroup = route?.params?.group || null;
   const groupId = route?.params?.groupId || routeGroup?.id || null;
 
-  const [group, setGroup] = useState(routeGroup);
-  const [requests, setRequests] = useState([]);
+ const [group, setGroup] = useState(routeGroup);
+const [linkedChurchGroup, setLinkedChurchGroup] = useState(null);
+const [requests, setRequests] = useState([]);
 
   const [loading, setLoading] = useState(true);
 const [refreshing, setRefreshing] = useState(false);
@@ -1161,24 +1192,45 @@ const memberActionsPanResponder = useRef(
     [requests]
   );
 
-  const loadGroup = useCallback(async () => {
-    if (!groupId) return;
+const loadGroup = useCallback(async () => {
+  if (!groupId) return;
 
-    try {
-      const { data, error } = await supabase
-        .from("prayer_groups")
-        .select("id, name, description, privacy, group_type, created_at")
-        .eq("id", groupId)
+  try {
+    const { data, error } = await supabase
+      .from("prayer_groups")
+      .select(
+        "id, name, description, privacy, group_type, church_id, church_group_id, banner_image_path, banner_updated_at, created_at"
+      )
+      .eq("id", groupId)
+      .single();
+
+    if (error) throw error;
+
+    setGroup(data || null);
+
+    if (data?.church_group_id) {
+      const { data: churchGroupData, error: churchGroupError } = await supabase
+        .from("church_groups")
+        .select(
+          "id, church_id, name, type, description, area, meeting_day, meeting_time, meeting_format, leader_name, status, is_public, audience, visibility, has_prayer_space"
+        )
+        .eq("id", data.church_group_id)
         .single();
 
-      if (error) throw error;
-
-      setGroup(data || null);
-    } catch (e) {
-      console.log("Error loading prayer group", e);
-      setErrorText("Could not load this prayer group.");
+      if (churchGroupError) {
+        console.log("Error loading linked church group", churchGroupError);
+        setLinkedChurchGroup(null);
+      } else {
+        setLinkedChurchGroup(churchGroupData || null);
+      }
+    } else {
+      setLinkedChurchGroup(null);
     }
-  }, [groupId]);
+  } catch (e) {
+    console.log("Error loading prayer group", e);
+    setErrorText("Could not load this prayer group.");
+  }
+}, [groupId]);
 
   const loadRequests = useCallback(async () => {
     if (!groupId) return;
@@ -1866,7 +1918,7 @@ async function handleSaveGroupName() {
         group_type: editedGroupType || "other",
       })
       .eq("id", groupId)
-      .select("id, name, description, privacy, group_type, created_at")
+      .select("id, name, description, privacy, group_type, church_id, church_group_id, banner_image_path, banner_updated_at, created_at")
       .single();
 
     if (error) throw error;
@@ -4589,116 +4641,164 @@ const renderPrayedPeopleModal = () => (
             subtitle={headerSubtitle}
           />
 
-          {group?.description ? (
+<View
+  style={{
+    margin: 12,
+    marginTop: 12,
+    padding: 14,
+    borderRadius: 22,
+    backgroundColor: PREMIUM_CREAM,
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
+  }}
+>
+  <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
+    <View
+      style={{
+        width: 30,
+        height: 30,
+        borderRadius: 999,
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: group?.group_type === "church" ? AMBER_SOFT : OLIVE_SOFT,
+        borderWidth: 1,
+        borderColor: group?.group_type === "church" ? AMBER_BORDER : OLIVE_BORDER,
+        marginRight: 10,
+        marginTop: 1,
+      }}
+    >
+      <Ionicons
+        name={group?.group_type === "church" ? "business-outline" : "information-circle-outline"}
+        size={16}
+        color={group?.group_type === "church" ? EVENT_AMBER : OLIVE}
+      />
+    </View>
+
+    <View style={{ flex: 1 }}>
+      <Text
+        style={{
+          color: group?.group_type === "church" ? EVENT_BROWN : OLIVE,
+          fontSize: 11,
+          lineHeight: 14,
+          fontWeight: "900",
+          textTransform: "uppercase",
+          letterSpacing: 0.5,
+          marginBottom: 4,
+        }}
+      >
+        {group?.group_type === "church"
+          ? "Official church prayer space"
+          : "About this group"}
+      </Text>
+
+      <Text
+        style={{
+          color: TEXT,
+          fontSize: 13.5,
+          lineHeight: 20,
+          fontWeight: "750",
+        }}
+      >
+        {group?.description ||
+          linkedChurchGroup?.description ||
+          (group?.group_type === "church"
+            ? "A shared prayer space for this church group."
+            : "Add a short description so members know the heart and purpose of this group.")}
+      </Text>
+
+      {group?.group_type === "church" ? (
+        <>
+          <Text
+            style={{
+              color: MUTED,
+              fontSize: 12.5,
+              lineHeight: 18,
+              fontWeight: "700",
+              marginTop: 8,
+            }}
+          >
+            {buildChurchPrayerSpaceText(linkedChurchGroup)}
+          </Text>
+
+          <View
+            style={{
+              flexDirection: "row",
+              flexWrap: "wrap",
+              gap: 7,
+              marginTop: 11,
+            }}
+          >
             <View
               style={{
-                margin: 12,
-                marginTop: 12,
-                padding: 14,
-                borderRadius: 22,
-                backgroundColor: PREMIUM_CREAM,
+                paddingHorizontal: 10,
+                paddingVertical: 6,
+                borderRadius: 999,
+                backgroundColor: AMBER_SOFT,
                 borderWidth: 1,
-                borderColor: CARD_BORDER,
-                flexDirection: "row",
-                alignItems: "flex-start",
+                borderColor: AMBER_BORDER,
               }}
             >
-              <View
-                style={{
-                  width: 30,
-                  height: 30,
-                  borderRadius: 999,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  backgroundColor: OLIVE_SOFT,
-                  borderWidth: 1,
-                  borderColor: OLIVE_BORDER,
-                  marginRight: 10,
-                  marginTop: 1,
-                }}
-              >
-                <Ionicons
-                  name="information-circle-outline"
-                  size={16}
-                  color={OLIVE}
-                />
-              </View>
-
-              <View style={{ flex: 1 }}>
-                <Text
-                  style={{
-                    color: OLIVE,
-                    fontSize: 11,
-                    lineHeight: 14,
-                    fontWeight: "900",
-                    textTransform: "uppercase",
-                    letterSpacing: 0.5,
-                    marginBottom: 4,
-                  }}
-                >
-                  About this group
-                </Text>
-
-                <Text
-                  style={{
-                    color: TEXT,
-                    fontSize: 13.5,
-                    lineHeight: 20,
-                    fontWeight: "750",
-                  }}
-                >
-                  {group.description}
-                </Text>
-              </View>
-            </View>
-          ) : (
-            <View
-              style={{
-                margin: 12,
-                marginTop: 12,
-                padding: 14,
-                borderRadius: 22,
-                backgroundColor: PREMIUM_CREAM,
-                borderWidth: 1,
-                borderColor: CARD_BORDER,
-                flexDirection: "row",
-                alignItems: "center",
-              }}
-            >
-              <View
-                style={{
-                  width: 30,
-                  height: 30,
-                  borderRadius: 999,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  backgroundColor: AMBER_SOFT,
-                  borderWidth: 1,
-                  borderColor: AMBER_BORDER,
-                  marginRight: 10,
-                }}
-              >
-                <Ionicons
-                  name="information-circle-outline"
-                  size={16}
-                  color={EVENT_AMBER}
-                />
-              </View>
-
               <Text
                 style={{
-                  flex: 1,
-                  color: MUTED,
-                  fontSize: 13,
-                  lineHeight: 19,
-                  fontWeight: "700",
+                  color: EVENT_BROWN,
+                  fontSize: 11,
+                  fontWeight: "900",
                 }}
               >
-                Add a short description so members know the heart and purpose of
-                this group.
+                {formatChurchMeetingFormat(linkedChurchGroup?.meeting_format)}
               </Text>
             </View>
-          )}
+
+            <View
+              style={{
+                paddingHorizontal: 10,
+                paddingVertical: 6,
+                borderRadius: 999,
+                backgroundColor: OLIVE_SOFT,
+                borderWidth: 1,
+                borderColor: OLIVE_BORDER,
+              }}
+            >
+              <Text
+                style={{
+                  color: OLIVE,
+                  fontSize: 11,
+                  fontWeight: "900",
+                }}
+                numberOfLines={1}
+              >
+                {linkedChurchGroup?.area || "Meeting place to be confirmed"}
+              </Text>
+            </View>
+
+            <View
+              style={{
+                paddingHorizontal: 10,
+                paddingVertical: 6,
+                borderRadius: 999,
+                backgroundColor: SURFACE,
+                borderWidth: 1,
+                borderColor: CARD_BORDER,
+              }}
+            >
+              <Text
+                style={{
+                  color: MUTED,
+                  fontSize: 11,
+                  fontWeight: "900",
+                }}
+                numberOfLines={1}
+              >
+                {formatChurchMeeting(linkedChurchGroup)}
+              </Text>
+            </View>
+          </View>
+        </>
+      ) : null}
+    </View>
+  </View>
+</View>
+           
         </View>
 
         <Pressable
@@ -4727,7 +4827,7 @@ const renderPrayedPeopleModal = () => (
               fontWeight: "900",
             }}
           >
-            + New group prayer
+            + New prayer request
           </Text>
         </Pressable>
 
@@ -5173,7 +5273,7 @@ const renderPrayedPeopleModal = () => (
                 numberOfLines={1}
                 adjustsFontSizeToFit
               >
-                Prayer Group
+                {group?.group_type === "church" ? "Church Prayer Space" : "Prayer Space"}
               </Text>
 
               <Text

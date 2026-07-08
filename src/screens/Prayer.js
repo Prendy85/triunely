@@ -1,6 +1,7 @@
 // src/screens/Prayer.js
 import { Ionicons } from "@expo/vector-icons";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useFocusEffect } from "@react-navigation/native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -13,6 +14,7 @@ import {
   Pressable,
   ScrollView,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { Swipeable } from "react-native-gesture-handler";
@@ -360,17 +362,36 @@ function PrayerGroupsFullScreen({
 }) {
   const insets = useSafeAreaInsets();
   const [activeGroupTab, setActiveGroupTab] = useState("my");
+  const [groupSearchText, setGroupSearchText] = useState("");
 
-  const privateGroups = (groups || []).filter(
-    (group) => group.group_type !== "church"
-  );
+const privateGroups = (groups || []).filter(
+  (group) => group.group_type !== "church"
+);
 
-  const churchGroups = (groups || []).filter(
-    (group) => group.group_type === "church"
-  );
+const churchGroups = (groups || []).filter(
+  (group) => group.group_type === "church"
+);
 
-  const visibleGroups =
-    activeGroupTab === "church" ? churchGroups : privateGroups;
+const baseVisibleGroups =
+  activeGroupTab === "church" ? churchGroups : privateGroups;
+
+const normalizedSearch = groupSearchText.trim().toLowerCase();
+
+const visibleGroups = normalizedSearch
+  ? baseVisibleGroups.filter((group) => {
+      const searchableText = [
+        group?.name,
+        group?.description,
+        group?.group_type,
+        group?.privacy,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      return searchableText.includes(normalizedSearch);
+    })
+  : baseVisibleGroups;
 
   return (
     <Modal
@@ -427,7 +448,7 @@ function PrayerGroupsFullScreen({
                   numberOfLines={1}
                   adjustsFontSizeToFit
                 >
-                  Prayer Groups
+                  Prayer Spaces
                 </Text>
 
                 <Text
@@ -440,7 +461,7 @@ function PrayerGroupsFullScreen({
                   }}
                   numberOfLines={2}
                 >
-                  Shared spaces for church, family, friends, and ministry prayer.
+                  Shared spaces for family, friends, ministry, and church prayer.
                 </Text>
               </View>
 
@@ -517,7 +538,7 @@ function PrayerGroupsFullScreen({
                       fontWeight: "900",
                     }}
                   >
-                    My prayer groups
+                    My Prayer Spaces
                   </Text>
 
                   <Text
@@ -529,8 +550,7 @@ function PrayerGroupsFullScreen({
                       fontWeight: "700",
                     }}
                   >
-                    Groups you create will appear here so you can return to them
-                    later.
+                   Create dedicated spaces for family, friends, ministry teams, or trusted people to share prayer requests, pray together, and encourage one another.
                   </Text>
                 </View>
               </View>
@@ -561,7 +581,7 @@ function PrayerGroupsFullScreen({
                     fontWeight: "900",
                   }}
                 >
-                  + Create new group
+                  + Create new prayer space
                 </Text>
               </Pressable>
             </View>
@@ -772,6 +792,63 @@ function PrayerGroupsFullScreen({
                 })}
               </View>
             ) : null}
+
+            <View
+  style={{
+    marginBottom: 14,
+    backgroundColor: SURFACE,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
+    paddingHorizontal: 13,
+    paddingVertical: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    shadowColor: SHADOW,
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 1,
+  }}
+>
+  <Ionicons name="search-outline" size={18} color={MUTED} />
+
+  <TextInput
+    value={groupSearchText}
+    onChangeText={setGroupSearchText}
+    placeholder={
+      activeGroupTab === "church"
+        ? "Search church prayer spaces"
+        : "Search my prayer spaces"
+    }
+    placeholderTextColor="rgba(107, 114, 128, 0.72)"
+    style={{
+      flex: 1,
+      marginLeft: 9,
+      color: TEXT,
+      fontSize: 14,
+      fontWeight: "700",
+      paddingVertical: 4,
+    }}
+  />
+
+  {groupSearchText.trim() ? (
+    <Pressable
+      onPress={() => setGroupSearchText("")}
+      hitSlop={10}
+      style={({ pressed }) => ({
+        width: 28,
+        height: 28,
+        borderRadius: 999,
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: pressed ? OLIVE_SOFT : PREMIUM_CREAM,
+      })}
+    >
+      <Ionicons name="close" size={16} color={MUTED} />
+    </Pressable>
+  ) : null}
+</View>
             <View
   style={{
     marginBottom: 14,
@@ -807,7 +884,7 @@ function PrayerGroupsFullScreen({
         fontWeight: "900",
       }}
     >
-      My Groups
+      My Prayer Spaces
     </Text>
   </Pressable>
 
@@ -830,7 +907,7 @@ function PrayerGroupsFullScreen({
         fontWeight: "900",
       }}
     >
-      Church Groups
+      Church Prayer Spaces
     </Text>
   </Pressable>
 </View>
@@ -855,7 +932,7 @@ function PrayerGroupsFullScreen({
                     fontWeight: "700",
                   }}
                 >
-                  Loading prayer groups…
+                  Loading prayer spaces…
                 </Text>
               </View>
             ) : visibleGroups.length === 0? (
@@ -898,9 +975,11 @@ function PrayerGroupsFullScreen({
     textAlign: "center",
   }}
 >
-  {activeGroupTab === "church"
-    ? "No church groups yet"
-    : "No private groups yet"}
+  {normalizedSearch
+  ? "No matching groups"
+  : activeGroupTab === "church"
+    ? "No church prayer spaces yet"
+    : "No prayer spaces yet"}
 </Text>
 
                 <Text
@@ -913,149 +992,75 @@ function PrayerGroupsFullScreen({
                     textAlign: "center",
                   }}
                 >
-                 {activeGroupTab === "church"
-  ? "Church prayer groups will appear here when your church creates official prayer spaces."
-  : "Create a private group for family, friends, youth, ministry, or trusted prayer partners."}
+                {normalizedSearch
+  ? "Try searching by group name, type, or description."
+  : activeGroupTab === "church"
+    ? "Church Prayer Spaces will appear here when your church enables prayer for an official church group."
+    : "Create a Prayer Space for family, friends, youth, ministry, or trusted prayer partners."}
                 </Text>
               </View>
-            ) : (
-visibleGroups.map((group) => {
-  const memberLabel =
-    (group.member_count || 0) === 1
-      ? "1 member"
-      : `${group.member_count || 0} members`;
+) : (
+  visibleGroups.map((group) => {
+    const memberLabel =
+      (group.member_count || 0) === 1
+        ? "1 member"
+        : `${group.member_count || 0} members`;
 
-  const subtitle = `${prettyGroupType(group.group_type)} · ${prettyPrivacy(
-    group.privacy
-  )} · ${memberLabel}`;
+    const subtitle =
+      group.group_type === "church"
+        ? `Official Church Prayer Space · ${memberLabel} · Tap to view`
+        : `${prettyGroupType(group.group_type)} · ${prettyPrivacy(
+            group.privacy
+          )} · ${memberLabel}`;
 
-  return (
-    <Pressable
-      key={group.id}
-      onPress={() => onOpenGroup?.(group)}
-      style={({ pressed }) => ({
-        marginBottom: 12,
-        padding: 0,
-        borderRadius: 28,
-        backgroundColor: SURFACE,
-        borderWidth: 1,
-        borderColor: CARD_BORDER,
-        shadowColor: SHADOW,
-        shadowOpacity: 0.07,
-        shadowRadius: 13,
-        shadowOffset: { width: 0, height: 5 },
-        elevation: 2,
-        overflow: "hidden",
-        transform: [{ scale: pressed ? 0.985 : 1 }],
-      })}
-    >
-      <PrayerGroupBanner
-        groupType={group.group_type}
-        title={group.name}
-        subtitle={subtitle}
-        compact
-        rightContent={
-          <View
-            style={{
-              width: 30,
-              height: 30,
-              borderRadius: 999,
-              alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: "rgba(255, 255, 255, 0.82)",
-              borderWidth: 1,
-              borderColor: "rgba(255, 255, 255, 0.84)",
-              marginLeft: 10,
-            }}
-          >
-            <Ionicons name="chevron-forward" size={16} color={TEXT} />
-          </View>
-        }
-      />
-
-      {group.description ? (
-        <View
-          style={{
-            margin: 12,
-            marginTop: 10,
-            paddingHorizontal: 15,
-            paddingVertical: 14,
-            borderRadius: 22,
-            backgroundColor: PREMIUM_CREAM,
-            borderWidth: 1,
-            borderColor: "rgba(15, 23, 42, 0.07)",
-          }}
-        >
-          <Text
-            style={{
-              color: OLIVE,
-              fontSize: 11,
-              lineHeight: 14,
-              fontWeight: "900",
-              textTransform: "uppercase",
-              letterSpacing: 0.55,
-              marginBottom: 5,
-            }}
-          >
-            About this group
-          </Text>
-
-          <Text
-            style={{
-              color: TEXT,
-              fontSize: 14,
-              lineHeight: 21,
-              fontWeight: "750",
-            }}
-            numberOfLines={3}
-          >
-            {group.description}
-          </Text>
-        </View>
-      ) : (
-        <View
-          style={{
-            margin: 12,
-            marginTop: 10,
-            paddingHorizontal: 15,
-            paddingVertical: 14,
-            borderRadius: 22,
-            backgroundColor: PREMIUM_CREAM,
-            borderWidth: 1,
-            borderColor: "rgba(15, 23, 42, 0.07)",
-          }}
-        >
-          <Text
-            style={{
-              color: OLIVE,
-              fontSize: 11,
-              lineHeight: 14,
-              fontWeight: "900",
-              textTransform: "uppercase",
-              letterSpacing: 0.55,
-              marginBottom: 5,
-            }}
-          >
-            About this group
-          </Text>
-
-          <Text
-            style={{
-              color: MUTED,
-              fontSize: 13.5,
-              lineHeight: 20,
-              fontWeight: "700",
-            }}
-            numberOfLines={2}
-          >
-            Add a short description so members know the heart and purpose of this group.
-          </Text>
-        </View>
-      )}
-    </Pressable>
-  );
-})
-            )}
+    return (
+      <Pressable
+        key={group.id}
+        onPress={() => onOpenGroup?.(group)}
+        style={({ pressed }) => ({
+          marginBottom: 12,
+          padding: 0,
+          borderRadius: 28,
+          backgroundColor: SURFACE,
+          borderWidth: 1,
+          borderColor: CARD_BORDER,
+          shadowColor: SHADOW,
+          shadowOpacity: 0.07,
+          shadowRadius: 13,
+          shadowOffset: { width: 0, height: 5 },
+          elevation: 2,
+          overflow: "hidden",
+          transform: [{ scale: pressed ? 0.985 : 1 }],
+        })}
+      >
+        <PrayerGroupBanner
+          groupType={group.group_type}
+          title={group.name}
+          subtitle={subtitle}
+          compact
+          rightContent={
+            <View
+              style={{
+                width: 30,
+                height: 30,
+                borderRadius: 999,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: "rgba(255, 255, 255, 0.82)",
+                borderWidth: 1,
+                borderColor: "rgba(255, 255, 255, 0.84)",
+                marginLeft: 10,
+              }}
+            >
+              <Ionicons name="chevron-forward" size={16} color={TEXT} />
+            </View>
+          }
+        />
+      </Pressable>
+    );
+  })
+)}
+          
           </ScrollView>
         </View>
       </SafeAreaView>
@@ -1303,6 +1308,36 @@ const [respondingToInviteById, setRespondingToInviteById] = useState({});
     return () => clearTimeout(t);
   }, [activeFilter, loading]);
 
+  useFocusEffect(
+  useCallback(() => {
+    let alive = true;
+
+    async function refreshPrayerScreenOnFocus() {
+      try {
+        const { data } = await supabase.auth.getSession();
+        const userId = data?.session?.user?.id ?? null;
+
+        if (!alive) return;
+
+        if (userId) {
+          setCurrentUserId(userId);
+          await fetchMyGroups();
+          await fetchPendingPrayerGroupInvites(userId);
+          await fetchBookmarks(userId);
+        }
+      } catch (e) {
+        console.log("Error refreshing Prayer screen on focus", e);
+      }
+    }
+
+    refreshPrayerScreenOnFocus();
+
+    return () => {
+      alive = false;
+    };
+  }, [])
+);
+
 async function fetchMyGroups() {
   try {
     setGroupsLoading(true);
@@ -1313,41 +1348,147 @@ async function fetchMyGroups() {
       return;
     }
 
-    const { data: memberships, error: membershipError } = await supabase
-      .from("prayer_group_members")
-      .select("group_id")
-      .eq("user_id", userId);
+    // 1. Private/user-created prayer group memberships
+    const { data: prayerMemberships, error: prayerMembershipError } =
+      await supabase
+        .from("prayer_group_members")
+        .select("group_id, user_id")
+        .eq("user_id", userId);
 
-    if (membershipError) throw membershipError;
+    if (prayerMembershipError) throw prayerMembershipError;
 
-    const groupIds = (memberships || [])
+    const prayerGroupIds = (prayerMemberships || [])
       .map((row) => row.group_id)
       .filter(Boolean);
 
-    if (groupIds.length === 0) {
+    // 2. Approved official church group memberships
+    const { data: churchMemberships, error: churchMembershipError } =
+      await supabase
+        .from("church_group_members")
+        .select("group_id, church_id, user_id, status")
+        .eq("user_id", userId)
+        .eq("status", "approved");
+
+    if (churchMembershipError) throw churchMembershipError;
+
+const churchGroupIds = (churchMemberships || [])
+  .map((row) => row.group_id)
+  .filter(Boolean);
+
+let enabledChurchGroupIds = [];
+
+if (churchGroupIds.length > 0) {
+  const { data: enabledChurchGroups, error: enabledChurchGroupsError } =
+    await supabase
+      .from("church_groups")
+      .select("id, has_prayer_space")
+      .in("id", churchGroupIds)
+      .eq("has_prayer_space", true);
+
+  if (enabledChurchGroupsError) throw enabledChurchGroupsError;
+
+  enabledChurchGroupIds = (enabledChurchGroups || [])
+    .map((row) => row.id)
+    .filter(Boolean);
+}
+
+let prayerGroups = [];
+let linkedChurchPrayerGroups = [];
+
+    // 3. Load normal prayer groups where user is in prayer_group_members
+    if (prayerGroupIds.length > 0) {
+      const { data, error } = await supabase
+        .from("prayer_groups")
+        .select(
+          "id, name, description, privacy, group_type, church_id, church_group_id, banner_image_path, banner_updated_at, created_at"
+        )
+        .in("id", prayerGroupIds)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+
+      prayerGroups = data || [];
+    }
+
+// 4. Load official church prayer spaces linked to enabled approved church groups
+if (enabledChurchGroupIds.length > 0) {
+  const { data, error } = await supabase
+    .from("prayer_groups")
+    .select(
+      "id, name, description, privacy, group_type, church_id, church_group_id, banner_image_path, banner_updated_at, created_at"
+    )
+    .eq("group_type", "church")
+    .in("church_group_id", enabledChurchGroupIds)
+    .order("created_at", { ascending: false });
+
+  if (error) throw error;
+
+  linkedChurchPrayerGroups = data || [];
+}
+
+const enabledChurchGroupIdSet = new Set(enabledChurchGroupIds);
+
+const groupsById = new Map();
+
+[...prayerGroups, ...linkedChurchPrayerGroups].forEach((group) => {
+  if (!group?.id) return;
+
+  const isChurchPrayerSpace =
+    group.group_type === "church" && !!group.church_group_id;
+
+  if (isChurchPrayerSpace && !enabledChurchGroupIdSet.has(group.church_group_id)) {
+    return;
+  }
+
+  groupsById.set(group.id, group);
+});
+
+const mergedGroups = Array.from(groupsById.values());
+
+    if (mergedGroups.length === 0) {
       setMyGroups([]);
       return;
     }
 
-    const { data: groups, error: groupsError } = await supabase
-      .from("prayer_groups")
-      .select("id, name, description, privacy, group_type, created_at")
-      .in("id", groupIds)
-      .order("created_at", { ascending: false });
+    const mergedGroupIds = mergedGroups.map((group) => group.id).filter(Boolean);
+   const linkedChurchGroupIds = mergedGroups
+  .map((group) => group.church_group_id)
+  .filter(Boolean)
+  .filter((churchGroupId) => enabledChurchGroupIds.includes(churchGroupId));
 
-    if (groupsError) throw groupsError;
+    // 5. Prayer group member counts/previews
+    let prayerMembers = [];
 
-    const { data: members, error: membersError } = await supabase
-      .from("prayer_group_members")
-      .select("group_id, user_id")
-      .in("group_id", groupIds);
+    if (mergedGroupIds.length > 0) {
+      const { data, error } = await supabase
+        .from("prayer_group_members")
+        .select("group_id, user_id")
+        .in("group_id", mergedGroupIds);
 
-    if (membersError) throw membersError;
+      if (error) throw error;
+
+      prayerMembers = data || [];
+    }
+
+    // 6. Church group member counts/previews for linked church prayer spaces
+    let approvedChurchMembers = [];
+
+    if (linkedChurchGroupIds.length > 0) {
+      const { data, error } = await supabase
+        .from("church_group_members")
+        .select("group_id, user_id, status")
+        .in("group_id", linkedChurchGroupIds)
+        .eq("status", "approved");
+
+      if (error) throw error;
+
+      approvedChurchMembers = data || [];
+    }
 
     const memberCountByGroupId = {};
     const membersByGroupId = {};
 
-    (members || []).forEach((member) => {
+    prayerMembers.forEach((member) => {
       if (!member?.group_id) return;
 
       memberCountByGroupId[member.group_id] =
@@ -1360,8 +1501,29 @@ async function fetchMyGroups() {
       membersByGroupId[member.group_id].push(member);
     });
 
+    const churchMembersByChurchGroupId = {};
+    const churchMemberCountByChurchGroupId = {};
+
+    approvedChurchMembers.forEach((member) => {
+      if (!member?.group_id) return;
+
+      churchMemberCountByChurchGroupId[member.group_id] =
+        (churchMemberCountByChurchGroupId[member.group_id] || 0) + 1;
+
+      if (!churchMembersByChurchGroupId[member.group_id]) {
+        churchMembersByChurchGroupId[member.group_id] = [];
+      }
+
+      churchMembersByChurchGroupId[member.group_id].push(member);
+    });
+
     const memberUserIds = Array.from(
-      new Set((members || []).map((member) => member.user_id).filter(Boolean))
+      new Set(
+        [
+          ...prayerMembers.map((member) => member.user_id),
+          ...approvedChurchMembers.map((member) => member.user_id),
+        ].filter(Boolean)
+      )
     );
 
     let profilesByUserId = {};
@@ -1384,10 +1546,19 @@ async function fetchMyGroups() {
       });
     }
 
-    const enrichedGroups = (groups || []).map((group) => {
-      const groupMembers = membersByGroupId[group.id] || [];
+    const enrichedGroups = mergedGroups.map((group) => {
+      const isLinkedChurchGroup =
+        group.group_type === "church" && !!group.church_group_id;
 
-      const member_preview = groupMembers.slice(0, 3).map((member) => {
+      const previewMembers = isLinkedChurchGroup
+        ? churchMembersByChurchGroupId[group.church_group_id] || []
+        : membersByGroupId[group.id] || [];
+
+      const memberCount = isLinkedChurchGroup
+        ? churchMemberCountByChurchGroupId[group.church_group_id] || 0
+        : memberCountByGroupId[group.id] || 0;
+
+      const member_preview = previewMembers.slice(0, 3).map((member) => {
         const profile = profilesByUserId[member.user_id] || {};
 
         return {
@@ -1399,7 +1570,7 @@ async function fetchMyGroups() {
 
       return {
         ...group,
-        member_count: memberCountByGroupId[group.id] || 0,
+        member_count: memberCount,
         member_preview,
       };
     });
@@ -1454,7 +1625,7 @@ async function fetchPendingPrayerGroupInvites(userIdOverride = null) {
     if (groupIds.length > 0) {
       const { data: groups, error: groupsError } = await supabase
         .from("prayer_groups")
-        .select("id, name, description, privacy, group_type, created_at")
+       .select("id, name, description, privacy, group_type, church_id, church_group_id, banner_image_path, banner_updated_at, created_at")
         .in("id", groupIds);
 
       if (groupsError) throw groupsError;
@@ -1711,15 +1882,19 @@ if (userId) {
     }
   }
 
-  async function refreshAll() {
-    await fetchRequests(true);
+async function refreshAll() {
+  await fetchRequests(true);
 
-    if (currentUserId) {
-  await fetchBookmarks(currentUserId);
-  await fetchMyGroups();
-  await fetchPendingPrayerGroupInvites(currentUserId);
-}
+  const { data } = await supabase.auth.getSession();
+  const userId = data?.session?.user?.id ?? currentUserId ?? null;
+
+  if (userId) {
+    setCurrentUserId(userId);
+    await fetchBookmarks(userId);
+    await fetchMyGroups();
+    await fetchPendingPrayerGroupInvites(userId);
   }
+}
 
   async function ensureUserIdOrAlert() {
     let userId = currentUserId;
@@ -2197,7 +2372,7 @@ async function handleCreateRequest(
           privacy,
           group_type: groupType,
         })
-        .select("id, name, description, privacy, group_type, created_at")
+        .select("id, name, description, privacy, group_type, church_id, church_group_id, banner_image_path, banner_updated_at, created_at")
         .single();
 
       if (groupError) throw groupError;
@@ -3810,7 +3985,7 @@ const renderPrayerActionMenu = () => {
                   marginLeft: 7,
                 }}
               >
-                Prayer Groups
+                Prayer Spaces
               </Text>
 
               <Text

@@ -1,6 +1,5 @@
 // src/screens/Community.js
 import { Video } from "expo-av";
-import * as LegacyFileSystem from "expo-file-system/legacy";
 import * as ImagePicker from "expo-image-picker";
 import { useEffect, useState } from "react";
 import {
@@ -22,6 +21,7 @@ import NewPostModal from "../components/NewPostModal";
 import PostCommentsModal from "../components/PostCommentsModal";
 import { createStory, fetchActiveStories } from "../lib/stories";
 import { supabase } from "../lib/supabase";
+import { isFeedVideoMedia, uploadFeedMedia } from "../lib/uploadFeedMedia";
 
 import { Ionicons } from "@expo/vector-icons";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
@@ -1326,45 +1326,50 @@ function handleOpenFellowship() {
         return;
       }
 
-      // ---------- 1) Upload image via Edge Function (if we have an image) ----------
+      // ---------- 1) Upload media to Supabase Storage ----------
       let mediaUrl = null;
       let mediaType = null;
 
       if (media && media.uri) {
         try {
-          const base64 = await LegacyFileSystem.readAsStringAsync(media.uri, {
-            encoding: "base64",
+          const uploaded = await uploadFeedMedia({
+            media,
+            scope: "posts",
+            ownerId: userId,
+            folderId: HOME_COMMUNITY_ID,
           });
 
-          const fileName = media.fileName || `image-${Date.now()}.jpg`;
-          const contentType = media.type || "image/jpeg";
-
-          const { data: fnData, error: fnError } = await supabase.functions.invoke("upload-post-image", {
-            body: { base64, fileName, contentType },
-          });
-
-          if (fnError) {
-            console.log("Edge function error:", fnError);
-            throw fnError;
-          }
-
-          console.log("Edge function response:", fnData);
-
-          mediaUrl = fnData?.publicUrl ?? null;
-          mediaType = contentType;
+          mediaUrl = uploaded.mediaUrl;
+          mediaType = uploaded.mediaType;
         } catch (e) {
-          console.log("Error uploading image via edge function", e);
-          Alert.alert("Upload failed", "We couldn’t upload your image. You can still post text only.");
+          console.log("Community media upload error:", e);
+
+          Alert.alert(
+            "Upload failed",
+            isFeedVideoMedia(media)
+              ? "We couldn’t upload your video. Try a shorter clip or export it as MP4, then try again."
+              : "We couldn’t upload your image. You can still post text only."
+          );
         }
       }
-
       // ---------- 2) Insert the post row ----------
-  const payload = {
+const feedCommunityId = church?.feed_community_id || null;
+
+if (!feedCommunityId) {
+  Alert.alert(
+    "Church feed not linked",
+    "This church does not have a linked feed yet. Please check the church setup."
+  );
+  return;
+}
+
+const payload = {
   user_id: userId,
-  community_id: HOME_COMMUNITY_ID,
+  community_id: feedCommunityId,
+  church_id: churchId,
+  visibility: "church",
+  is_anonymous: false,
   content: content.trim(),
-  visibility: "communities",
-  is_anonymous: !!isAnonymous,
 };
 
 

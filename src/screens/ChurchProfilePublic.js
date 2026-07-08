@@ -1,7 +1,6 @@
 // src/screens/ChurchProfilePublic.js
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
-import * as LegacyFileSystem from "expo-file-system/legacy";
 import * as ImagePicker from "expo-image-picker";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -9,13 +8,14 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
   ScrollView,
   Text,
   TextInput,
-  View,
+  View
 } from "react-native";
 
 import ChurchNoticeboardPanel from "../components/ChurchNoticeboardPanel";
@@ -27,9 +27,13 @@ import SearchLaunchButton from "../components/SearchLaunchButton";
 import VerifiedBadge from "../components/VerifiedBadge";
 import { useFellowshipRequestsModal } from "../context/FellowshipRequestsModalProvider";
 import { useRealtime } from "../context/RealtimeProvider";
-import { HOME_COMMUNITY_ID } from "../lib/constants";
+import {
+  fetchUpcomingEventsForChurch,
+  formatEventDateTime,
+} from "../features/events/services/eventsService";
 import { getOrCreateChurchConversation } from "../lib/messages";
 import { supabase } from "../lib/supabase";
+import { isFeedVideoMedia, uploadFeedMedia } from "../lib/uploadFeedMedia";
 
 const POSTS_ENABLED = true;
 const PAGE_LIMIT = 50;
@@ -412,6 +416,277 @@ function safeInitials(name) {
   return String(name).trim()[0]?.toUpperCase() || "?";
 }
 
+function getChurchProfileEventImageUrl(event, church) {
+  return (
+    event?.image_url ||
+    event?.cover_image_url ||
+    event?.banner_url ||
+    event?.poster_url ||
+    event?.media_url ||
+    church?.cover_image_url ||
+    church?.avatar_url ||
+    null
+  );
+}
+
+function getChurchProfileFallbackEventImage(event) {
+  const title = String(event?.title || "").toLowerCase();
+
+  if (
+    title.includes("carol") ||
+    title.includes("christmas") ||
+    title.includes("worship") ||
+    title.includes("music")
+  ) {
+    return "https://images.unsplash.com/photo-1512389142860-9c449e58a543?q=80&w=1200&auto=format&fit=crop";
+  }
+
+  if (
+    title.includes("youth") ||
+    title.includes("social") ||
+    title.includes("party") ||
+    title.includes("meal")
+  ) {
+    return "https://images.unsplash.com/photo-1527529482837-4698179dc6ce?q=80&w=1200&auto=format&fit=crop";
+  }
+
+  if (
+    title.includes("prayer") ||
+    title.includes("bible") ||
+    title.includes("service")
+  ) {
+    return "https://images.unsplash.com/photo-1507692049790-de58290a4334?q=80&w=1200&auto=format&fit=crop";
+  }
+
+  return "https://images.unsplash.com/photo-1507692049790-de58290a4334?q=80&w=1200&auto=format&fit=crop";
+}
+
+function formatChurchProfileDateBadge(startAt) {
+  if (!startAt) {
+    return {
+      day: "TBC",
+      month: "DATE",
+    };
+  }
+
+  try {
+    const d = new Date(startAt);
+
+    return {
+      day: d.toLocaleDateString(undefined, { day: "numeric" }),
+      month: d.toLocaleDateString(undefined, { month: "short" }).toUpperCase(),
+    };
+  } catch {
+    return {
+      day: "TBC",
+      month: "DATE",
+    };
+  }
+}
+
+function getChurchProfileEventLabel(event) {
+  if (event?.status === "cancelled") return "Cancelled";
+
+  if (event?.is_course_session_projection || event?.event_type === "course_programme") {
+    return "Course / programme";
+  }
+
+  return "Church event";
+}
+
+function getChurchProfileEventIcon(event) {
+  const title = String(event?.title || "").toLowerCase();
+
+  if (event?.is_course_session_projection || event?.event_type === "course_programme") {
+    return "school-outline";
+  }
+
+  if (title.includes("prayer")) return "hand-left-outline";
+  if (title.includes("meal") || title.includes("food")) return "restaurant-outline";
+  if (title.includes("music") || title.includes("worship")) return "musical-notes-outline";
+
+  return "calendar-outline";
+}
+
+function getChurchProfileEventLocation(event) {
+  return (
+    event?.location_name ||
+    event?.location_address ||
+    (event?.online_url ? "Online" : "Location to be confirmed")
+  );
+}
+
+function countChurchProfileGoing(event) {
+  const attendees = Array.isArray(event?.event_attendees)
+    ? event.event_attendees
+    : [];
+
+  return attendees.filter((a) => a.status === "going").length;
+}
+
+function getChurchEventTypeLabel(event) {
+  if (event?.is_course_session_projection || event?.event_type === "course_programme") {
+    return "Course / programme";
+  }
+
+  if (event?.status === "cancelled") {
+    return "Cancelled";
+  }
+
+  return "Church event";
+}
+
+function getChurchEventLocationLabel(event) {
+  if (event?.online_url) return "Online";
+
+  return (
+    event?.location_name ||
+    event?.location_address ||
+    "Location to be confirmed"
+  );
+}
+
+function MemberPreviewStack({ members = [], total = 0 }) {
+  const visibleMembers = (members || []).slice(0, 3);
+  const extraCount = Math.max(0, total - visibleMembers.length);
+
+  if (total <= 0) {
+    return (
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          marginTop: 10,
+        }}
+      >
+        <View
+          style={{
+            width: 30,
+            height: 30,
+            borderRadius: 15,
+            backgroundColor: OLIVE_SOFT,
+            borderWidth: 1,
+            borderColor: OLIVE_BORDER,
+            alignItems: "center",
+            justifyContent: "center",
+            marginRight: 8,
+          }}
+        >
+          <Ionicons name="people-outline" size={15} color={OLIVE} />
+        </View>
+
+        <Text
+          style={{
+            color: MUTED,
+            fontSize: 12.5,
+            fontWeight: "800",
+          }}
+        >
+          Members will appear here
+        </Text>
+      </View>
+    );
+  }
+
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        marginTop: 10,
+      }}
+    >
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          marginRight: 9,
+        }}
+      >
+        {visibleMembers.map((member, index) => {
+          const displayName = member?.display_name || "Member";
+          const avatarUrl = member?.avatar_url || null;
+
+          return (
+            <View
+              key={member?.id || `${displayName}-${index}`}
+              style={{
+                width: 30,
+                height: 30,
+                borderRadius: 15,
+                marginLeft: index === 0 ? 0 : -9,
+                backgroundColor: OLIVE,
+                borderWidth: 2,
+                borderColor: SURFACE,
+                overflow: "hidden",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              {avatarUrl ? (
+                <Image
+                  source={{ uri: avatarUrl }}
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                  }}
+                  resizeMode="cover"
+                />
+              ) : (
+                <Text
+                  style={{
+                    color: SURFACE,
+                    fontSize: 10.5,
+                    fontWeight: "900",
+                  }}
+                >
+                  {safeInitials(displayName)}
+                </Text>
+              )}
+            </View>
+          );
+        })}
+
+        {extraCount > 0 ? (
+          <View
+            style={{
+              width: 30,
+              height: 30,
+              borderRadius: 15,
+              marginLeft: visibleMembers.length > 0 ? -9 : 0,
+              backgroundColor: AMBER_SOFT,
+              borderWidth: 2,
+              borderColor: SURFACE,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Text
+              style={{
+                color: EVENT_BROWN,
+                fontSize: 10.5,
+                fontWeight: "900",
+              }}
+            >
+              +{extraCount}
+            </Text>
+          </View>
+        ) : null}
+      </View>
+
+      <Text
+        style={{
+          color: MUTED,
+          fontSize: 12.5,
+          fontWeight: "800",
+        }}
+      >
+        {total} {total === 1 ? "member" : "members"}
+      </Text>
+    </View>
+  );
+}
+
 export default function ChurchProfilePublic({ navigation, route }) {
   const churchId = route?.params?.churchId;
   const rt = useRealtime();
@@ -441,7 +716,10 @@ export default function ChurchProfilePublic({ navigation, route }) {
   const [membershipStatus, setMembershipStatus] = useState("none");
   const [membershipRow, setMembershipRow] = useState(null);
 
-  const [activeTab, setActiveTab] = useState("posts");
+  const [memberPreview, setMemberPreview] = useState([]);
+  const [memberCount, setMemberCount] = useState(0);
+
+  const [activeTab, setActiveTab] = useState("about");
 
   const [about, setAbout] = useState("");
   const [website, setWebsite] = useState("");
@@ -458,6 +736,9 @@ export default function ChurchProfilePublic({ navigation, route }) {
   const [posts, setPosts] = useState([]);
   const [showNewModal, setShowNewModal] = useState(false);
   const [posting, setPosting] = useState(false);
+
+  const [churchEventsLoading, setChurchEventsLoading] = useState(false);
+  const [churchEvents, setChurchEvents] = useState([]);
 
   const [showCommentsModal, setShowCommentsModal] = useState(false);
   const [selectedPostForComments, setSelectedPostForComments] = useState(null);
@@ -485,6 +766,7 @@ export default function ChurchProfilePublic({ navigation, route }) {
         }
 
         await loadChurch(churchId);
+                await loadMemberPreview(churchId);
 
         let admin = false;
 
@@ -507,6 +789,8 @@ export default function ChurchProfilePublic({ navigation, route }) {
           setMembershipStatus(admin ? "approved" : "none");
         }
 
+        await loadChurchEvents(churchId, admin);
+
         if (POSTS_ENABLED) {
           await loadChurchPosts(churchId);
         }
@@ -522,9 +806,9 @@ export default function ChurchProfilePublic({ navigation, route }) {
   async function loadChurch(id) {
     const { data, error } = await supabase
       .from("churches")
-      .select(
-        "id, name, display_name, avatar_url, cover_image_url, about, website, location, is_verified"
-      )
+.select(
+  "id, name, display_name, avatar_url, cover_image_url, about, website, location, is_verified, feed_community_id"
+)
       .eq("id", id)
       .single();
 
@@ -538,6 +822,44 @@ export default function ChurchProfilePublic({ navigation, route }) {
     setWebsite(data?.website ?? "");
     setLocation(data?.location ?? "");
   }
+
+async function loadMemberPreview(id) {
+  try {
+    if (!id) {
+      setMemberPreview([]);
+      setMemberCount(0);
+      return;
+    }
+
+    const { data, error } = await supabase.rpc("get_church_member_preview", {
+      target_church_id: id,
+    });
+
+    if (error) {
+      console.log("loadMemberPreview rpc error:", error);
+      setMemberPreview([]);
+      setMemberCount(0);
+      return;
+    }
+
+    const rows = data || [];
+
+    const total = rows?.[0]?.total_count ? Number(rows[0].total_count) : 0;
+
+    const mapped = rows.map((row) => ({
+      id: row.user_id,
+      display_name: row.display_name,
+      avatar_url: row.avatar_url,
+    }));
+
+    setMemberCount(total);
+    setMemberPreview(mapped);
+  } catch (e) {
+    console.log("loadMemberPreview exception:", e);
+    setMemberPreview([]);
+    setMemberCount(0);
+  }
+}
 
   async function loadPendingGroupRequestCount(id) {
     try {
@@ -790,76 +1112,124 @@ export default function ChurchProfilePublic({ navigation, route }) {
     );
   }
 
-  async function loadChurchPosts(id) {
-    try {
-      setPostsLoading(true);
+async function loadChurchPosts(id, explicitFeedCommunityId = null) {
+  try {
+    setPostsLoading(true);
 
-      const { data, error } = await supabase
-        .from("posts")
-        .select(
-          `
-          id,
-          user_id,
-          church_id,
-          content,
-          url,
-          link_title,
-          link_description,
-          link_image,
-          is_anonymous,
-          media_url,
-          media_type,
-          created_at,
-          post_reactions (
-            user_id,
-            type
-          ),
-          post_comments (
-            count
-          )
-        `
-        )
-        .eq("community_id", HOME_COMMUNITY_ID)
-        .eq("church_id", id)
-        .in("visibility", ["global", "church"])
-        .order("created_at", { ascending: false })
-        .limit(PAGE_LIMIT);
+    let feedCommunityId = explicitFeedCommunityId || church?.feed_community_id || null;
 
-      if (error) throw error;
+    if (!feedCommunityId && id) {
+      const { data: churchFeedData, error: churchFeedError } = await supabase
+        .from("churches")
+        .select("feed_community_id")
+        .eq("id", id)
+        .maybeSingle();
 
-      const mapped =
-        (data || []).map((row) => {
-          const commentCount =
-            Array.isArray(row.post_comments) && row.post_comments.length > 0
-              ? row.post_comments[0].count ?? 0
-              : 0;
+      if (churchFeedError) {
+        console.log("loadChurchPosts feed lookup error:", churchFeedError);
+      }
 
-          return {
-            id: row.id,
-            user_id: row.user_id,
-            church_id: row.church_id,
-            content: row.content,
-            url: row.url,
-            link_title: row.link_title,
-            link_description: row.link_description,
-            link_image: row.link_image,
-            is_anonymous: row.is_anonymous,
-            media_url: row.media_url,
-            media_type: row.media_type,
-            created_at: row.created_at,
-            reactions: row.post_reactions || [],
-            comment_count: commentCount,
-          };
-        }) ?? [];
-
-      setPosts(mapped);
-    } catch (e) {
-      console.log("loadChurchPosts error:", e);
-      setPosts([]);
-    } finally {
-      setPostsLoading(false);
+      feedCommunityId = churchFeedData?.feed_community_id || null;
     }
+
+    if (!feedCommunityId) {
+      console.log("loadChurchPosts missing feed_community_id for church:", id);
+      setPosts([]);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("posts")
+      .select(
+        `
+        id,
+        user_id,
+        church_id,
+        content,
+        url,
+        link_title,
+        link_description,
+        link_image,
+        is_anonymous,
+        media_url,
+        media_type,
+        created_at,
+        post_reactions (
+          user_id,
+          type
+        ),
+        post_comments (
+          count
+        )
+      `
+      )
+      .eq("community_id", feedCommunityId)
+      .eq("visibility", "church")
+      .order("created_at", { ascending: false })
+      .limit(PAGE_LIMIT);
+
+    if (error) throw error;
+
+    const mapped =
+      (data || []).map((row) => {
+        const commentCount =
+          Array.isArray(row.post_comments) && row.post_comments.length > 0
+            ? row.post_comments[0].count ?? 0
+            : 0;
+
+        return {
+          id: row.id,
+          user_id: row.user_id,
+          church_id: row.church_id,
+          content: row.content,
+          url: row.url,
+          link_title: row.link_title,
+          link_description: row.link_description,
+          link_image: row.link_image,
+          is_anonymous: row.is_anonymous,
+          media_url: row.media_url,
+          media_type: row.media_type,
+          created_at: row.created_at,
+          reactions: row.post_reactions || [],
+          comment_count: commentCount,
+        };
+      }) ?? [];
+
+    setPosts(mapped);
+  } catch (e) {
+    console.log("loadChurchPosts error:", e);
+    setPosts([]);
+  } finally {
+    setPostsLoading(false);
   }
+}
+
+async function loadChurchEvents(id, adminOverride = isAdmin) {
+  try {
+    setChurchEventsLoading(true);
+
+    const res = await fetchUpcomingEventsForChurch({
+      churchId: id,
+      limit: 6,
+      includeInviteOnly: adminOverride === true,
+    });
+
+    if (!res?.ok) {
+      console.log("ChurchProfilePublic events load error:", res?.error);
+      setChurchEvents([]);
+      return;
+    }
+
+    setChurchEvents(Array.isArray(res.events) ? res.events : []);
+  } catch (e) {
+    console.log("ChurchProfilePublic events unexpected error:", e);
+    setChurchEvents([]);
+  } finally {
+    setChurchEventsLoading(false);
+  }
+}
+
+
 
   useFocusEffect(
     useCallback(() => {
@@ -868,6 +1238,8 @@ export default function ChurchProfilePublic({ navigation, route }) {
       rt?.refreshCounts?.();
 
       loadChurch(churchId);
+      loadMemberPreview(churchId);
+      loadChurchEvents(churchId, isAdmin);
 
       (async () => {
         const admin = viewerId ? await checkIsAdmin(viewerId, churchId) : false;
@@ -877,6 +1249,8 @@ export default function ChurchProfilePublic({ navigation, route }) {
         } else {
           setPendingGroupRequestCount(0);
         }
+
+        await loadChurchEvents(churchId, admin);
 
         if (viewerId && !admin) {
           await loadMembership(viewerId, churchId);
@@ -891,6 +1265,63 @@ export default function ChurchProfilePublic({ navigation, route }) {
       }
     }, [churchId, viewerId, rt])
   );
+
+  useEffect(() => {
+  if (!churchId) return;
+  if (activeTab !== "posts") return;
+
+  let channel = null;
+  let cancelled = false;
+
+  async function startChurchPostsRealtime() {
+    let feedCommunityId = church?.feed_community_id || null;
+
+    if (!feedCommunityId) {
+      const { data, error } = await supabase
+        .from("churches")
+        .select("feed_community_id")
+        .eq("id", churchId)
+        .maybeSingle();
+
+      if (error) {
+        console.log("ChurchProfilePublic realtime feed lookup error:", error);
+        return;
+      }
+
+      feedCommunityId = data?.feed_community_id || null;
+    }
+
+    if (!feedCommunityId || cancelled) return;
+
+    channel = supabase
+      .channel(`church-profile-posts-${feedCommunityId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "posts",
+          filter: `community_id=eq.${feedCommunityId}`,
+        },
+        () => {
+          loadChurchPosts(churchId, feedCommunityId);
+        }
+      )
+      .subscribe((status) => {
+        console.log("ChurchProfilePublic posts realtime status:", status);
+      });
+  }
+
+  startChurchPostsRealtime();
+
+  return () => {
+    cancelled = true;
+
+    if (channel) {
+      supabase.removeChannel(channel);
+    }
+  };
+}, [churchId, activeTab, church?.feed_community_id]);
 
   async function uploadImageToChurch(pathPrefix, asset) {
     if (!church?.id) {
@@ -1033,6 +1464,13 @@ export default function ChurchProfilePublic({ navigation, route }) {
     }
   }
 
+  function handleCancelDetailsEdit() {
+  setAbout(church?.about ?? "");
+  setWebsite(church?.website ?? "");
+  setLocation(church?.location ?? "");
+  setIsEditingDetails(false);
+}
+
   async function handleSaveDetails() {
     if (!isAdmin || !church?.id) return;
 
@@ -1068,7 +1506,7 @@ export default function ChurchProfilePublic({ navigation, route }) {
     if (!isAdmin) return;
 
     if (!content.trim() && !media) {
-      Alert.alert("Message required", "Please write something or attach an image.");
+      Alert.alert("Message required", "Please write something or attach media.");
       return;
     }
 
@@ -1092,42 +1530,80 @@ export default function ChurchProfilePublic({ navigation, route }) {
 
       if (media && media.uri) {
         try {
-          const base64 = await LegacyFileSystem.readAsStringAsync(media.uri, {
-            encoding: "base64",
+          const feedCommunityIdForUpload = church?.feed_community_id || null;
+
+          if (!feedCommunityIdForUpload) {
+            Alert.alert(
+              "Church feed not linked",
+              "This church does not have a linked feed yet. Please check the church setup."
+            );
+            return;
+          }
+
+          console.log("ChurchProfilePublic about to upload media:", {
+            media,
+            userId,
+            feedCommunityId: feedCommunityIdForUpload,
           });
 
-          const fileName = media.fileName || `image-${Date.now()}.jpg`;
-          const contentType = media.type || "image/jpeg";
+          const uploaded = await uploadFeedMedia({
+            media,
+            scope: "posts",
+            ownerId: userId,
+            folderId: feedCommunityIdForUpload,
+          });
 
-          const { data: fnData, error: fnError } = await supabase.functions.invoke(
-            "upload-post-image",
-            {
-              body: { base64, fileName, contentType },
-            }
-          );
+          mediaUrl = uploaded.mediaUrl;
+          mediaType = uploaded.mediaType;
 
-          if (fnError) throw fnError;
-
-          mediaUrl = fnData?.publicUrl ?? null;
-          mediaType = contentType;
+          console.log("ChurchProfilePublic media upload complete:", {
+            mediaUrl,
+            mediaType,
+          });
         } catch (e) {
-          console.log("ChurchProfilePublic upload error:", e);
+          console.log("ChurchProfilePublic media upload error RAW:", e);
+
+          console.log("ChurchProfilePublic media upload error DETAILS:", {
+            message: e?.message,
+            name: e?.name,
+            status: e?.status,
+            statusCode: e?.statusCode,
+            error: e?.error,
+            details: e?.details,
+            hint: e?.hint,
+            stack: e?.stack,
+            media,
+          });
 
           Alert.alert(
             "Upload failed",
-            "We couldn’t upload your image. You can still post text only."
+            isFeedVideoMedia(media)
+              ? `Video upload failed: ${e?.message || "Unknown upload error."}`
+              : `Image upload failed: ${e?.message || "Unknown upload error."}`
           );
+
+          return;
         }
       }
 
-      const payload = {
-        user_id: userId,
-        community_id: HOME_COMMUNITY_ID,
-        church_id: churchId,
-        visibility: "church",
-        is_anonymous: false,
-        content: content.trim(),
-      };
+const feedCommunityId = church?.feed_community_id || null;
+
+if (!feedCommunityId) {
+  Alert.alert(
+    "Church feed not linked",
+    "This church does not have a linked feed yet. Please check the church setup."
+  );
+  return;
+}
+
+const payload = {
+  user_id: userId,
+  community_id: feedCommunityId,
+  church_id: churchId,
+  visibility: "church",
+  is_anonymous: false,
+  content: content.trim(),
+};
 
       if (url && url.trim()) payload.url = url.trim();
 
@@ -1193,6 +1669,53 @@ export default function ChurchProfilePublic({ navigation, route }) {
       setPosting(false);
     }
   }
+
+  function handleDeleteChurchPost(postId) {
+  if (!isAdmin) {
+    Alert.alert("Permission needed", "Only church admins can delete church posts.");
+    return;
+  }
+
+  if (!postId) return;
+
+  Alert.alert(
+    "Delete post?",
+    "This will permanently remove this post from the church feed.",
+    [
+      {
+        text: "Cancel",
+        style: "cancel",
+      },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            const { error } = await supabase
+              .from("posts")
+              .delete()
+              .eq("id", postId);
+
+            if (error) throw error;
+
+            setPosts((prev) => (prev || []).filter((p) => p.id !== postId));
+          } catch (e) {
+            console.log("handleDeleteChurchPost error:", e);
+
+            Alert.alert(
+              "Could not delete post",
+              e?.message || "Please try again."
+            );
+          }
+        },
+      },
+    ]
+  );
+}
+
+function handleHideChurchPost() {
+  Alert.alert("Not available yet", "Hiding church posts can be added later.");
+}
 
   function openComments(post) {
     setSelectedPostForComments(post);
@@ -1268,6 +1791,769 @@ export default function ChurchProfilePublic({ navigation, route }) {
       );
     }
   }
+
+  function renderAboutTab() {
+  return (
+    <View style={{ marginTop: 10 }}>
+      <View
+        style={{
+          ...premiumCardStyle,
+          padding: 16,
+          borderRadius: 22,
+        }}
+      >
+
+        {about ? (
+          <Text
+            style={{
+              color: TEXT,
+              fontSize: 14,
+              fontWeight: "700",
+              lineHeight: 21,
+            }}
+          >
+            {about}
+          </Text>
+        ) : (
+          <Text
+            style={{
+              color: MUTED,
+              fontSize: 13,
+              fontWeight: "700",
+              lineHeight: 19,
+            }}
+          >
+            This church has not added an about section yet.
+          </Text>
+        )}
+
+        {location ? (
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              marginTop: 14,
+            }}
+          >
+            <Ionicons name="location-outline" size={16} color={OLIVE} />
+
+            <Text
+              style={{
+                color: MUTED,
+                fontSize: 13,
+                fontWeight: "800",
+                marginLeft: 7,
+                flex: 1,
+              }}
+              numberOfLines={2}
+            >
+              {location}
+            </Text>
+          </View>
+        ) : null}
+
+        {website ? (
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              marginTop: 10,
+            }}
+          >
+            <Ionicons name="globe-outline" size={16} color={EVENT_AMBER} />
+
+            <Text
+              style={{
+                color: MUTED,
+                fontSize: 13,
+                fontWeight: "800",
+                marginLeft: 7,
+                flex: 1,
+              }}
+              numberOfLines={1}
+            >
+              {website}
+            </Text>
+          </View>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
+function renderEventsTab() {
+  const featuredEvent = churchEvents?.[0] || null;
+  const remainingEvents = (churchEvents || []).slice(1, 5);
+
+  function openEvent(event) {
+    if (!event?.id) return;
+
+    navigation.navigate("EventDetails", {
+      eventId: event.id,
+      event,
+    });
+  }
+
+  function openAllEvents() {
+    navigation.navigate("Events");
+  }
+
+  function openManageEvents() {
+    navigation.navigate("ChurchEventsAdmin", {
+      churchId,
+      churchName,
+    });
+  }
+
+  return (
+    <View style={{ marginTop: 10 }}>
+      <View
+        style={{
+          ...premiumCardStyle,
+          padding: 16,
+          borderRadius: 24,
+        }}
+      >
+
+        {churchEventsLoading ? (
+          <View style={{ paddingVertical: 28, alignItems: "center" }}>
+            <ActivityIndicator color={EVENT_AMBER} />
+
+            <Text
+              style={{
+                color: MUTED,
+                marginTop: 9,
+                fontWeight: "800",
+              }}
+            >
+              Loading church events…
+            </Text>
+          </View>
+        ) : null}
+
+        {!churchEventsLoading && !featuredEvent ? (
+          <View
+            style={{
+              alignItems: "center",
+              paddingVertical: 18,
+            }}
+          >
+            <PremiumSparkIcon amber size={48} />
+
+            <Text
+              style={{
+                ...serifHeading,
+                fontSize: 21,
+                lineHeight: 26,
+                textAlign: "center",
+                marginTop: 12,
+              }}
+            >
+              No upcoming events yet
+            </Text>
+
+            <Text
+              style={{
+                color: MUTED,
+                fontSize: 13,
+                fontWeight: "700",
+                lineHeight: 19,
+                textAlign: "center",
+                marginTop: 6,
+              }}
+            >
+              When this church publishes services, courses or gatherings, they’ll appear here.
+            </Text>
+
+            {isAdmin ? (
+              <Pressable
+                onPress={openManageEvents}
+                style={({ pressed }) => ({
+                  marginTop: 14,
+                  borderRadius: 999,
+                  paddingVertical: 10,
+                  paddingHorizontal: 14,
+                  backgroundColor: pressed ? AMBER_SOFT : EVENT_AMBER,
+                  borderWidth: 1,
+                  borderColor: AMBER_BORDER,
+                })}
+              >
+                <Text
+                  style={{
+                    color: SURFACE,
+                    fontSize: 13,
+                    fontWeight: "900",
+                  }}
+                >
+                  Manage events
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
+
+        {!churchEventsLoading && featuredEvent ? (
+          <>
+<View
+  style={{
+    alignSelf: "center",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 12,
+    paddingVertical: 3,
+  }}
+>
+  <View
+    style={{
+      width: 30,
+      height: 30,
+      borderRadius: 15,
+      backgroundColor: "rgba(180, 83, 9, 0.10)",
+      borderWidth: 1,
+      borderColor: "rgba(180, 83, 9, 0.18)",
+      alignItems: "center",
+      justifyContent: "center",
+      marginRight: 8,
+    }}
+  >
+    <Ionicons name="sparkles" size={16} color={EVENT_AMBER} />
+  </View>
+
+  <Text
+    style={{
+      color: EVENT_BROWN,
+      fontSize: 13,
+      fontWeight: "900",
+      textTransform: "uppercase",
+      letterSpacing: 1.05,
+    }}
+  >
+    Almost time
+  </Text>
+
+  <View
+    style={{
+      width: 30,
+      height: 30,
+      borderRadius: 15,
+      backgroundColor: "rgba(79, 99, 59, 0.10)",
+      borderWidth: 1,
+      borderColor: "rgba(79, 99, 59, 0.18)",
+      alignItems: "center",
+      justifyContent: "center",
+      marginLeft: 8,
+    }}
+  >
+    <Ionicons name="sparkles" size={16} color={OLIVE} />
+  </View>
+</View>
+            <Pressable
+              onPress={() => openEvent(featuredEvent)}
+              style={({ pressed }) => ({
+                borderRadius: 24,
+                overflow: "hidden",
+                backgroundColor: SURFACE,
+                borderWidth: 1,
+                borderColor: CARD_BORDER,
+                shadowColor: SHADOW,
+                shadowOpacity: pressed ? 0.05 : 0.11,
+                shadowRadius: pressed ? 7 : 13,
+                shadowOffset: { width: 0, height: pressed ? 3 : 6 },
+                elevation: pressed ? 1 : 4,
+                transform: [{ scale: pressed ? 0.99 : 1 }],
+              })}
+            >
+              <View
+                style={{
+                  height: 174,
+                  width: "100%",
+                  backgroundColor: OLIVE_SOFT,
+                }}
+              >
+                <Image
+                  source={{
+                    uri:
+                      getChurchProfileEventImageUrl(featuredEvent, church) ||
+                      getChurchProfileFallbackEventImage(featuredEvent),
+                  }}
+                  style={{ width: "100%", height: "100%" }}
+                  resizeMode="cover"
+                />
+
+                <View
+                  pointerEvents="none"
+                  style={{
+                    position: "absolute",
+                    left: 0,
+                    right: 0,
+                    top: 0,
+                    bottom: 0,
+                    backgroundColor: "rgba(0,0,0,0.23)",
+                  }}
+                />
+
+                <View
+                  style={{
+                    position: "absolute",
+                    top: 13,
+                    left: 13,
+                    width: 56,
+                    height: 62,
+                    borderRadius: 18,
+                    backgroundColor: "rgba(255,255,255,0.95)",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: TEXT,
+                      fontSize: 22,
+                      fontWeight: "900",
+                      lineHeight: 24,
+                    }}
+                    numberOfLines={1}
+                  >
+                    {formatChurchProfileDateBadge(featuredEvent.start_at).day}
+                  </Text>
+
+                  <Text
+                    style={{
+                      color: EVENT_AMBER,
+                      fontSize: 10.5,
+                      fontWeight: "900",
+                      letterSpacing: 0.5,
+                      marginTop: 2,
+                    }}
+                    numberOfLines={1}
+                  >
+                    {formatChurchProfileDateBadge(featuredEvent.start_at).month}
+                  </Text>
+                </View>
+
+                <View
+                  style={{
+                    position: "absolute",
+                    top: 15,
+                    right: 15,
+                    width: 42,
+                    height: 42,
+                    borderRadius: 21,
+                    backgroundColor: "rgba(255,255,255,0.92)",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Ionicons
+                    name={getChurchProfileEventIcon(featuredEvent)}
+                    size={22}
+                    color={EVENT_AMBER}
+                  />
+                </View>
+
+                <View
+                  style={{
+                    position: "absolute",
+                    left: 15,
+                    right: 15,
+                    bottom: 15,
+                  }}
+                >
+                  <View
+                    style={{
+                      alignSelf: "flex-start",
+                      paddingHorizontal: 10,
+                      paddingVertical: 6,
+                      borderRadius: 999,
+                      backgroundColor: "rgba(255,255,255,0.94)",
+                      marginBottom: 8,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color:
+                          featuredEvent?.status === "cancelled"
+                            ? DANGER_RED
+                            : EVENT_BROWN,
+                        fontSize: 10.5,
+                        fontWeight: "900",
+                        letterSpacing: 0.45,
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      {getChurchProfileEventLabel(featuredEvent)}
+                    </Text>
+                  </View>
+
+                  <Text
+                    style={{
+                      color: SURFACE,
+                      fontSize: 26,
+                      fontWeight: "900",
+                      lineHeight: 31,
+                      letterSpacing: -0.35,
+                    }}
+                    numberOfLines={2}
+                  >
+                    {featuredEvent?.title || "Untitled event"}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={{ padding: 14 }}>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "flex-start",
+                    marginBottom: 8,
+                  }}
+                >
+                  <Ionicons
+                    name="time-outline"
+                    size={16}
+                    color={EVENT_AMBER}
+                    style={{ marginTop: 1 }}
+                  />
+
+                  <Text
+                    style={{
+                      flex: 1,
+                      color: EVENT_AMBER,
+                      fontSize: 13,
+                      fontWeight: "900",
+                      lineHeight: 18,
+                      marginLeft: 7,
+                    }}
+                    numberOfLines={2}
+                  >
+                    {formatEventDateTime(featuredEvent.start_at, featuredEvent.end_at)}
+                  </Text>
+                </View>
+
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "flex-start",
+                  }}
+                >
+                  <Ionicons
+                    name={featuredEvent?.online_url ? "videocam-outline" : "location-outline"}
+                    size={16}
+                    color={OLIVE}
+                    style={{ marginTop: 1 }}
+                  />
+
+                  <Text
+                    style={{
+                      flex: 1,
+                      color: MUTED,
+                      fontSize: 13,
+                      fontWeight: "800",
+                      lineHeight: 18,
+                      marginLeft: 7,
+                    }}
+                    numberOfLines={2}
+                  >
+                    {getChurchProfileEventLocation(featuredEvent)}
+                  </Text>
+                </View>
+
+                <View
+                  style={{
+                    marginTop: 12,
+                    paddingTop: 12,
+                    borderTopWidth: 1,
+                    borderTopColor: "rgba(15, 23, 42, 0.07)",
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: MUTED,
+                      fontSize: 12,
+                      fontWeight: "800",
+                    }}
+                  >
+                    {countChurchProfileGoing(featuredEvent)} going
+                  </Text>
+
+                  <View style={{ flexDirection: "row", alignItems: "center" }}>
+                    <Text
+                      style={{
+                        color: OLIVE,
+                        fontSize: 12.5,
+                        fontWeight: "900",
+                        marginRight: 4,
+                      }}
+                    >
+                      View details
+                    </Text>
+
+                    <Ionicons name="chevron-forward" size={16} color={OLIVE} />
+                  </View>
+                </View>
+              </View>
+            </Pressable>
+
+            {remainingEvents.length > 0 ? (
+              <View style={{ marginTop: 18 }}>
+<View
+  style={{
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginBottom: 10,
+    paddingHorizontal: 2,
+  }}
+>
+  <View
+    style={{
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      backgroundColor: OLIVE_SOFT,
+      borderWidth: 1,
+      borderColor: OLIVE_BORDER,
+      alignItems: "center",
+      justifyContent: "center",
+      marginRight: 8,
+      marginTop: 1,
+    }}
+  >
+    <Ionicons name="calendar-clear-outline" size={15} color={OLIVE} />
+  </View>
+
+  <View style={{ flex: 1, minWidth: 0 }}>
+    <Text
+      style={{
+        color: TEXT,
+        fontSize: 17,
+        fontWeight: "900",
+        lineHeight: 22,
+      }}
+      numberOfLines={2}
+    >
+      Upcoming at {churchName}
+    </Text>
+
+    <Text
+      style={{
+        color: MUTED,
+        fontSize: 12,
+        fontWeight: "700",
+        lineHeight: 16,
+        marginTop: 2,
+      }}
+      numberOfLines={1}
+    >
+      More services, courses and gatherings
+    </Text>
+  </View>
+</View>
+
+                <View style={{ gap: 10 }}>
+                  {remainingEvents.map((event) => (
+                    <Pressable
+                      key={event.id}
+                      onPress={() => openEvent(event)}
+                      style={({ pressed }) => ({
+                        borderRadius: 20,
+                        padding: 10,
+                        backgroundColor: pressed
+                          ? "rgba(180, 83, 9, 0.06)"
+                          : "rgba(255, 252, 245, 0.72)",
+                        borderWidth: 1,
+                        borderColor: CARD_BORDER,
+                        flexDirection: "row",
+                        alignItems: "center",
+                        opacity: event?.status === "cancelled" ? 0.7 : 1,
+                        transform: [{ scale: pressed ? 0.99 : 1 }],
+                      })}
+                    >
+                      <View
+                        style={{
+                          width: 74,
+                          height: 74,
+                          borderRadius: 17,
+                          overflow: "hidden",
+                          backgroundColor: OLIVE_SOFT,
+                          marginRight: 11,
+                        }}
+                      >
+                        <Image
+                          source={{
+                            uri:
+                              getChurchProfileEventImageUrl(event, church) ||
+                              getChurchProfileFallbackEventImage(event),
+                          }}
+                          style={{ width: "100%", height: "100%" }}
+                          resizeMode="cover"
+                        />
+
+                        <View
+                          style={{
+                            position: "absolute",
+                            left: 6,
+                            top: 6,
+                            borderRadius: 10,
+                            paddingHorizontal: 6,
+                            paddingVertical: 4,
+                            backgroundColor: "rgba(255,255,255,0.94)",
+                            alignItems: "center",
+                          }}
+                        >
+                          <Text
+                            style={{
+                              color: TEXT,
+                              fontSize: 13,
+                              fontWeight: "900",
+                              lineHeight: 15,
+                            }}
+                          >
+                            {formatChurchProfileDateBadge(event.start_at).day}
+                          </Text>
+
+                          <Text
+                            style={{
+                              color: EVENT_AMBER,
+                              fontSize: 8.5,
+                              fontWeight: "900",
+                            }}
+                          >
+                            {formatChurchProfileDateBadge(event.start_at).month}
+                          </Text>
+                        </View>
+                      </View>
+
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text
+                          style={{
+                            color: TEXT,
+                            fontSize: 14.5,
+                            fontWeight: "900",
+                            lineHeight: 19,
+                          }}
+                          numberOfLines={2}
+                        >
+                          {event?.title || "Untitled event"}
+                        </Text>
+
+                        <Text
+                          style={{
+                            color: EVENT_AMBER,
+                            fontSize: 12,
+                            fontWeight: "900",
+                            lineHeight: 17,
+                            marginTop: 4,
+                          }}
+                          numberOfLines={1}
+                        >
+                          {formatEventDateTime(event.start_at, event.end_at)}
+                        </Text>
+
+                        <Text
+                          style={{
+                            color: MUTED,
+                            fontSize: 11.5,
+                            fontWeight: "800",
+                            lineHeight: 16,
+                            marginTop: 3,
+                          }}
+                          numberOfLines={1}
+                        >
+                          {getChurchProfileEventLocation(event)}
+                        </Text>
+                      </View>
+
+                      <Ionicons
+                        name="chevron-forward"
+                        size={17}
+                        color={OLIVE}
+                        style={{ marginLeft: 7 }}
+                      />
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+            ) : null}
+
+            <View
+              style={{
+                flexDirection: "row",
+                gap: 10,
+                marginTop: 16,
+              }}
+            >
+              <Pressable
+                onPress={openAllEvents}
+                style={({ pressed }) => ({
+                  flex: 1,
+                  borderRadius: 999,
+                  paddingVertical: 12,
+                  paddingHorizontal: 14,
+                  backgroundColor: pressed
+                    ? "rgba(180, 83, 9, 0.86)"
+                    : EVENT_AMBER,
+                  borderWidth: 1,
+                  borderColor: EVENT_AMBER,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexDirection: "row",
+                })}
+              >
+                <Text
+                  style={{
+                    color: SURFACE,
+                    fontSize: 13,
+                    fontWeight: "900",
+                    marginRight: 6,
+                  }}
+                >
+                  View all events
+                </Text>
+
+                <Ionicons name="calendar-outline" size={16} color={SURFACE} />
+              </Pressable>
+
+              {isAdmin ? (
+                <Pressable
+                  onPress={openManageEvents}
+                  style={({ pressed }) => ({
+                    borderRadius: 999,
+                    paddingVertical: 12,
+                    paddingHorizontal: 14,
+                    backgroundColor: pressed ? OLIVE_SOFT : SURFACE,
+                    borderWidth: 1,
+                    borderColor: OLIVE_BORDER,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexDirection: "row",
+                  })}
+                >
+                  <Text
+                    style={{
+                      color: OLIVE,
+                      fontSize: 13,
+                      fontWeight: "900",
+                      marginRight: 6,
+                    }}
+                  >
+                    Manage
+                  </Text>
+
+                  <Ionicons name="settings-outline" size={16} color={OLIVE} />
+                </Pressable>
+              ) : null}
+            </View>
+          </>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
     function renderPostsTab() {
     if (!POSTS_ENABLED) {
       return (
@@ -1435,26 +2721,28 @@ export default function ChurchProfilePublic({ navigation, route }) {
 
         {(posts || []).map((p) => (
           <View key={p.id} style={{ marginBottom: 10 }}>
-            <PostCard
-              post={p}
-              currentUserId={viewerId}
-              author={{
-                id: churchId,
-                name: churchName,
-                avatarUrl: church?.avatar_url || null,
-                isAnonymous: false,
-                isOwner: false,
-              }}
-              onPressAvatar={() => {}}
-              onOpenComments={(post) => openComments(post)}
-              onShare={null}
-              onSetReaction={(postId, typeOrNull) =>
-                setReaction(postId, typeOrNull)
-              }
-              reactionPickerForPost={reactionPickerForPost}
-              setReactionPickerForPost={setReactionPickerForPost}
-              preferInAppYouTube={true}
-            />
+<PostCard
+  post={p}
+  currentUserId={viewerId}
+  author={{
+    id: churchId,
+    name: churchName,
+    avatarUrl: church?.avatar_url || null,
+    isAnonymous: false,
+    isOwner: !!isAdmin,
+  }}
+  onPressAvatar={() => {}}
+  onDelete={(postId) => handleDeleteChurchPost(postId)}
+  onHide={() => handleHideChurchPost()}
+  onOpenComments={(post) => openComments(post)}
+  onShare={null}
+  onSetReaction={(postId, typeOrNull) =>
+    setReaction(postId, typeOrNull)
+  }
+  reactionPickerForPost={reactionPickerForPost}
+  setReactionPickerForPost={setReactionPickerForPost}
+  preferInAppYouTube={true}
+/>
           </View>
         ))}
       </View>
@@ -1463,14 +2751,13 @@ export default function ChurchProfilePublic({ navigation, route }) {
 
   function renderNoticeboardTab() {
     return (
-      <View style={{ marginTop: 10 }}>
-        <ChurchNoticeboardPanel
-          churchId={churchId}
-          bottomPad={0}
-          showHeader={false}
-          embedded={true}
-        />
-      </View>
+<ChurchNoticeboardPanel
+  churchId={churchId}
+  bottomPad={0}
+  showHeader={false}
+  embedded={true}
+  isAdminOverride={isAdmin}
+/>
     );
   }
 
@@ -1724,79 +3011,42 @@ export default function ChurchProfilePublic({ navigation, route }) {
     );
   }
 
-  function renderDetailsPreview() {
-    if (!about && !location && !website && !checkingAdmin) return null;
-
-    return (
-      <View
+function renderDetailsPreview() {
+  return (
+    <View
+      style={{
+        marginTop: 12,
+      }}
+    >
+      <Text
         style={{
-          marginTop: 12,
-          gap: 8,
+          color: MUTED,
+          fontSize: 13.5,
+          fontWeight: "700",
+          lineHeight: 20,
         }}
+        numberOfLines={2}
       >
-        {about ? (
-          <Text
-            style={{
-              color: TEXT,
-              fontSize: 13.5,
-              fontWeight: "700",
-              lineHeight: 20,
-            }}
-          >
-            {about}
-          </Text>
-        ) : null}
+        A digital home for {churchName}, helping church life continue beyond Sunday.
+      </Text>
 
-        {location ? (
-          <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <Ionicons name="location-outline" size={15} color={OLIVE} />
-            <Text
-              style={{
-                color: MUTED,
-                fontSize: 13,
-                fontWeight: "800",
-                marginLeft: 6,
-                flex: 1,
-              }}
-              numberOfLines={2}
-            >
-              {location}
-            </Text>
-          </View>
-        ) : null}
+      <MemberPreviewStack members={memberPreview} total={memberCount} />
 
-        {website ? (
-          <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <Ionicons name="globe-outline" size={15} color={EVENT_AMBER} />
-            <Text
-              style={{
-                color: MUTED,
-                fontSize: 13,
-                fontWeight: "800",
-                marginLeft: 6,
-                flex: 1,
-              }}
-              numberOfLines={1}
-            >
-              {website}
-            </Text>
-          </View>
-        ) : null}
-
-        {checkingAdmin ? (
-          <Text
-            style={{
-              color: MUTED,
-              fontSize: 12.5,
-              fontWeight: "700",
-            }}
-          >
-            Checking admin permissions…
-          </Text>
-        ) : null}
-      </View>
-    );
-  }
+      {checkingAdmin ? (
+        <Text
+          style={{
+            color: MUTED,
+            fontSize: 12.5,
+            fontWeight: "700",
+            marginTop: 8,
+          }}
+        >
+          Checking admin permissions…
+        </Text>
+      ) : null}
+    </View>
+  );
+}
 
   if (loading) {
     return (
@@ -2364,29 +3614,36 @@ export default function ChurchProfilePublic({ navigation, route }) {
                 </View>
               ) : null}
 
-              <View
-                style={{
-                  ...premiumCardStyle,
-                  padding: 10,
-                  marginBottom: 14,
-                  flexDirection: "row",
-                  gap: 7,
-                }}
-              >
-                <PremiumTabButton
-                  label="Posts"
-                  icon="chatbubble-ellipses-outline"
-                  active={activeTab === "posts"}
-                  onPress={() => setActiveTab("posts")}
-                />
+<View
+  style={{
+    ...premiumCardStyle,
+    padding: 10,
+    marginBottom: 14,
+    flexDirection: "row",
+    gap: 7,
+  }}
+>
+  <PremiumTabButton
+    label="About"
+    icon="information-circle-outline"
+    active={activeTab === "about"}
+    onPress={() => setActiveTab("about")}
+  />
 
-                <PremiumTabButton
-                  label="Noticeboard"
-                  icon="megaphone-outline"
-                  active={activeTab === "noticeboard"}
-                  onPress={() => setActiveTab("noticeboard")}
-                />
-              </View>
+  <PremiumTabButton
+    label="Events"
+    icon="calendar-outline"
+    active={activeTab === "events"}
+    onPress={() => setActiveTab("events")}
+  />
+
+  <PremiumTabButton
+    label="Posts"
+    icon="chatbubble-ellipses-outline"
+    active={activeTab === "posts"}
+    onPress={() => setActiveTab("posts")}
+  />
+</View>
 
               <View
                 style={{
@@ -2395,23 +3652,54 @@ export default function ChurchProfilePublic({ navigation, route }) {
                   marginBottom: 24,
                 }}
               >
-                {activeTab === "posts" ? (
-                  <PremiumSectionHeader
-                    title="Church posts"
-                    subtitle="Encouragement, updates and media from the church"
-                    icon="sparkles-outline"
-                    amber
-                  />
-                ) : (
-                  <PremiumSectionHeader
-                    title="Noticeboard"
-                    subtitle="Practical church updates and announcements"
-                    icon="megaphone-outline"
-                    amber={false}
-                  />
-                )}
-
-                {activeTab === "posts" ? renderPostsTab() : renderNoticeboardTab()}
+{activeTab === "about" ? (
+  <>
+    <PremiumSectionHeader
+      title="About"
+      subtitle="Learn more about this church"
+      icon="information-circle-outline"
+      amber={false}
+      actionLabel={isAdmin && !isEditingDetails ? "Edit" : null}
+      onAction={() => {
+        setAbout(church?.about ?? "");
+        setWebsite(church?.website ?? "");
+        setLocation(church?.location ?? "");
+        setIsEditingDetails(true);
+      }}
+    />
+    {renderAboutTab()}
+  </>
+) : activeTab === "events" ? (
+  <>
+    <PremiumSectionHeader
+      title="Events"
+      subtitle="Services, courses and gatherings coming up."
+      icon="calendar-outline"
+      amber
+      actionLabel={isAdmin ? "Manage" : undefined}
+      onAction={
+        isAdmin
+          ? () =>
+              navigation.navigate("ChurchEventsAdmin", {
+                churchId,
+                churchName,
+              })
+          : undefined
+      }
+    />
+    {renderEventsTab()}
+  </>
+) : (
+  <>
+    <PremiumSectionHeader
+      title="Church posts"
+      subtitle="Encouragement, updates and media from the church"
+      icon="chatbubble-ellipses-outline"
+      amber
+    />
+    {renderPostsTab()}
+  </>
+)}
               </View>
             </View>
           </ScrollView>
@@ -2547,28 +3835,35 @@ export default function ChurchProfilePublic({ navigation, route }) {
             </Pressable>
           </Modal>
 
-          <Modal
-            visible={isEditingDetails}
-            transparent
-            animationType="slide"
-            onRequestClose={() => setIsEditingDetails(false)}
-          >
-            <View
-              style={{
-                flex: 1,
-                backgroundColor: "rgba(0,0,0,0.70)",
-                justifyContent: "flex-end",
-              }}
-            >
-              <View
-                style={{
-                  backgroundColor: PREMIUM_CREAM,
-                  borderTopLeftRadius: 26,
-                  borderTopRightRadius: 26,
-                  padding: 18,
-                  maxHeight: "82%",
-                }}
-              >
+<Modal
+  visible={isEditingDetails}
+  transparent
+  animationType="slide"
+  onRequestClose={handleCancelDetailsEdit}
+>
+  <KeyboardAvoidingView
+    style={{ flex: 1 }}
+    behavior={Platform.OS === "ios" ? "padding" : "height"}
+    keyboardVerticalOffset={Platform.OS === "ios" ? 12 : 0}
+  >
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: "rgba(0,0,0,0.70)",
+        justifyContent: "flex-end",
+      }}
+    >
+      <View
+        style={{
+          backgroundColor: PREMIUM_CREAM,
+          borderTopLeftRadius: 26,
+          borderTopRightRadius: 26,
+          paddingHorizontal: 18,
+          paddingTop: 18,
+          paddingBottom: 26,
+          maxHeight: "86%",
+        }}
+      >
                 <View
                   style={{
                     flexDirection: "row",
@@ -2610,7 +3905,13 @@ export default function ChurchProfilePublic({ navigation, route }) {
                   </Pressable>
                 </View>
 
-                <ScrollView keyboardShouldPersistTaps="handled">
+                <ScrollView
+  keyboardShouldPersistTaps="handled"
+  showsVerticalScrollIndicator={false}
+  contentContainerStyle={{
+    paddingBottom: 34,
+  }}
+>
                   <Text
                     style={{
                       color: MUTED,
@@ -2721,9 +4022,9 @@ export default function ChurchProfilePublic({ navigation, route }) {
                       marginTop: 16,
                     }}
                   >
-                    <Pressable
-                      onPress={() => setIsEditingDetails(false)}
-                      disabled={savingDetails}
+<Pressable
+  onPress={handleCancelDetailsEdit}
+  disabled={savingDetails}
                       style={({ pressed }) => ({
                         borderRadius: 999,
                         paddingHorizontal: 14,
@@ -2772,7 +4073,8 @@ export default function ChurchProfilePublic({ navigation, route }) {
                 </ScrollView>
               </View>
             </View>
-          </Modal>
+          </KeyboardAvoidingView>
+        </Modal>
         </>
       )}
     </Screen>

@@ -27,6 +27,10 @@ const EVENT_SELECT_SUMMARY = `
   external_registration_url,
   registration_questions,
 
+  linked_course_id,
+  linked_group_id,
+  course_session_id,
+
   event_attendees (
     user_id,
     status
@@ -69,6 +73,10 @@ const EVENT_SELECT_DETAIL = `
   registration_enabled,
   external_registration_url,
   registration_questions,
+
+  linked_course_id,
+  linked_group_id,
+  course_session_id,
 
   event_attendees (
     user_id,
@@ -150,8 +158,154 @@ export async function getCurrentUserId() {
   return data?.user?.id ?? null;
 }
 
+function dateMs(value) {
+  if (!value) return null;
+
+  const date = new Date(value);
+  const time = date.getTime();
+
+  return Number.isNaN(time) ? null : time;
+}
+
+function isCourseProgrammeEvent(event) {
+  const title = String(event?.title || "").toLowerCase();
+  const eventType = String(event?.event_type || "").toLowerCase();
+
+  return Boolean(
+    event?.linked_course_id ||
+      eventType === "course_programme" ||
+      eventType === "course" ||
+      eventType === "programme" ||
+      title.includes("alpha") ||
+      title.includes("course")
+  );
+}
+
+function isLongRunningParentEvent(event) {
+  const startTime = dateMs(event?.start_at);
+  const endTime = dateMs(event?.end_at);
+
+  if (!startTime || !endTime) return false;
+
+  const oneDayMs = 24 * 60 * 60 * 1000;
+  const durationDays = (endTime - startTime) / oneDayMs;
+
+  return durationDays > 2;
+}
+
+async function fetchFutureSessionsForCourseIds(courseIds, nowIso) {
+  const cleanCourseIds = Array.from(new Set((courseIds || []).filter(Boolean)));
+
+  if (cleanCourseIds.length === 0) return new Map();
+
+  const { data, error } = await supabase
+    .from("church_course_sessions")
+    .select("id, course_id, starts_at, ends_at, title, session_number")
+    .in("course_id", cleanCourseIds)
+    .gte("ends_at", nowIso)
+    .order("starts_at", { ascending: true });
+
+  if (error) {
+    console.log("fetchFutureSessionsForCourseIds error:", error);
+    return new Map();
+  }
+
+  const sessionsByCourseId = new Map();
+
+  for (const session of data || []) {
+    if (!session?.course_id) continue;
+
+    const existing = sessionsByCourseId.get(session.course_id) || [];
+    existing.push(session);
+    sessionsByCourseId.set(session.course_id, existing);
+  }
+
+  return sessionsByCourseId;
+}
+
+async function applyCourseSessionDatesToUpcomingEvents(events, nowIso) {
+  const safeEvents = Array.isArray(events) ? events : [];
+  const nowTime = dateMs(nowIso);
+
+  const linkedCourseIds = safeEvents
+    .map((event) => event?.linked_course_id)
+    .filter(Boolean);
+
+  const sessionsByCourseId = await fetchFutureSessionsForCourseIds(
+    linkedCourseIds,
+    nowIso
+  );
+
+  const cleanedEvents = [];
+
+  for (const event of safeEvents) {
+    const startTime = dateMs(event?.start_at);
+    const endTime = dateMs(event?.end_at);
+    const isCourse = isCourseProgrammeEvent(event);
+    const isLongRunning = isLongRunningParentEvent(event);
+
+    if (isCourse && event?.linked_course_id) {
+      const futureSessions = sessionsByCourseId.get(event.linked_course_id) || [];
+      const nextSession = futureSessions[0] || null;
+
+      if (!nextSession) {
+        // Linked course with no future sessions should not appear in upcoming lists.
+        continue;
+      }
+
+      cleanedEvents.push({
+        ...event,
+
+        course_parent_start_at: event.start_at,
+        course_parent_end_at: event.end_at,
+
+        start_at: nextSession.starts_at,
+        end_at: nextSession.ends_at || nextSession.starts_at,
+        course_session_id: nextSession.id,
+        next_course_session_id: nextSession.id,
+        next_course_session_title: nextSession.title || null,
+        next_course_session_starts_at: nextSession.starts_at,
+        next_course_session_ends_at: nextSession.ends_at || null,
+        is_course_session_projection: true,
+      });
+
+      continue;
+    }
+
+    if (isCourse && isLongRunning) {
+      // Old course-like parent event with no linked course structure.
+      // These are usually legacy/test rows, such as old Alpha parent events.
+      // Do not let end_at keep them alive in Daily/Upcoming.
+      if (startTime && startTime >= nowTime) {
+        cleanedEvents.push(event);
+      }
+
+      continue;
+    }
+
+    if (isLongRunning && startTime && startTime < nowTime) {
+      // General safety rule:
+      // upcoming lists should not be clogged by already-started multi-day parent events.
+      continue;
+    }
+
+    if (startTime && startTime >= nowTime) {
+      cleanedEvents.push(event);
+      continue;
+    }
+
+    // If there is no valid start time, keep nothing in upcoming.
+    // If the start is old, keep nothing in upcoming.
+  }
+
+  return cleanedEvents.sort(
+    (a, b) => (dateMs(a.start_at) || 0) - (dateMs(b.start_at) || 0)
+  );
+}
+
 export async function fetchUpcomingEvents({ limit = 20 } = {}) {
   const nowIso = new Date().toISOString();
+  const queryLimit = Math.max(limit * 5, 60);
 
   const { data, error } = await supabase
     .from("events")
@@ -159,16 +313,66 @@ export async function fetchUpcomingEvents({ limit = 20 } = {}) {
     .or(`start_at.gte.${nowIso},end_at.gte.${nowIso}`)
     .in("status", ["published", "cancelled"])
     .order("start_at", { ascending: true })
-    .limit(limit);
+    .limit(queryLimit);
 
   if (error) {
     console.log("fetchUpcomingEvents error:", error);
     return { ok: false, error: error.message, events: [] };
   }
 
+  const cleanedEvents = await applyCourseSessionDatesToUpcomingEvents(
+    data || [],
+    nowIso
+  );
+
   return {
     ok: true,
-    events: data || [],
+    events: cleanedEvents.slice(0, limit),
+  };
+}
+
+export async function fetchUpcomingEventsForChurch({
+  churchId,
+  limit = 20,
+  includeInviteOnly = false,
+} = {}) {
+  if (!churchId) {
+    return { ok: false, error: "Missing churchId", events: [] };
+  }
+
+  const nowIso = new Date().toISOString();
+  const queryLimit = Math.max(limit * 5, 60);
+
+  let query = supabase
+    .from("events")
+    .select(EVENT_SELECT_SUMMARY)
+    .eq("church_id", churchId)
+    .or(`start_at.gte.${nowIso},end_at.gte.${nowIso}`)
+    .in("status", ["published", "cancelled"])
+    .order("start_at", { ascending: true })
+    .limit(queryLimit);
+
+  if (includeInviteOnly) {
+    query = query.in("visibility", ["public", "church", "invite_only"]);
+  } else {
+    query = query.in("visibility", ["public", "church"]);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    console.log("fetchUpcomingEventsForChurch error:", error);
+    return { ok: false, error: error.message, events: [] };
+  }
+
+  const cleanedEvents = await applyCourseSessionDatesToUpcomingEvents(
+    data || [],
+    nowIso
+  );
+
+  return {
+    ok: true,
+    events: cleanedEvents.slice(0, limit),
   };
 }
 
@@ -283,6 +487,127 @@ export async function fetchEventById(eventId) {
   };
 }
 
+export async function fetchCourseForEvent(eventId) {
+  if (!eventId) {
+    return {
+      ok: false,
+      error: "Missing eventId",
+      course: null,
+      sessions: [],
+      linkedGroup: null,
+    };
+  }
+
+  const { data: course, error: courseError } = await supabase
+    .from("church_courses")
+    .select(
+      `
+      id,
+      church_id,
+      source_event_id,
+      linked_group_id,
+      title,
+      description,
+      course_type,
+      visibility,
+      status,
+      leader_name,
+      location_name,
+      location_address,
+      online_url,
+      image_url,
+      registration_enabled,
+      attendance_method,
+      registration_questions,
+      external_registration_url,
+      repeat_type,
+      repeat_interval,
+      repeat_day,
+      starts_at,
+      ends_at,
+      created_by,
+      created_at,
+      updated_at
+    `
+    )
+    .eq("source_event_id", eventId)
+    .maybeSingle();
+
+  if (courseError) {
+    console.log("fetchCourseForEvent course error:", courseError);
+
+    return {
+      ok: false,
+      error: courseError.message,
+      course: null,
+      sessions: [],
+      linkedGroup: null,
+    };
+  }
+
+  if (!course?.id) {
+    return {
+      ok: true,
+      course: null,
+      sessions: [],
+      linkedGroup: null,
+    };
+  }
+
+  const { data: sessions, error: sessionsError } = await supabase
+    .from("church_course_sessions")
+    .select(
+      `
+      id,
+      course_id,
+      church_id,
+      source_event_id,
+      session_number,
+      title,
+      topic,
+      description,
+      starts_at,
+      ends_at,
+      location_name,
+      location_address,
+      online_url,
+      status,
+      created_at,
+      updated_at
+    `
+    )
+    .eq("course_id", course.id)
+    .neq("status", "archived")
+    .order("session_number", { ascending: true });
+
+  if (sessionsError) {
+    console.log("fetchCourseForEvent sessions error:", sessionsError);
+  }
+
+  let linkedGroup = null;
+
+  if (course.linked_group_id) {
+    const { data: groupData, error: groupError } = await supabase
+      .from("church_groups")
+      .select("*")
+      .eq("id", course.linked_group_id)
+      .maybeSingle();
+
+    if (groupError) {
+      console.log("fetchCourseForEvent linked group error:", groupError);
+    } else {
+      linkedGroup = groupData || null;
+    }
+  }
+
+  return {
+    ok: true,
+    course,
+    sessions: sessionsError ? [] : sessions || [],
+    linkedGroup,
+  };
+}
+
 export async function createEvent({
   title,
   description,
@@ -304,6 +629,9 @@ export async function createEvent({
   registrationEnabled = false,
   externalRegistrationUrl = null,
   registrationQuestions = [],
+
+  createLinkedCourseGroup = true,
+  enableCoursePrayerSpace = false,
 }) {
   const userId = await getCurrentUserId();
 
@@ -384,9 +712,53 @@ export async function createEvent({
     return { ok: false, error: error.message, event: null };
   }
 
+  const createdEvent = data || null;
+  const createdEventId = createdEvent?.id || null;
+
+  if (cleanEventType === "course_programme") {
+    if (!createdEventId) {
+      return {
+        ok: false,
+        error:
+          "The course event was created, but Triunely could not read the new event ID to create the linked course.",
+        event: createdEvent,
+      };
+    }
+
+    const { data: courseResult, error: courseError } = await supabase.rpc(
+      "create_course_from_event_rpc",
+      {
+        p_event_id: createdEventId,
+        p_create_linked_group: createLinkedCourseGroup !== false,
+        p_enable_prayer_space: enableCoursePrayerSpace === true,
+      }
+    );
+
+    if (courseError) {
+      console.log("create course from event rpc error:", courseError);
+
+      return {
+        ok: false,
+        error:
+          courseError.message ||
+          "The event was created, but the linked course setup could not be completed.",
+        event: createdEvent,
+        courseSetupError: courseError.message,
+      };
+    }
+
+    const refreshed = await fetchEventById(createdEventId);
+
+    return {
+      ok: true,
+      event: refreshed.event || createdEvent,
+      course: courseResult || null,
+    };
+  }
+
   return {
     ok: true,
-    event: data,
+    event: createdEvent,
   };
 }
 

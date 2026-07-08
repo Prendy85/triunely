@@ -1,5 +1,6 @@
 // src/components/PostCard.js
 import { Ionicons } from "@expo/vector-icons";
+import { Video } from "expo-av";
 import { useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -230,6 +231,7 @@ export default function PostCard({
   const [ytVisible, setYtVisible] = useState(false);
   const [ytLoading, setYtLoading] = useState(false);
   const [ytError, setYtError] = useState(null);
+  const [mediaAspectRatio, setMediaAspectRatio] = useState(null);
 
   // Prevent repeated auto-fallback loops
   const ytAutoOpenedRef = useRef(false);
@@ -270,18 +272,41 @@ export default function PostCard({
   const createdLabel = post?.created_at
     ? new Date(post.created_at).toLocaleString()
     : "";
-const isImage =
-  post?.media_url &&
-  post?.media_type &&
-  String(post.media_type).startsWith("image");
 
-const isFormationShare = post?.media_type === "formation_share";
+  const isImage =
+    post?.media_url &&
+    post?.media_type &&
+    String(post.media_type).startsWith("image");
 
-const formationTitle = post?.link_title || "Daily Formation";
-const formationDescription =
-  post?.link_description || "Formation practice shared today.";
+  const isVideo =
+    post?.media_url &&
+    post?.media_type &&
+    String(post.media_type).startsWith("video");
 
-const who = author?.name || "Member on Triunely";
+  const isFormationShare = post?.media_type === "formation_share";
+
+  function updateMediaAspectRatio(width, height) {
+    const w = Number(width);
+    const h = Number(height);
+
+    if (!w || !h || w <= 0 || h <= 0) return;
+
+    const ratio = w / h;
+
+    // Keep very unusual/broken metadata from creating unusable layouts.
+    // 0.45 is tall portrait, 2.2 is wide landscape.
+    const safeRatio = Math.min(Math.max(ratio, 0.45), 2.2);
+
+    setMediaAspectRatio(safeRatio);
+  }
+
+  const displayAspectRatio = mediaAspectRatio || (isVideo ? 9 / 16 : 1);
+
+  const formationTitle = post?.link_title || "Daily Formation";
+  const formationDescription =
+    post?.link_description || "Formation practice shared today.";
+
+  const who = author?.name || "Member on Triunely";
   const avatarUrl = author?.avatarUrl || null;
   const initials = (who || "T").slice(0, 1).toUpperCase();
   const isOwner = !!author?.isOwner;
@@ -781,197 +806,197 @@ const who = author?.name || "Member on Triunely";
         ) : null}
       </View>
 
-  {isFormationShare && (
-  <View
-    style={{
-      marginTop: 12,
-      borderRadius: 22,
-      overflow: "hidden",
-      backgroundColor: "#FFFCF5",
-      borderWidth: 1,
-      borderColor: "rgba(180, 83, 9, 0.18)",
-      shadowColor: "rgba(15, 23, 42, 0.10)",
-      shadowOpacity: 0.08,
-      shadowRadius: 12,
-      shadowOffset: { width: 0, height: 5 },
-      elevation: 2,
-    }}
-  >
-    <View
-      style={{
-        padding: 15,
-        backgroundColor: "rgba(180, 83, 9, 0.08)",
-        borderBottomWidth: 1,
-        borderBottomColor: "rgba(180, 83, 9, 0.14)",
-      }}
-    >
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          gap: 11,
-        }}
-      >
+      {isFormationShare && (
         <View
           style={{
-            width: 44,
-            height: 44,
-            borderRadius: 999,
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: "#FFFFFF",
+            marginTop: 12,
+            borderRadius: 22,
+            overflow: "hidden",
+            backgroundColor: "#FFFCF5",
             borderWidth: 1,
-            borderColor: "rgba(180, 83, 9, 0.20)",
+            borderColor: "rgba(180, 83, 9, 0.18)",
+            shadowColor: "rgba(15, 23, 42, 0.10)",
+            shadowOpacity: 0.08,
+            shadowRadius: 12,
+            shadowOffset: { width: 0, height: 5 },
+            elevation: 2,
           }}
         >
-          <Ionicons name="leaf-outline" size={22} color="#B45309" />
-        </View>
-
-        <View style={{ flex: 1 }}>
-          <Text
+          <View
             style={{
-              color: "#7C2D12",
-              fontSize: 12,
-              fontWeight: "900",
-              textTransform: "uppercase",
-              letterSpacing: 0.5,
+              padding: 15,
+              backgroundColor: "rgba(180, 83, 9, 0.08)",
+              borderBottomWidth: 1,
+              borderBottomColor: "rgba(180, 83, 9, 0.14)",
             }}
           >
-            Daily Formation
-          </Text>
-
-          <Text
-            style={{
-              color: "#1F2933",
-              marginTop: 3,
-              fontSize: 18,
-              lineHeight: 22,
-              fontWeight: "900",
-            }}
-          >
-            {formationTitle}
-          </Text>
-        </View>
-      </View>
-    </View>
-
-    <View style={{ padding: 15 }}>
-      <View
-        style={{
-          alignSelf: "flex-start",
-          paddingHorizontal: 11,
-          paddingVertical: 7,
-          borderRadius: 999,
-          backgroundColor: "rgba(79, 99, 59, 0.10)",
-          borderWidth: 1,
-          borderColor: "rgba(79, 99, 59, 0.18)",
-          flexDirection: "row",
-          alignItems: "center",
-          gap: 6,
-        }}
-      >
-        <Ionicons name="checkmark-circle-outline" size={15} color="#4F633B" />
-
-        <Text
-          style={{
-            color: "#4F633B",
-            fontSize: 12,
-            fontWeight: "900",
-          }}
-        >
-          {formationDescription}
-        </Text>
-      </View>
-
-      <View
-        style={{
-          marginTop: 14,
-          flexDirection: "row",
-          flexWrap: "wrap",
-          gap: 8,
-        }}
-      >
-        {["Scripture", "Prayer", "Obedience", "Service", "Renunciation"].map(
-          (label) => (
             <View
-              key={label}
               style={{
-                paddingHorizontal: 10,
-                paddingVertical: 6,
-                borderRadius: 999,
-                backgroundColor: "#FFFFFF",
-                borderWidth: 1,
-                borderColor: "rgba(15, 23, 42, 0.08)",
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 11,
               }}
             >
+              <View
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 999,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: "#FFFFFF",
+                  borderWidth: 1,
+                  borderColor: "rgba(180, 83, 9, 0.20)",
+                }}
+              >
+                <Ionicons name="leaf-outline" size={22} color="#B45309" />
+              </View>
+
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={{
+                    color: "#7C2D12",
+                    fontSize: 12,
+                    fontWeight: "900",
+                    textTransform: "uppercase",
+                    letterSpacing: 0.5,
+                  }}
+                >
+                  Daily Formation
+                </Text>
+
+                <Text
+                  style={{
+                    color: "#1F2933",
+                    marginTop: 3,
+                    fontSize: 18,
+                    lineHeight: 22,
+                    fontWeight: "900",
+                  }}
+                >
+                  {formationTitle}
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={{ padding: 15 }}>
+            <View
+              style={{
+                alignSelf: "flex-start",
+                paddingHorizontal: 11,
+                paddingVertical: 7,
+                borderRadius: 999,
+                backgroundColor: "rgba(79, 99, 59, 0.10)",
+                borderWidth: 1,
+                borderColor: "rgba(79, 99, 59, 0.18)",
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              <Ionicons name="checkmark-circle-outline" size={15} color="#4F633B" />
+
+              <Text
+                style={{
+                  color: "#4F633B",
+                  fontSize: 12,
+                  fontWeight: "900",
+                }}
+              >
+                {formationDescription}
+              </Text>
+            </View>
+
+            <View
+              style={{
+                marginTop: 14,
+                flexDirection: "row",
+                flexWrap: "wrap",
+                gap: 8,
+              }}
+            >
+              {["Scripture", "Prayer", "Obedience", "Service", "Renunciation"].map(
+                (label) => (
+                  <View
+                    key={label}
+                    style={{
+                      paddingHorizontal: 10,
+                      paddingVertical: 6,
+                      borderRadius: 999,
+                      backgroundColor: "#FFFFFF",
+                      borderWidth: 1,
+                      borderColor: "rgba(15, 23, 42, 0.08)",
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: "#6B7280",
+                        fontSize: 11,
+                        fontWeight: "800",
+                      }}
+                    >
+                      {label}
+                    </Text>
+                  </View>
+                )
+              )}
+            </View>
+
+            {!!post?.content ? (
+              <Text
+                style={{
+                  color: "#1F2933",
+                  marginTop: 15,
+                  fontSize: 15,
+                  lineHeight: 22,
+                  fontWeight: "600",
+                }}
+              >
+                {post.content}
+              </Text>
+            ) : null}
+
+            <View
+              style={{
+                marginTop: 15,
+                paddingTop: 13,
+                borderTopWidth: 1,
+                borderTopColor: "rgba(15, 23, 42, 0.08)",
+                flexDirection: "row",
+                alignItems: "center",
+              }}
+            >
+              <Ionicons name="people-outline" size={16} color="#4F633B" />
+
               <Text
                 style={{
                   color: "#6B7280",
-                  fontSize: 11,
+                  marginLeft: 7,
+                  fontSize: 12,
                   fontWeight: "800",
                 }}
               >
-                {label}
+                Shared for fellowship encouragement
               </Text>
             </View>
-          )
-        )}
-      </View>
+          </View>
+        </View>
+      )}
 
-      {!!post?.content ? (
+      {!isFormationShare && !!post?.content && (
         <Text
           style={{
-            color: "#1F2933",
-            marginTop: 15,
+            color: theme.colors.text,
+            marginTop: 10,
             fontSize: 15,
-            lineHeight: 22,
-            fontWeight: "600",
+            lineHeight: 21,
+            fontWeight: "500",
           }}
         >
           {post.content}
         </Text>
-      ) : null}
-
-      <View
-        style={{
-          marginTop: 15,
-          paddingTop: 13,
-          borderTopWidth: 1,
-          borderTopColor: "rgba(15, 23, 42, 0.08)",
-          flexDirection: "row",
-          alignItems: "center",
-        }}
-      >
-        <Ionicons name="people-outline" size={16} color="#4F633B" />
-
-        <Text
-          style={{
-            color: "#6B7280",
-            marginLeft: 7,
-            fontSize: 12,
-            fontWeight: "800",
-          }}
-        >
-          Shared for fellowship encouragement
-        </Text>
-      </View>
-    </View>
-  </View>
-)}
-
-{!isFormationShare && !!post?.content && (
-  <Text
-    style={{
-      color: theme.colors.text,
-      marginTop: 10,
-      fontSize: 15,
-      lineHeight: 21,
-      fontWeight: "500",
-    }}
-  >
-    {post.content}
-  </Text>
-)}
+      )}
 
       {isImage && (
         <View
@@ -987,8 +1012,67 @@ const who = author?.name || "Member on Triunely";
         >
           <Image
             source={{ uri: post.media_url }}
-            style={{ width: "100%", height: undefined, aspectRatio: 1 }}
+            style={{
+              width: "100%",
+              aspectRatio: displayAspectRatio,
+              backgroundColor: theme.colors.surfaceAlt,
+            }}
             resizeMode="cover"
+            onLoad={(event) => {
+              const source = event?.nativeEvent?.source;
+
+              updateMediaAspectRatio(source?.width, source?.height);
+            }}
+          />
+        </View>
+      )}
+
+      {isVideo && (
+        <View
+          style={{
+            marginTop: 10,
+            borderRadius: 14,
+            overflow: "hidden",
+            width: "100%",
+            backgroundColor: "#000",
+            borderWidth: 1,
+            borderColor: theme.colors.divider,
+          }}
+        >
+          <Video
+            source={{ uri: post.media_url }}
+            style={{
+              width: "100%",
+              aspectRatio: displayAspectRatio,
+              backgroundColor: "#000",
+            }}
+            useNativeControls
+            resizeMode="cover"
+            shouldPlay={false}
+            isLooping={false}
+            onReadyForDisplay={(event) => {
+              const naturalSize = event?.naturalSize;
+
+              updateMediaAspectRatio(
+                naturalSize?.width,
+                naturalSize?.height
+              );
+            }}
+            onError={(e) => {
+              console.log("PostCard video playback error:", {
+                error: e,
+                mediaUrl: post?.media_url,
+                mediaType: post?.media_type,
+                postId: post?.id,
+              });
+            }}
+            onLoad={() => {
+              console.log("PostCard video loaded:", {
+                mediaUrl: post?.media_url,
+                mediaType: post?.media_type,
+                postId: post?.id,
+              });
+            }}
           />
         </View>
       )}
