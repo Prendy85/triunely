@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  KeyboardAvoidingView,
   Linking,
   Modal,
   Platform,
@@ -119,18 +120,6 @@ const BAPTISM_OPTIONS = [
   "Unsure",
   "Still Seeking",
   "Prefer not to say",
-];
-
-const LETTER_ROWS = [
-  ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"],
-  ["a", "s", "d", "f", "g", "h", "j", "k", "l"],
-  ["z", "x", "c", "v", "b", "n", "m"],
-];
-
-const SYMBOL_ROWS = [
-  ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"],
-  ["!", "@", "#", "£", "$", "%", "&", "*", "(", ")"],
-  ["-", "_", "'", '"', ",", ".", "?", "/"],
 ];
 
 function safeInitials(nameOrEmail) {
@@ -377,6 +366,166 @@ function PremiumTabButton({ label, icon, active, onPress }) {
   );
 }
 
+
+function FellowshipPreviewCard({
+  following = [],
+  followingCount = 0,
+  onAddPress,
+}) {
+  const visiblePeople = Array.isArray(following) ? following.slice(0, 3) : [];
+  const extraCount = Math.max(0, followingCount - visiblePeople.length);
+  const hasFellowship = followingCount > 0;
+
+  return (
+    <View
+      style={{
+        marginTop: 14,
+        flexDirection: "row",
+        alignItems: "center",
+      }}
+    >
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          marginRight: 12,
+        }}
+      >
+        {hasFellowship ? (
+          <>
+            {visiblePeople.map((person, index) => {
+              const name = person?.display_name || "Triunely user";
+              const avatar = person?.avatar_url || null;
+
+              return (
+                <View
+                  key={person?.id || `${name}-${index}`}
+                  style={{
+                    width: 30,
+                    height: 30,
+                    borderRadius: 15,
+                    marginLeft: index === 0 ? 0 : -9,
+                    backgroundColor: OLIVE,
+                    borderWidth: 2,
+                    borderColor: SURFACE,
+                    overflow: "hidden",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  {avatar ? (
+                    <Image
+                      source={{ uri: avatar }}
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                      }}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <Text
+                      style={{
+                        color: SURFACE,
+                        fontSize: 10.5,
+                        fontWeight: "900",
+                      }}
+                    >
+                      {safeInitials(name)}
+                    </Text>
+                  )}
+                </View>
+              );
+            })}
+
+            {extraCount > 0 ? (
+              <View
+                style={{
+                  width: 30,
+                  height: 30,
+                  borderRadius: 15,
+                  marginLeft: visiblePeople.length > 0 ? -9 : 0,
+                  backgroundColor: AMBER_SOFT,
+                  borderWidth: 2,
+                  borderColor: SURFACE,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Text
+                  style={{
+                    color: EVENT_BROWN,
+                    fontSize: 10.5,
+                    fontWeight: "900",
+                  }}
+                >
+                  +{extraCount}
+                </Text>
+              </View>
+            ) : null}
+          </>
+        ) : (
+          <View
+            style={{
+              width: 30,
+              height: 30,
+              borderRadius: 15,
+              backgroundColor: OLIVE_SOFT,
+              borderWidth: 1,
+              borderColor: OLIVE_BORDER,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Ionicons name="people-outline" size={15} color={OLIVE} />
+          </View>
+        )}
+      </View>
+
+      <Text
+        style={{
+          color: MUTED,
+          fontSize: 13.5,
+          fontWeight: "900",
+          flex: 1,
+        }}
+        numberOfLines={1}
+      >
+        {followingCount} {followingCount === 1 ? "fellowship" : "fellowships"}
+      </Text>
+
+      <Pressable
+        onPress={onAddPress}
+        style={({ pressed }) => ({
+          borderRadius: 999,
+          paddingHorizontal: 14,
+          paddingVertical: 10,
+          backgroundColor: pressed ? "rgba(180, 83, 9, 0.88)" : EVENT_AMBER,
+          flexDirection: "row",
+          alignItems: "center",
+          shadowColor: EVENT_AMBER,
+          shadowOpacity: 0.16,
+          shadowRadius: 8,
+          shadowOffset: { width: 0, height: 4 },
+          elevation: 3,
+        })}
+      >
+        <Text
+          style={{
+            color: SURFACE,
+            fontSize: 13,
+            fontWeight: "900",
+            marginRight: 5,
+          }}
+        >
+          Add
+        </Text>
+
+        <Ionicons name="chevron-forward" size={15} color={SURFACE} />
+      </Pressable>
+    </View>
+  );
+}
+
 export default function Profile({ navigation, route }) {
   const rt = useRealtime();
   const { openFellowshipRequests } = useFellowshipRequestsModal();
@@ -422,10 +571,6 @@ export default function Profile({ navigation, route }) {
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState(null);
   const [justRequestedIds, setJustRequestedIds] = useState([]);
-
-  const [isSymbolsMode, setIsSymbolsMode] = useState(false);
-  const [shiftActive, setShiftActive] = useState(true);
-  const [capsLock, setCapsLock] = useState(false);
 
   const [pendingRequests, setPendingRequests] = useState([]);
   const [requestsModalVisible, setRequestsModalVisible] = useState(false);
@@ -1286,43 +1431,69 @@ export default function Profile({ navigation, route }) {
     }
   }
 
-  async function handleSearchPeople() {
-    if (!user?.id) return;
+  const handleSearchPeople = useCallback(
+    async (rawQuery = searchQuery) => {
+      if (!user?.id) return;
+
+      const trimmed = String(rawQuery || "").trim();
+
+      if (trimmed.length < 2) {
+        setSearchResults([]);
+        setSearchError(null);
+        setSearchLoading(false);
+        return;
+      }
+
+      try {
+        setSearchLoading(true);
+        setSearchError(null);
+
+        const { data, error } = await supabase
+          .from("profiles")
+          .select("id, display_name, avatar_url")
+          .neq("id", user.id)
+          .ilike("display_name", `%${trimmed}%`)
+          .limit(30);
+
+        if (error) {
+          console.log("Search people error:", error);
+          setSearchError("We couldn't search for people right now.");
+          setSearchResults([]);
+          return;
+        }
+
+        setSearchResults(data || []);
+      } catch (e) {
+        console.log("Search people exception:", e);
+        setSearchError("We couldn't search for people right now.");
+        setSearchResults([]);
+      } finally {
+        setSearchLoading(false);
+      }
+    },
+    [searchQuery, user?.id]
+  );
+
+    useEffect(() => {
+    if (!peopleSearchModalVisible) return;
 
     const trimmed = searchQuery.trim();
 
     if (trimmed.length < 2) {
-      Alert.alert("Search too short", "Type at least 2 characters.");
+      setSearchResults([]);
+      setSearchError(null);
+      setSearchLoading(false);
       return;
     }
 
-    try {
-      setSearchLoading(true);
-      setSearchError(null);
+    setSearchLoading(true);
 
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("id, display_name, avatar_url")
-        .neq("id", user.id)
-        .ilike("display_name", `%${trimmed}%`)
-        .limit(30);
+    const timer = setTimeout(() => {
+      handleSearchPeople(trimmed);
+    }, 300);
 
-      if (error) {
-        console.log("Search people error:", error);
-        setSearchError("We couldn't search for people right now.");
-        setSearchResults([]);
-        return;
-      }
-
-      setSearchResults(data || []);
-    } catch (e) {
-      console.log("Search people exception:", e);
-      setSearchError("We couldn't search for people right now.");
-      setSearchResults([]);
-    } finally {
-      setSearchLoading(false);
-    }
-  }
+    return () => clearTimeout(timer);
+  }, [searchQuery, peopleSearchModalVisible, handleSearchPeople]);
 
   async function handleSendFellowshipRequest(targetProfile) {
     if (!user?.id) return;
@@ -1482,49 +1653,6 @@ export default function Profile({ navigation, route }) {
     navigation.navigate("Notifications");
   }
 
-  function handleKeyPress(baseChar) {
-    let char = baseChar;
-
-    if (!isSymbolsMode) {
-      if (shiftActive || capsLock) char = baseChar.toUpperCase();
-      else char = baseChar.toLowerCase();
-    }
-
-    setSearchQuery((prev) => prev + char);
-
-    if (shiftActive && !capsLock) {
-      setShiftActive(false);
-    }
-  }
-
-  function handleBackspace() {
-    setSearchQuery((prev) => prev.slice(0, -1));
-  }
-
-  function handleSpace() {
-    setSearchQuery((prev) => prev + " ");
-  }
-
-  function handleClear() {
-    setSearchQuery("");
-  }
-
-  function handleShiftPress() {
-    if (!shiftActive && !capsLock) {
-      setShiftActive(true);
-      setCapsLock(false);
-    } else if (shiftActive && !capsLock) {
-      setShiftActive(false);
-      setCapsLock(true);
-    } else if (capsLock) {
-      setShiftActive(false);
-      setCapsLock(false);
-    }
-  }
-
-  function handleToggleSymbols() {
-    setIsSymbolsMode((prev) => !prev);
-  }
 
   function closePeopleSearchModal() {
     setPeopleSearchModalVisible(false);
@@ -1533,31 +1661,41 @@ export default function Profile({ navigation, route }) {
     setSearchError(null);
     setSearchLoading(false);
     setJustRequestedIds([]);
-    setIsSymbolsMode(false);
-    setShiftActive(true);
-    setCapsLock(false);
   }
 
   function goToUserProfile(targetUserId, { closeModal } = {}) {
     if (!targetUserId) return;
 
+    const rootNavigation =
+      navigation.getParent?.()?.getParent?.() ||
+      navigation.getParent?.() ||
+      navigation;
+
     const go = () => {
       if (targetUserId === user?.id) {
-        navigation.navigate("MainTabs", { screen: "Profile" });
+        rootNavigation.navigate("MainTabs", {
+          screen: "Profile",
+          params: {
+            screen: "ProfileMain",
+          },
+        });
         return;
       }
 
-      navigation.navigate("UserProfile", { userId: targetUserId });
+      rootNavigation.navigate("UserProfile", {
+        userId: targetUserId,
+      });
     };
 
     if (typeof closeModal === "function") {
       closeModal();
-      setTimeout(go, 50);
+      setTimeout(go, 180);
       return;
     }
 
     go();
   }
+  
     function renderOptionPills(options, selected, onSelect) {
     return (
       <View
@@ -2974,17 +3112,7 @@ export default function Profile({ navigation, route }) {
                         </Pressable>
                       </View>
 
-                      <Text
-                        style={{
-                          color: MUTED,
-                          fontSize: 13,
-                          fontWeight: "700",
-                          marginTop: 4,
-                        }}
-                        numberOfLines={1}
-                      >
-                        {user?.email}
-                      </Text>
+
                     </View>
                   ) : (
                     <View>
@@ -3081,11 +3209,17 @@ export default function Profile({ navigation, route }) {
                     </View>
                   )}
 
+                                    <FellowshipPreviewCard
+                    following={following}
+                    followingCount={followingCount}
+                    onAddPress={() => setPeopleSearchModalVisible(true)}
+                  />
+
                   <View
                     style={{
                       flexDirection: "row",
                       gap: 9,
-                      marginTop: 15,
+                      marginTop: 12,
                     }}
                   >
                     {[
@@ -3302,22 +3436,28 @@ export default function Profile({ navigation, route }) {
             animationType="slide"
             onRequestClose={closePeopleSearchModal}
           >
-            <View
-              style={{
-                flex: 1,
-                backgroundColor: "rgba(0,0,0,0.62)",
-                justifyContent: "flex-end",
-              }}
+            <KeyboardAvoidingView
+              behavior={Platform.OS === "ios" ? "padding" : "height"}
+              keyboardVerticalOffset={Platform.OS === "ios" ? 10 : 0}
+              style={{ flex: 1 }}
             >
               <View
                 style={{
-                  backgroundColor: PREMIUM_CREAM,
-                  borderTopLeftRadius: 26,
-                  borderTopRightRadius: 26,
-                  padding: 18,
-                  maxHeight: "84%",
+                  flex: 1,
+                  backgroundColor: "rgba(0,0,0,0.62)",
+                  justifyContent: "center",
+                  paddingHorizontal: 14,
+                  paddingVertical: 18,
                 }}
               >
+                <View
+                  style={{
+                    backgroundColor: PREMIUM_CREAM,
+                    borderRadius: 26,
+                    padding: 18,
+                    maxHeight: "82%",
+                  }}
+                >
                 <View
                   style={{
                     flexDirection: "row",
@@ -3363,18 +3503,18 @@ export default function Profile({ navigation, route }) {
 
                 <View
                   style={{
-                    flexDirection: "row",
-                    alignItems: "center",
                     marginBottom: 12,
-                    gap: 8,
                   }}
                 >
                   <TextInput
                     value={searchQuery}
                     onChangeText={setSearchQuery}
-                    placeholder="Search by name..."
+                    placeholder="Search by name"
                     placeholderTextColor="rgba(107, 114, 128, 0.75)"
                     autoCapitalize="words"
+                    autoCorrect={false}
+                    returnKeyType="search"
+                    onSubmitEditing={() => handleSearchPeople(searchQuery)}
                     style={{
                       flex: 1,
                       minHeight: 48,
@@ -3389,28 +3529,30 @@ export default function Profile({ navigation, route }) {
                     }}
                   />
 
-                  <Pressable
-                    onPress={handleSearchPeople}
-                    disabled={searchLoading}
-                    style={({ pressed }) => ({
-                      width: 48,
-                      height: 48,
-                      borderRadius: 24,
-                      backgroundColor: pressed
-                        ? "rgba(180, 83, 9, 0.88)"
-                        : EVENT_AMBER,
-                      alignItems: "center",
-                      justifyContent: "center",
-                      opacity: searchLoading ? 0.7 : 1,
-                    })}
-                  >
-                    {searchLoading ? (
-                      <ActivityIndicator size="small" color={SURFACE} />
-                    ) : (
-                      <Ionicons name="search-outline" size={21} color={SURFACE} />
-                    )}
-                  </Pressable>
                 </View>
+
+                                {searchQuery.trim().length >= 2 && searchLoading ? (
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      marginBottom: 10,
+                    }}
+                  >
+                    <ActivityIndicator size="small" color={EVENT_AMBER} />
+
+                    <Text
+                      style={{
+                        color: MUTED,
+                        fontSize: 12.5,
+                        fontWeight: "800",
+                        marginLeft: 8,
+                      }}
+                    >
+                      Searching…
+                    </Text>
+                  </View>
+                ) : null}
 
                 {searchError ? (
                   <Text
@@ -3425,8 +3567,9 @@ export default function Profile({ navigation, route }) {
                 ) : null}
 
                 <ScrollView
-                  style={{ maxHeight: 260 }}
+                  style={{ maxHeight: 220 }}
                   keyboardShouldPersistTaps="handled"
+                  showsVerticalScrollIndicator={false}
                 >
                   {searchResults.length === 0 ? (
                     <Text
@@ -3438,7 +3581,11 @@ export default function Profile({ navigation, route }) {
                         marginVertical: 10,
                       }}
                     >
-                      Search for someone by name to send a fellowship request.
+                      {searchQuery.trim().length < 2
+                        ? "Type at least 2 letters to search for someone."
+                        : searchLoading
+                        ? "Searching…"
+                        : "No matching people found."}
                     </Text>
                   ) : (
                     searchResults.map((person) => {
@@ -3566,158 +3713,9 @@ export default function Profile({ navigation, route }) {
                     })
                   )}
                 </ScrollView>
-
-                <View
-                  style={{
-                    marginTop: 10,
-                    paddingTop: 10,
-                    borderTopWidth: 1,
-                    borderTopColor: CARD_BORDER,
-                  }}
-                >
-                  {(isSymbolsMode ? SYMBOL_ROWS : LETTER_ROWS).map((row, rowIndex) => (
-                    <View
-                      key={`keyboard-row-${rowIndex}`}
-                      style={{
-                        flexDirection: "row",
-                        justifyContent: "center",
-                        gap: 6,
-                        marginBottom: 7,
-                      }}
-                    >
-                      {row.map((key) => {
-                        const label =
-                          !isSymbolsMode && (shiftActive || capsLock)
-                            ? key.toUpperCase()
-                            : key;
-
-                        return (
-                          <Pressable
-                            key={key}
-                            onPress={() => handleKeyPress(key)}
-                            style={({ pressed }) => ({
-                              minWidth: 29,
-                              minHeight: 34,
-                              borderRadius: 10,
-                              backgroundColor: pressed ? OLIVE_SOFT : SURFACE,
-                              borderWidth: 1,
-                              borderColor: CARD_BORDER,
-                              alignItems: "center",
-                              justifyContent: "center",
-                            })}
-                          >
-                            <Text
-                              style={{
-                                color: TEXT,
-                                fontSize: 13,
-                                fontWeight: "900",
-                              }}
-                            >
-                              {label}
-                            </Text>
-                          </Pressable>
-                        );
-                      })}
-                    </View>
-                  ))}
-
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      justifyContent: "center",
-                      gap: 7,
-                    }}
-                  >
-                    <Pressable
-                      onPress={handleToggleSymbols}
-                      style={({ pressed }) => ({
-                        minHeight: 36,
-                        borderRadius: 12,
-                        paddingHorizontal: 12,
-                        backgroundColor: pressed ? OLIVE_SOFT : SURFACE,
-                        borderWidth: 1,
-                        borderColor: CARD_BORDER,
-                        justifyContent: "center",
-                      })}
-                    >
-                      <Text style={{ color: OLIVE, fontWeight: "900" }}>
-                        {isSymbolsMode ? "ABC" : "123"}
-                      </Text>
-                    </Pressable>
-
-                    <Pressable
-                      onPress={handleShiftPress}
-                      style={({ pressed }) => ({
-                        minHeight: 36,
-                        borderRadius: 12,
-                        paddingHorizontal: 12,
-                        backgroundColor:
-                          shiftActive || capsLock ? AMBER_SOFT : pressed ? OLIVE_SOFT : SURFACE,
-                        borderWidth: 1,
-                        borderColor:
-                          shiftActive || capsLock ? AMBER_BORDER : CARD_BORDER,
-                        justifyContent: "center",
-                      })}
-                    >
-                      <Text style={{ color: EVENT_BROWN, fontWeight: "900" }}>
-                        Shift
-                      </Text>
-                    </Pressable>
-
-                    <Pressable
-                      onPress={handleSpace}
-                      style={({ pressed }) => ({
-                        minHeight: 36,
-                        minWidth: 92,
-                        borderRadius: 12,
-                        paddingHorizontal: 12,
-                        backgroundColor: pressed ? OLIVE_SOFT : SURFACE,
-                        borderWidth: 1,
-                        borderColor: CARD_BORDER,
-                        justifyContent: "center",
-                        alignItems: "center",
-                      })}
-                    >
-                      <Text style={{ color: OLIVE, fontWeight: "900" }}>
-                        Space
-                      </Text>
-                    </Pressable>
-
-                    <Pressable
-                      onPress={handleBackspace}
-                      style={({ pressed }) => ({
-                        minHeight: 36,
-                        borderRadius: 12,
-                        paddingHorizontal: 12,
-                        backgroundColor: pressed ? OLIVE_SOFT : SURFACE,
-                        borderWidth: 1,
-                        borderColor: CARD_BORDER,
-                        justifyContent: "center",
-                      })}
-                    >
-                      <Ionicons name="backspace-outline" size={18} color={OLIVE} />
-                    </Pressable>
-
-                    <Pressable
-                      onPress={handleClear}
-                      style={({ pressed }) => ({
-                        minHeight: 36,
-                        borderRadius: 12,
-                        paddingHorizontal: 12,
-                        backgroundColor: pressed ? AMBER_SOFT : SURFACE,
-                        borderWidth: 1,
-                        borderColor: AMBER_BORDER,
-                        justifyContent: "center",
-                      })}
-                    >
-                      <Text style={{ color: EVENT_BROWN, fontWeight: "900" }}>
-                        Clear
-                      </Text>
-                    </Pressable>
-                  </View>
                 </View>
               </View>
-            </View>
+            </KeyboardAvoidingView>
           </Modal>
 
           <Modal
