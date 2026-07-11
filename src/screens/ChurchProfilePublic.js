@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Dimensions,
   Image,
   KeyboardAvoidingView,
   Modal,
@@ -1882,8 +1883,12 @@ function handleHideChurchPost() {
 }
 
 function renderEventsTab() {
-  const featuredEvent = churchEvents?.[0] || null;
-  const remainingEvents = (churchEvents || []).slice(1, 5);
+  const screenWidth = Dimensions.get("window").width;
+  const carouselCardWidth = Math.min(292, Math.max(252, screenWidth * 0.74));
+  const carouselGap = 12;
+
+  const carouselEvents = (churchEvents || []).slice(0, 6);
+  const upcomingListEvents = (churchEvents || []).slice(0, 6);
 
   function openEvent(event) {
     if (!event?.id) return;
@@ -1905,16 +1910,443 @@ function renderEventsTab() {
     });
   }
 
+  function renderCarouselEventCard(event, index) {
+    const dateBadge = formatChurchProfileDateBadge(event.start_at);
+    const imageUrl =
+      getChurchProfileEventImageUrl(event, church) ||
+      getChurchProfileFallbackEventImage(event);
+
+    return (
+      <Pressable
+        key={event.id}
+        onPress={() => openEvent(event)}
+        style={({ pressed }) => ({
+          width: carouselCardWidth,
+          marginRight: carouselGap,
+          borderRadius: 24,
+          overflow: "hidden",
+          backgroundColor: SURFACE,
+          borderWidth: 1,
+          borderColor: CARD_BORDER,
+          shadowColor: SHADOW,
+          shadowOpacity: pressed ? 0.05 : 0.12,
+          shadowRadius: pressed ? 7 : 13,
+          shadowOffset: { width: 0, height: pressed ? 3 : 6 },
+          elevation: pressed ? 1 : 4,
+          opacity: event?.status === "cancelled" ? 0.72 : 1,
+          transform: [{ scale: pressed ? 0.985 : 1 }],
+        })}
+      >
+        <View
+          style={{
+            height: 142,
+            width: "100%",
+            backgroundColor: OLIVE_SOFT,
+          }}
+        >
+          <Image
+            source={{ uri: imageUrl }}
+            style={{ width: "100%", height: "100%" }}
+            resizeMode="cover"
+          />
+
+          <View
+            pointerEvents="none"
+            style={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              top: 0,
+              bottom: 0,
+              backgroundColor: "rgba(0,0,0,0.22)",
+            }}
+          />
+
+          <View
+            style={{
+              position: "absolute",
+              top: 11,
+              left: 11,
+              width: 50,
+              height: 56,
+              borderRadius: 16,
+              backgroundColor: "rgba(255,255,255,0.95)",
+              alignItems: "center",
+              justifyContent: "center",
+              shadowColor: SHADOW,
+              shadowOpacity: 0.12,
+              shadowRadius: 7,
+              shadowOffset: { width: 0, height: 3 },
+              elevation: 3,
+            }}
+          >
+            <Text
+              style={{
+                color: TEXT,
+                fontSize: 19,
+                fontWeight: "900",
+                lineHeight: 21,
+              }}
+              numberOfLines={1}
+            >
+              {dateBadge.day}
+            </Text>
+
+            <Text
+              style={{
+                color: EVENT_AMBER,
+                fontSize: 9.5,
+                fontWeight: "900",
+                letterSpacing: 0.45,
+                marginTop: 1,
+              }}
+              numberOfLines={1}
+            >
+              {dateBadge.month}
+            </Text>
+          </View>
+
+          <View
+            style={{
+              position: "absolute",
+              top: 12,
+              right: 12,
+              width: 38,
+              height: 38,
+              borderRadius: 19,
+              backgroundColor: "rgba(255,255,255,0.92)",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Ionicons
+              name={getChurchProfileEventIcon(event)}
+              size={20}
+              color={EVENT_AMBER}
+            />
+          </View>
+
+          <View
+            style={{
+              position: "absolute",
+              left: 12,
+              right: 12,
+              bottom: 12,
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 8,
+            }}
+          >
+            <View
+              style={{
+                flexShrink: 1,
+                paddingHorizontal: 9,
+                paddingVertical: 5,
+                borderRadius: 999,
+                backgroundColor: "rgba(255,255,255,0.94)",
+              }}
+            >
+              <Text
+                style={{
+                  color:
+                    event?.status === "cancelled" ? DANGER_RED : EVENT_BROWN,
+                  fontSize: 10,
+                  fontWeight: "900",
+                  letterSpacing: 0.35,
+                  textTransform: "uppercase",
+                }}
+                numberOfLines={1}
+              >
+                {getChurchProfileEventLabel(event)}
+              </Text>
+            </View>
+
+            {index === 0 ? (
+              <View
+                style={{
+                  paddingHorizontal: 9,
+                  paddingVertical: 5,
+                  borderRadius: 999,
+                  backgroundColor: "rgba(255,255,255,0.20)",
+                  borderWidth: 1,
+                  borderColor: "rgba(255,255,255,0.34)",
+                  flexDirection: "row",
+                  alignItems: "center",
+                }}
+              >
+                <Ionicons name="sparkles" size={11} color={SURFACE} />
+
+                <Text
+                  style={{
+                    color: SURFACE,
+                    fontSize: 10,
+                    fontWeight: "900",
+                    marginLeft: 4,
+                  }}
+                >
+                  Next
+                </Text>
+              </View>
+            ) : null}
+          </View>
+        </View>
+
+        <View
+          style={{
+            paddingHorizontal: 13,
+            paddingTop: 12,
+            paddingBottom: 13,
+            minHeight: 122,
+          }}
+        >
+          <Text
+            style={{
+              color: TEXT,
+              fontSize: 18,
+              fontWeight: "900",
+              lineHeight: 22,
+              letterSpacing: -0.2,
+            }}
+            numberOfLines={2}
+          >
+            {event?.title || "Untitled event"}
+          </Text>
+
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "flex-start",
+              marginTop: 9,
+            }}
+          >
+            <Ionicons
+              name="time-outline"
+              size={14}
+              color={EVENT_AMBER}
+              style={{ marginTop: 1 }}
+            />
+
+            <Text
+              style={{
+                flex: 1,
+                color: EVENT_AMBER,
+                fontSize: 12,
+                fontWeight: "900",
+                lineHeight: 16,
+                marginLeft: 6,
+              }}
+              numberOfLines={2}
+            >
+              {formatEventDateTime(event.start_at, event.end_at)}
+            </Text>
+          </View>
+
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "flex-start",
+              marginTop: 6,
+            }}
+          >
+            <Ionicons
+              name={event?.online_url ? "videocam-outline" : "location-outline"}
+              size={14}
+              color={OLIVE}
+              style={{ marginTop: 1 }}
+            />
+
+            <Text
+              style={{
+                flex: 1,
+                color: MUTED,
+                fontSize: 11.5,
+                fontWeight: "800",
+                lineHeight: 15,
+                marginLeft: 6,
+              }}
+              numberOfLines={1}
+            >
+              {getChurchProfileEventLocation(event)}
+            </Text>
+          </View>
+
+          <View
+            style={{
+              marginTop: 10,
+              paddingTop: 9,
+              borderTopWidth: 1,
+              borderTopColor: "rgba(15, 23, 42, 0.07)",
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
+            <Text
+              style={{
+                color: MUTED,
+                fontSize: 11.5,
+                fontWeight: "800",
+              }}
+            >
+              {countChurchProfileGoing(event)} going
+            </Text>
+
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <Text
+                style={{
+                  color: OLIVE,
+                  fontSize: 11.5,
+                  fontWeight: "900",
+                  marginRight: 3,
+                }}
+              >
+                Details
+              </Text>
+
+              <Ionicons name="chevron-forward" size={14} color={OLIVE} />
+            </View>
+          </View>
+        </View>
+      </Pressable>
+    );
+  }
+
+  function renderUpcomingListEvent(event) {
+    const dateBadge = formatChurchProfileDateBadge(event.start_at);
+
+    return (
+      <Pressable
+        key={event.id}
+        onPress={() => openEvent(event)}
+        style={({ pressed }) => ({
+          borderRadius: 20,
+          padding: 10,
+          backgroundColor: pressed
+            ? "rgba(180, 83, 9, 0.06)"
+            : "rgba(255, 252, 245, 0.72)",
+          borderWidth: 1,
+          borderColor: CARD_BORDER,
+          flexDirection: "row",
+          alignItems: "center",
+          opacity: event?.status === "cancelled" ? 0.7 : 1,
+          transform: [{ scale: pressed ? 0.99 : 1 }],
+        })}
+      >
+        <View
+          style={{
+            width: 74,
+            height: 74,
+            borderRadius: 17,
+            overflow: "hidden",
+            backgroundColor: OLIVE_SOFT,
+            marginRight: 11,
+          }}
+        >
+          <Image
+            source={{
+              uri:
+                getChurchProfileEventImageUrl(event, church) ||
+                getChurchProfileFallbackEventImage(event),
+            }}
+            style={{ width: "100%", height: "100%" }}
+            resizeMode="cover"
+          />
+
+          <View
+            style={{
+              position: "absolute",
+              left: 6,
+              top: 6,
+              borderRadius: 10,
+              paddingHorizontal: 6,
+              paddingVertical: 4,
+              backgroundColor: "rgba(255,255,255,0.94)",
+              alignItems: "center",
+            }}
+          >
+            <Text
+              style={{
+                color: TEXT,
+                fontSize: 13,
+                fontWeight: "900",
+                lineHeight: 15,
+              }}
+            >
+              {dateBadge.day}
+            </Text>
+
+            <Text
+              style={{
+                color: EVENT_AMBER,
+                fontSize: 8.5,
+                fontWeight: "900",
+              }}
+            >
+              {dateBadge.month}
+            </Text>
+          </View>
+        </View>
+
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text
+            style={{
+              color: TEXT,
+              fontSize: 14.5,
+              fontWeight: "900",
+              lineHeight: 19,
+            }}
+            numberOfLines={2}
+          >
+            {event?.title || "Untitled event"}
+          </Text>
+
+          <Text
+            style={{
+              color: EVENT_AMBER,
+              fontSize: 12,
+              fontWeight: "900",
+              lineHeight: 17,
+              marginTop: 4,
+            }}
+            numberOfLines={1}
+          >
+            {formatEventDateTime(event.start_at, event.end_at)}
+          </Text>
+
+          <Text
+            style={{
+              color: MUTED,
+              fontSize: 11.5,
+              fontWeight: "800",
+              lineHeight: 16,
+              marginTop: 3,
+            }}
+            numberOfLines={1}
+          >
+            {getChurchProfileEventLocation(event)}
+          </Text>
+        </View>
+
+        <Ionicons
+          name="chevron-forward"
+          size={17}
+          color={OLIVE}
+          style={{ marginLeft: 7 }}
+        />
+      </Pressable>
+    );
+  }
+
   return (
     <View style={{ marginTop: 10 }}>
       <View
         style={{
           ...premiumCardStyle,
-          padding: 16,
+          paddingVertical: 16,
           borderRadius: 24,
         }}
       >
-
         {churchEventsLoading ? (
           <View style={{ paddingVertical: 28, alignItems: "center" }}>
             <ActivityIndicator color={EVENT_AMBER} />
@@ -1931,11 +2363,12 @@ function renderEventsTab() {
           </View>
         ) : null}
 
-        {!churchEventsLoading && !featuredEvent ? (
+        {!churchEventsLoading && carouselEvents.length === 0 ? (
           <View
             style={{
               alignItems: "center",
               paddingVertical: 18,
+              paddingHorizontal: 16,
             }}
           >
             <PremiumSparkIcon amber size={48} />
@@ -1992,498 +2425,166 @@ function renderEventsTab() {
           </View>
         ) : null}
 
-        {!churchEventsLoading && featuredEvent ? (
+        {!churchEventsLoading && carouselEvents.length > 0 ? (
           <>
-<View
-  style={{
-    alignSelf: "center",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 12,
-    paddingVertical: 3,
-  }}
->
-  <View
-    style={{
-      width: 30,
-      height: 30,
-      borderRadius: 15,
-      backgroundColor: "rgba(180, 83, 9, 0.10)",
-      borderWidth: 1,
-      borderColor: "rgba(180, 83, 9, 0.18)",
-      alignItems: "center",
-      justifyContent: "center",
-      marginRight: 8,
-    }}
-  >
-    <Ionicons name="sparkles" size={16} color={EVENT_AMBER} />
-  </View>
-
-  <Text
-    style={{
-      color: EVENT_BROWN,
-      fontSize: 13,
-      fontWeight: "900",
-      textTransform: "uppercase",
-      letterSpacing: 1.05,
-    }}
-  >
-    Almost time
-  </Text>
-
-  <View
-    style={{
-      width: 30,
-      height: 30,
-      borderRadius: 15,
-      backgroundColor: "rgba(79, 99, 59, 0.10)",
-      borderWidth: 1,
-      borderColor: "rgba(79, 99, 59, 0.18)",
-      alignItems: "center",
-      justifyContent: "center",
-      marginLeft: 8,
-    }}
-  >
-    <Ionicons name="sparkles" size={16} color={OLIVE} />
-  </View>
-</View>
-            <Pressable
-              onPress={() => openEvent(featuredEvent)}
-              style={({ pressed }) => ({
-                borderRadius: 24,
-                overflow: "hidden",
-                backgroundColor: SURFACE,
-                borderWidth: 1,
-                borderColor: CARD_BORDER,
-                shadowColor: SHADOW,
-                shadowOpacity: pressed ? 0.05 : 0.11,
-                shadowRadius: pressed ? 7 : 13,
-                shadowOffset: { width: 0, height: pressed ? 3 : 6 },
-                elevation: pressed ? 1 : 4,
-                transform: [{ scale: pressed ? 0.99 : 1 }],
-              })}
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "flex-start",
+                paddingHorizontal: 16,
+                marginBottom: 12,
+              }}
             >
               <View
                 style={{
-                  height: 174,
-                  width: "100%",
-                  backgroundColor: OLIVE_SOFT,
+                  width: 34,
+                  height: 34,
+                  borderRadius: 17,
+                  backgroundColor: AMBER_SOFT,
+                  borderWidth: 1,
+                  borderColor: AMBER_BORDER,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginRight: 9,
+                  marginTop: 1,
                 }}
               >
-                <Image
-                  source={{
-                    uri:
-                      getChurchProfileEventImageUrl(featuredEvent, church) ||
-                      getChurchProfileFallbackEventImage(featuredEvent),
-                  }}
-                  style={{ width: "100%", height: "100%" }}
-                  resizeMode="cover"
-                />
+                <Ionicons name="sparkles-outline" size={17} color={EVENT_AMBER} />
+              </View>
 
-                <View
-                  pointerEvents="none"
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text
                   style={{
-                    position: "absolute",
-                    left: 0,
-                    right: 0,
-                    top: 0,
-                    bottom: 0,
-                    backgroundColor: "rgba(0,0,0,0.23)",
+                    color: TEXT,
+                    fontSize: 20,
+                    fontWeight: "900",
+                    lineHeight: 24,
+                    letterSpacing: -0.25,
                   }}
-                />
+                  numberOfLines={1}
+                >
+                  Coming up
+                </Text>
 
-                <View
+                <Text
                   style={{
-                    position: "absolute",
-                    top: 13,
-                    left: 13,
-                    width: 56,
-                    height: 62,
-                    borderRadius: 18,
-                    backgroundColor: "rgba(255,255,255,0.95)",
-                    alignItems: "center",
-                    justifyContent: "center",
+                    color: MUTED,
+                    fontSize: 12.5,
+                    fontWeight: "700",
+                    lineHeight: 17,
+                    marginTop: 2,
+                  }}
+                  numberOfLines={1}
+                >
+                  Swipe through the next events
+                </Text>
+              </View>
+
+              <View
+                style={{
+                  borderRadius: 999,
+                  paddingHorizontal: 9,
+                  paddingVertical: 6,
+                  backgroundColor: OLIVE_SOFT,
+                  borderWidth: 1,
+                  borderColor: OLIVE_BORDER,
+                  flexDirection: "row",
+                  alignItems: "center",
+                }}
+              >
+                <Text
+                  style={{
+                    color: OLIVE,
+                    fontSize: 11,
+                    fontWeight: "900",
+                    marginRight: 4,
                   }}
                 >
+                  Swipe
+                </Text>
+
+                <Ionicons name="arrow-forward" size={13} color={OLIVE} />
+              </View>
+            </View>
+
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              snapToInterval={carouselCardWidth + carouselGap}
+              decelerationRate="fast"
+              contentContainerStyle={{
+                paddingLeft: 16,
+                paddingRight: 28,
+              }}
+            >
+              {carouselEvents.map(renderCarouselEventCard)}
+            </ScrollView>
+
+            <View style={{ marginTop: 20, paddingHorizontal: 16 }}>
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "flex-start",
+                  marginBottom: 10,
+                  paddingHorizontal: 2,
+                }}
+              >
+                <View
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: 14,
+                    backgroundColor: OLIVE_SOFT,
+                    borderWidth: 1,
+                    borderColor: OLIVE_BORDER,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    marginRight: 8,
+                    marginTop: 1,
+                  }}
+                >
+                  <Ionicons name="calendar-clear-outline" size={15} color={OLIVE} />
+                </View>
+
+                <View style={{ flex: 1, minWidth: 0 }}>
                   <Text
                     style={{
                       color: TEXT,
-                      fontSize: 22,
+                      fontSize: 17,
                       fontWeight: "900",
-                      lineHeight: 24,
-                    }}
-                    numberOfLines={1}
-                  >
-                    {formatChurchProfileDateBadge(featuredEvent.start_at).day}
-                  </Text>
-
-                  <Text
-                    style={{
-                      color: EVENT_AMBER,
-                      fontSize: 10.5,
-                      fontWeight: "900",
-                      letterSpacing: 0.5,
-                      marginTop: 2,
-                    }}
-                    numberOfLines={1}
-                  >
-                    {formatChurchProfileDateBadge(featuredEvent.start_at).month}
-                  </Text>
-                </View>
-
-                <View
-                  style={{
-                    position: "absolute",
-                    top: 15,
-                    right: 15,
-                    width: 42,
-                    height: 42,
-                    borderRadius: 21,
-                    backgroundColor: "rgba(255,255,255,0.92)",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <Ionicons
-                    name={getChurchProfileEventIcon(featuredEvent)}
-                    size={22}
-                    color={EVENT_AMBER}
-                  />
-                </View>
-
-                <View
-                  style={{
-                    position: "absolute",
-                    left: 15,
-                    right: 15,
-                    bottom: 15,
-                  }}
-                >
-                  <View
-                    style={{
-                      alignSelf: "flex-start",
-                      paddingHorizontal: 10,
-                      paddingVertical: 6,
-                      borderRadius: 999,
-                      backgroundColor: "rgba(255,255,255,0.94)",
-                      marginBottom: 8,
-                    }}
-                  >
-                    <Text
-                      style={{
-                        color:
-                          featuredEvent?.status === "cancelled"
-                            ? DANGER_RED
-                            : EVENT_BROWN,
-                        fontSize: 10.5,
-                        fontWeight: "900",
-                        letterSpacing: 0.45,
-                        textTransform: "uppercase",
-                      }}
-                    >
-                      {getChurchProfileEventLabel(featuredEvent)}
-                    </Text>
-                  </View>
-
-                  <Text
-                    style={{
-                      color: SURFACE,
-                      fontSize: 26,
-                      fontWeight: "900",
-                      lineHeight: 31,
-                      letterSpacing: -0.35,
+                      lineHeight: 22,
                     }}
                     numberOfLines={2}
                   >
-                    {featuredEvent?.title || "Untitled event"}
+                    Upcoming at {churchName}
                   </Text>
-                </View>
-              </View>
 
-              <View style={{ padding: 14 }}>
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "flex-start",
-                    marginBottom: 8,
-                  }}
-                >
-                  <Ionicons
-                    name="time-outline"
-                    size={16}
-                    color={EVENT_AMBER}
-                    style={{ marginTop: 1 }}
-                  />
-
-                  <Text
-                    style={{
-                      flex: 1,
-                      color: EVENT_AMBER,
-                      fontSize: 13,
-                      fontWeight: "900",
-                      lineHeight: 18,
-                      marginLeft: 7,
-                    }}
-                    numberOfLines={2}
-                  >
-                    {formatEventDateTime(featuredEvent.start_at, featuredEvent.end_at)}
-                  </Text>
-                </View>
-
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "flex-start",
-                  }}
-                >
-                  <Ionicons
-                    name={featuredEvent?.online_url ? "videocam-outline" : "location-outline"}
-                    size={16}
-                    color={OLIVE}
-                    style={{ marginTop: 1 }}
-                  />
-
-                  <Text
-                    style={{
-                      flex: 1,
-                      color: MUTED,
-                      fontSize: 13,
-                      fontWeight: "800",
-                      lineHeight: 18,
-                      marginLeft: 7,
-                    }}
-                    numberOfLines={2}
-                  >
-                    {getChurchProfileEventLocation(featuredEvent)}
-                  </Text>
-                </View>
-
-                <View
-                  style={{
-                    marginTop: 12,
-                    paddingTop: 12,
-                    borderTopWidth: 1,
-                    borderTopColor: "rgba(15, 23, 42, 0.07)",
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                  }}
-                >
                   <Text
                     style={{
                       color: MUTED,
                       fontSize: 12,
-                      fontWeight: "800",
+                      fontWeight: "700",
+                      lineHeight: 16,
+                      marginTop: 2,
                     }}
+                    numberOfLines={1}
                   >
-                    {countChurchProfileGoing(featuredEvent)} going
+                    More services, courses and gatherings
                   </Text>
-
-                  <View style={{ flexDirection: "row", alignItems: "center" }}>
-                    <Text
-                      style={{
-                        color: OLIVE,
-                        fontSize: 12.5,
-                        fontWeight: "900",
-                        marginRight: 4,
-                      }}
-                    >
-                      View details
-                    </Text>
-
-                    <Ionicons name="chevron-forward" size={16} color={OLIVE} />
-                  </View>
                 </View>
               </View>
-            </Pressable>
 
-            {remainingEvents.length > 0 ? (
-              <View style={{ marginTop: 18 }}>
-<View
-  style={{
-    flexDirection: "row",
-    alignItems: "flex-start",
-    marginBottom: 10,
-    paddingHorizontal: 2,
-  }}
->
-  <View
-    style={{
-      width: 28,
-      height: 28,
-      borderRadius: 14,
-      backgroundColor: OLIVE_SOFT,
-      borderWidth: 1,
-      borderColor: OLIVE_BORDER,
-      alignItems: "center",
-      justifyContent: "center",
-      marginRight: 8,
-      marginTop: 1,
-    }}
-  >
-    <Ionicons name="calendar-clear-outline" size={15} color={OLIVE} />
-  </View>
-
-  <View style={{ flex: 1, minWidth: 0 }}>
-    <Text
-      style={{
-        color: TEXT,
-        fontSize: 17,
-        fontWeight: "900",
-        lineHeight: 22,
-      }}
-      numberOfLines={2}
-    >
-      Upcoming at {churchName}
-    </Text>
-
-    <Text
-      style={{
-        color: MUTED,
-        fontSize: 12,
-        fontWeight: "700",
-        lineHeight: 16,
-        marginTop: 2,
-      }}
-      numberOfLines={1}
-    >
-      More services, courses and gatherings
-    </Text>
-  </View>
-</View>
-
-                <View style={{ gap: 10 }}>
-                  {remainingEvents.map((event) => (
-                    <Pressable
-                      key={event.id}
-                      onPress={() => openEvent(event)}
-                      style={({ pressed }) => ({
-                        borderRadius: 20,
-                        padding: 10,
-                        backgroundColor: pressed
-                          ? "rgba(180, 83, 9, 0.06)"
-                          : "rgba(255, 252, 245, 0.72)",
-                        borderWidth: 1,
-                        borderColor: CARD_BORDER,
-                        flexDirection: "row",
-                        alignItems: "center",
-                        opacity: event?.status === "cancelled" ? 0.7 : 1,
-                        transform: [{ scale: pressed ? 0.99 : 1 }],
-                      })}
-                    >
-                      <View
-                        style={{
-                          width: 74,
-                          height: 74,
-                          borderRadius: 17,
-                          overflow: "hidden",
-                          backgroundColor: OLIVE_SOFT,
-                          marginRight: 11,
-                        }}
-                      >
-                        <Image
-                          source={{
-                            uri:
-                              getChurchProfileEventImageUrl(event, church) ||
-                              getChurchProfileFallbackEventImage(event),
-                          }}
-                          style={{ width: "100%", height: "100%" }}
-                          resizeMode="cover"
-                        />
-
-                        <View
-                          style={{
-                            position: "absolute",
-                            left: 6,
-                            top: 6,
-                            borderRadius: 10,
-                            paddingHorizontal: 6,
-                            paddingVertical: 4,
-                            backgroundColor: "rgba(255,255,255,0.94)",
-                            alignItems: "center",
-                          }}
-                        >
-                          <Text
-                            style={{
-                              color: TEXT,
-                              fontSize: 13,
-                              fontWeight: "900",
-                              lineHeight: 15,
-                            }}
-                          >
-                            {formatChurchProfileDateBadge(event.start_at).day}
-                          </Text>
-
-                          <Text
-                            style={{
-                              color: EVENT_AMBER,
-                              fontSize: 8.5,
-                              fontWeight: "900",
-                            }}
-                          >
-                            {formatChurchProfileDateBadge(event.start_at).month}
-                          </Text>
-                        </View>
-                      </View>
-
-                      <View style={{ flex: 1, minWidth: 0 }}>
-                        <Text
-                          style={{
-                            color: TEXT,
-                            fontSize: 14.5,
-                            fontWeight: "900",
-                            lineHeight: 19,
-                          }}
-                          numberOfLines={2}
-                        >
-                          {event?.title || "Untitled event"}
-                        </Text>
-
-                        <Text
-                          style={{
-                            color: EVENT_AMBER,
-                            fontSize: 12,
-                            fontWeight: "900",
-                            lineHeight: 17,
-                            marginTop: 4,
-                          }}
-                          numberOfLines={1}
-                        >
-                          {formatEventDateTime(event.start_at, event.end_at)}
-                        </Text>
-
-                        <Text
-                          style={{
-                            color: MUTED,
-                            fontSize: 11.5,
-                            fontWeight: "800",
-                            lineHeight: 16,
-                            marginTop: 3,
-                          }}
-                          numberOfLines={1}
-                        >
-                          {getChurchProfileEventLocation(event)}
-                        </Text>
-                      </View>
-
-                      <Ionicons
-                        name="chevron-forward"
-                        size={17}
-                        color={OLIVE}
-                        style={{ marginLeft: 7 }}
-                      />
-                    </Pressable>
-                  ))}
-                </View>
+              <View style={{ gap: 10 }}>
+                {upcomingListEvents.map(renderUpcomingListEvent)}
               </View>
-            ) : null}
+            </View>
 
             <View
               style={{
                 flexDirection: "row",
                 gap: 10,
                 marginTop: 16,
+                paddingHorizontal: 16,
               }}
             >
               <Pressable

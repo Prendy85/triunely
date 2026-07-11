@@ -382,6 +382,7 @@ export async function fetchMyEvents({ userId, limit = 50 } = {}) {
   }
 
   const nowIso = new Date().toISOString();
+  const queryLimit = Math.max(limit * 5, 80);
 
   try {
     // 1) Events created by this user
@@ -392,7 +393,7 @@ export async function fetchMyEvents({ userId, limit = 50 } = {}) {
       .or(`start_at.gte.${nowIso},end_at.gte.${nowIso}`)
       .in("status", ["published", "cancelled"])
       .order("start_at", { ascending: true })
-      .limit(limit);
+      .limit(queryLimit);
 
     if (createdErr) throw createdErr;
 
@@ -401,7 +402,7 @@ export async function fetchMyEvents({ userId, limit = 50 } = {}) {
       .from("event_attendees")
       .select("event_id")
       .eq("user_id", userId)
-      .in("status", ["going", "maybe"]);
+      .in("status", ["going", "maybe", "accepted"]);
 
     if (attendeeErr) throw attendeeErr;
 
@@ -414,10 +415,33 @@ export async function fetchMyEvents({ userId, limit = 50 } = {}) {
 
     if (inviteErr) throw inviteErr;
 
+    // 4) Event IDs where this user registered through Triunely
+    let registrationRows = [];
+
+    try {
+      const { data, error } = await supabase
+        .from("event_registrations")
+        .select("event_id")
+        .eq("user_id", userId)
+        .in("status", ["pending", "confirmed", "approved", "registered"]);
+
+      if (error) {
+        console.log("fetchMyEvents registrations lookup error:", error);
+      } else {
+        registrationRows = data || [];
+      }
+    } catch (registrationError) {
+      console.log(
+        "fetchMyEvents registrations lookup exception:",
+        registrationError
+      );
+    }
+
     const relatedEventIds = Array.from(
       new Set([
-        ...(attendeeRows || []).map((r) => r.event_id).filter(Boolean),
-        ...(inviteRows || []).map((r) => r.event_id).filter(Boolean),
+        ...(attendeeRows || []).map((row) => row.event_id).filter(Boolean),
+        ...(inviteRows || []).map((row) => row.event_id).filter(Boolean),
+        ...(registrationRows || []).map((row) => row.event_id).filter(Boolean),
       ])
     );
 
@@ -431,32 +455,35 @@ export async function fetchMyEvents({ userId, limit = 50 } = {}) {
         .or(`start_at.gte.${nowIso},end_at.gte.${nowIso}`)
         .in("status", ["published", "cancelled"])
         .order("start_at", { ascending: true })
-        .limit(limit);
+        .limit(queryLimit);
 
       if (error) throw error;
+
       relatedEvents = data || [];
     }
 
     const mergedById = new Map();
 
-    for (const e of createdEvents || []) {
-      if (e?.id) mergedById.set(e.id, e);
+    for (const event of createdEvents || []) {
+      if (event?.id) mergedById.set(event.id, event);
     }
 
-    for (const e of relatedEvents || []) {
-      if (e?.id) mergedById.set(e.id, e);
+    for (const event of relatedEvents || []) {
+      if (event?.id) mergedById.set(event.id, event);
     }
 
-    const events = Array.from(mergedById.values())
-      .sort((a, b) => new Date(a.start_at) - new Date(b.start_at))
-      .slice(0, limit);
+    const cleanedEvents = await applyCourseSessionDatesToUpcomingEvents(
+      Array.from(mergedById.values()),
+      nowIso
+    );
 
     return {
       ok: true,
-      events,
+      events: cleanedEvents.slice(0, limit),
     };
   } catch (e) {
     console.log("fetchMyEvents error:", e);
+
     return {
       ok: false,
       error: e?.message || "Could not load profile events.",

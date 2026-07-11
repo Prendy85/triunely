@@ -1317,6 +1317,26 @@ export default function EventDetailsScreen({ route, navigation }) {
     });
   }
 
+    function goToManageRegistrations() {
+    closeAdminMenu();
+
+    if (!event?.id) {
+      Alert.alert("Registrations", "This event could not be found.");
+      return;
+    }
+
+    navigation.navigate("ChurchEventRegistrationList", {
+      eventId: event.id,
+      event,
+      churchId:
+        event.church_id ||
+        linkedCourse?.church_id ||
+        linkedCourseGroup?.church_id ||
+        null,
+      churchName,
+    });
+  }
+
   function openLinkedGroupFromAdminMenu() {
     closeAdminMenu();
 
@@ -2316,6 +2336,72 @@ export default function EventDetailsScreen({ route, navigation }) {
                   </View>
 
                   <Ionicons name="chevron-forward" size={18} color={OLIVE} />
+                </Pressable>
+              ) : null}
+
+                            {eventRequiresRegistration ? (
+                <Pressable
+                  onPress={goToManageRegistrations}
+                  style={({ pressed }) => ({
+                    borderRadius: 20,
+                    padding: 14,
+                    backgroundColor: pressed
+                      ? "rgba(180, 83, 9, 0.14)"
+                      : "rgba(180, 83, 9, 0.08)",
+                    borderWidth: 1,
+                    borderColor: "rgba(180, 83, 9, 0.16)",
+                    flexDirection: "row",
+                    alignItems: "center",
+                  })}
+                >
+                  <View
+                    style={{
+                      width: 38,
+                      height: 38,
+                      borderRadius: 19,
+                      backgroundColor: WHITE,
+                      borderWidth: 1,
+                      borderColor: "rgba(180, 83, 9, 0.16)",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      marginRight: 11,
+                    }}
+                  >
+                    <Ionicons
+                      name="clipboard-outline"
+                      size={19}
+                      color={EVENT_AMBER}
+                    />
+                  </View>
+
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={{
+                        color: TEXT,
+                        fontSize: 14,
+                        fontWeight: "900",
+                      }}
+                    >
+                      Manage registrations
+                    </Text>
+
+                    <Text
+                      style={{
+                        color: MUTED,
+                        fontSize: 12.5,
+                        fontWeight: "700",
+                        marginTop: 3,
+                      }}
+                    >
+                      View people who have registered for this event.
+                    </Text>
+                  </View>
+
+                  <Ionicons
+                    name="chevron-forward"
+                    size={18}
+                    color={EVENT_AMBER}
+                  />
                 </Pressable>
               ) : null}
 
