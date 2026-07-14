@@ -95,6 +95,16 @@ import EventDetailsScreen from "./src/features/events/screens/EventDetailsScreen
 import EventInvitePeopleScreen from "./src/features/events/screens/EventInvitePeopleScreen";
 import EventsScreen from "./src/features/events/screens/EventsScreen";
 import RegisterEventScreen from "./src/features/events/screens/RegisterEventScreen";
+// Partner screens
+import AddPartnerGalleryMedia from "./src/features/partners/screens/AddPartnerGalleryMedia";
+import CreatePartnerPost from "./src/features/partners/screens/CreatePartnerPost";
+import CreatePartnerProfile from "./src/features/partners/screens/CreatePartnerProfile";
+import CreatePromotionCampaign from "./src/features/partners/screens/CreatePromotionCampaign";
+import ManagePartnerGalleryItem from "./src/features/partners/screens/ManagePartnerGalleryItem";
+import MyPartnerProfiles from "./src/features/partners/screens/MyPartnerProfiles";
+import PartnerProfilePublic from "./src/features/partners/screens/PartnerProfilePublic";
+import PartnerProfilesDirectory from "./src/features/partners/screens/PartnerProfilesDirectory";
+import ReorderPartnerGallery from "./src/features/partners/screens/ReorderPartnerGallery";
 
 const Tab = createBottomTabNavigator();
 const CoachStack = createNativeStackNavigator();
@@ -791,6 +801,61 @@ function RootNavigator({ initialTabName = "Daily" }) {
         component={UserProfile}
         options={{ animation: "slide_from_right" }}
       />
+
+            <RootStack.Screen
+        name="PartnerProfilesDirectory"
+        component={PartnerProfilesDirectory}
+        options={{ animation: "slide_from_right" }}
+      />
+
+            <RootStack.Screen
+        name="MyPartnerProfiles"
+        component={MyPartnerProfiles}
+        options={{ animation: "slide_from_right" }}
+      />
+
+      <RootStack.Screen
+        name="PartnerProfilePublic"
+        component={PartnerProfilePublic}
+        options={{ animation: "slide_from_right" }}
+      />
+
+      <RootStack.Screen
+        name="CreatePartnerProfile"
+        component={CreatePartnerProfile}
+        options={{ animation: "slide_from_right" }}
+      />
+
+      <RootStack.Screen
+        name="CreatePartnerPost"
+        component={CreatePartnerPost}
+        options={{ animation: "slide_from_right" }}
+      />
+
+      <RootStack.Screen
+        name="AddPartnerGalleryMedia"
+        component={AddPartnerGalleryMedia}
+        options={{ animation: "slide_from_right" }}
+      />
+
+      <RootStack.Screen
+        name="ManagePartnerGalleryItem"
+        component={ManagePartnerGalleryItem}
+        options={{ animation: "slide_from_right" }}
+      />
+
+            <RootStack.Screen
+        name="ReorderPartnerGallery"
+        component={ReorderPartnerGallery}
+        options={{ animation: "slide_from_right" }}
+      />
+
+      <RootStack.Screen
+        name="CreatePromotionCampaign"
+        component={CreatePromotionCampaign}
+        options={{ animation: "slide_from_right" }}
+      />
+
       <RootStack.Screen
   name="PrayerGroupDetail"
   component={PrayerGroupDetailScreen}

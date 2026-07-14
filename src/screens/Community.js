@@ -28,14 +28,23 @@ import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { useCallback } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import GlowCard from "../components/GlowCard";
 import PostCard from "../components/PostCard";
 import Screen from "../components/Screen";
+
+import TriunelyImageEditor from "../components/media/TriunelyImageEditor";
+import TriunelyStoryMediaPicker from "../components/media/TriunelyStoryMediaPicker";
+import TriunelyStoryPreview from "../components/media/TriunelyStoryPreview";
+
 import UnifiedInboxHeaderButton from "../components/UnifiedInboxHeaderButton";
 import { useFellowshipRequestsModal } from "../context/FellowshipRequestsModalProvider";
 import { useRealtime } from "../context/RealtimeProvider";
+import PartnerCommunityPostCard from "../features/partners/components/PartnerCommunityPostCard";
 import { HOME_COMMUNITY_ID } from "../lib/constants";
 import { theme } from "../theme/theme";
+
+import {
+  fetchConnectedPartnerFeedPosts,
+} from "../features/partners/services/partnersService";
 
 
 const iconButtonStyle = {
@@ -65,101 +74,42 @@ const iconBadgeStyle = {
 
 const PAGE_LIMIT = 50;
 // Stories UI sizing
-const STORY_SIZE = 110; // overall bubble size (was 64)
-const STORY_RING = 4; // ring thickness
-const STORY_INNER = STORY_SIZE - STORY_RING * 2; // avatar size inside ring
+const STORY_SIZE = 72;
+const STORY_RING = 3;
+const STORY_INNER =
+  STORY_SIZE - STORY_RING * 2;
 
-const SAGE_TINT = "rgba(120, 150, 110, 0.14)"; // calm sage halo for meta UI
+const PREMIUM_CREAM = "#FFFCF5";
+const SURFACE = "#FFFFFF";
+const EVENT_AMBER = "#B45309";
+const EVENT_BROWN = "#7C2D12";
+const DEEP_OLIVE = "#4F633B";
+const TEXT = "#1F2933";
+const MUTED = "#6B7280";
+
+const SAGE_TINT =
+  "rgba(120, 150, 110, 0.14)";
 
 const HEAVENLY_GOLD = "#D99400";
-const DEEP_OLIVE = "#4F633B";
-const SOFT_GOLD_BG = "rgba(217, 148, 0, 0.10)";
-const SOFT_OLIVE_BG = "rgba(79, 99, 59, 0.10)";
-const CARD_BORDER = "rgba(217, 148, 0, 0.18)";
 
-function CommunityQuickCard({ icon, iconColor, title, subtitle, onPress }) {
-     return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => ({
-        flex: 1,
-        minHeight: 112,
-        borderRadius: 18,
-        paddingVertical: 10,
-        paddingHorizontal: 6,
-        backgroundColor: theme.colors.surface,
-        borderWidth: 1,
-        borderColor: CARD_BORDER,
-        alignItems: "center",
-        justifyContent: "center",
-        shadowColor: HEAVENLY_GOLD,
-        shadowOpacity: pressed ? 0.06 : 0.10,
-        shadowRadius: 8,
-        shadowOffset: { width: 0, height: 3 },
-        elevation: pressed ? 1 : 3,
-        transform: [{ scale: pressed ? 0.98 : 1 }],
-      })}
-    >
-      <View
-        style={{
-          width: 40,
-          height: 40,
-          borderRadius: 20,
-          backgroundColor: iconColor === DEEP_OLIVE ? SOFT_OLIVE_BG : SOFT_GOLD_BG,
-          alignItems: "center",
-          justifyContent: "center",
-          marginBottom: 8,
-          borderWidth: 1,
-          borderColor: CARD_BORDER,
-        }}
-      >
-        <Ionicons name={icon} size={20} color={iconColor} />
-      </View>
+const SOFT_GOLD_BG =
+  "rgba(180, 83, 9, 0.10)";
 
-      <Text
-        style={{
-          color: theme.colors.text,
-          fontSize: 11.5,
-          fontWeight: "900",
-          textAlign: "center",
-        }}
-        numberOfLines={1}
-      >
-        {title}
-      </Text>
+const SOFT_OLIVE_BG =
+  "rgba(79, 99, 59, 0.10)";
 
-      <Text
-        style={{
-          color: theme.colors.muted,
-          fontSize: 9.5,
-          fontWeight: "700",
-          textAlign: "center",
-          marginTop: 4,
-          lineHeight: 12,
-          minHeight: 24,
-        }}
-        numberOfLines={2}
-      >
-        {subtitle}
-      </Text>
+const CARD_BORDER =
+  "rgba(15, 23, 42, 0.08)";
 
-      <View
-        style={{
-          marginTop: 7,
-          width: 18,
-          height: 18,
-          borderRadius: 9,
-          borderWidth: 1,
-          borderColor: HEAVENLY_GOLD,
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <Ionicons name="chevron-forward" size={10} color={HEAVENLY_GOLD} />
-      </View>
-    </Pressable>
-  );
-}
+const AMBER_BORDER =
+  "rgba(180, 83, 9, 0.18)";
+
+const OLIVE_BORDER =
+  "rgba(79, 99, 59, 0.18)";
+
+const SHADOW =
+  "rgba(15, 23, 42, 0.10)";
+
 
 function SuggestedNetworkCard({
   imageUrl,
@@ -435,6 +385,12 @@ export default function Community() {
   }
 
   const [posts, setPosts] = useState([]);
+
+  const [
+    connectedPartnerPosts,
+    setConnectedPartnerPosts,
+  ] = useState([]);
+
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
@@ -494,6 +450,21 @@ console.log("USER ID IN RT:", rt?.userId);
   // Story creation preview state
   const [storyPreview, setStoryPreview] = useState(null); // { uri, mediaType }
   const [storyPosting, setStoryPosting] = useState(false);
+
+  const [
+    storyMediaPickerMode,
+    setStoryMediaPickerMode,
+  ] = useState(null);
+
+  const [
+    selectedStoryImage,
+    setSelectedStoryImage,
+  ] = useState(null);
+
+  const [
+    storyImageEditorVisible,
+    setStoryImageEditorVisible,
+  ] = useState(false);
 
   // Tracks which story ids this user has seen in this session
   const [seenStoryIds, setSeenStoryIds] = useState({});
@@ -605,15 +576,146 @@ useEffect(() => {
     outputRange: [0.18, 0.45],
   });
 
-  const filteredPosts = (() => {
-    const q = searchQuery.trim().toLowerCase();
-    if (!q) return posts;
+  const mixedFeedPosts = (() => {
+    const communityItems = (
+      Array.isArray(posts)
+        ? posts
+        : []
+    ).map((post) => ({
+      ...post,
+      feed_source: "community",
+      feed_key:
+        post.feed_key ||
+        `community:${post.id}`,
+    }));
 
-    return posts.filter((p) => {
-      const content = (p.content || "").toLowerCase();
-      const url = (p.url || "").toLowerCase();
-      return content.includes(q) || url.includes(q);
-    });
+    const partnerItems = (
+      Array.isArray(
+        connectedPartnerPosts
+      )
+        ? connectedPartnerPosts
+        : []
+    ).map((post) => ({
+      ...post,
+      feed_source: "partner",
+      feed_key:
+        post.feed_key ||
+        `partner:${post.id}`,
+    }));
+
+    if (
+      partnerItems.length === 0
+    ) {
+      return communityItems;
+    }
+
+    if (
+      communityItems.length === 0
+    ) {
+      return partnerItems;
+    }
+
+    const combined = [];
+    let partnerIndex = 0;
+
+    communityItems.forEach(
+      (communityPost, index) => {
+        combined.push(
+          communityPost
+        );
+
+        const shouldInsertPartner =
+          (index + 1) % 4 === 0 &&
+          partnerIndex <
+            partnerItems.length;
+
+        if (shouldInsertPartner) {
+          combined.push(
+            partnerItems[
+              partnerIndex
+            ]
+          );
+
+          partnerIndex += 1;
+        }
+      }
+    );
+
+    // If fewer than four Community
+    // posts exist, still allow one
+    // connected Partner post to appear.
+    if (
+      partnerIndex === 0 &&
+      partnerItems.length > 0
+    ) {
+      combined.push(
+        partnerItems[0]
+      );
+
+      partnerIndex = 1;
+    }
+
+    // Do not append every remaining
+    // Partner post. This prevents
+    // Partner content dominating the
+    // Community feed.
+    return combined;
+  })();
+
+  const filteredPosts = (() => {
+    const query = String(
+      searchQuery || ""
+    )
+      .trim()
+      .toLowerCase();
+
+    if (!query) {
+      return mixedFeedPosts;
+    }
+
+    return mixedFeedPosts.filter(
+      (post) => {
+        if (
+          post.feed_source ===
+          "partner"
+        ) {
+          const partnerText = [
+            post?.partner?.name,
+            post?.partner
+              ?.short_description,
+            post?.title,
+            post?.content,
+            post?.link_url,
+            post?.link_title,
+            post?.post_type,
+          ]
+            .filter(Boolean)
+            .join(" ")
+            .toLowerCase();
+
+          return partnerText.includes(
+            query
+          );
+        }
+
+        const communityText = [
+          post?.content,
+          post?.url,
+          post?.link_title,
+          post?.link_description,
+          post?.church?.name,
+          post?.church
+            ?.display_name,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+
+        return communityText.includes(
+          query
+        );
+      }
+    );
   })();
 
   async function fetchProfile(userId) {
@@ -700,7 +802,25 @@ useEffect(() => {
     setError(null);
 
     try {
-    const { data, error: err } = await supabase
+      const {
+        data: sessionData,
+        error: sessionError,
+      } =
+        await supabase.auth
+          .getSession();
+
+      if (sessionError) {
+        console.log(
+          "Community feed session error:",
+          sessionError
+        );
+      }
+
+      const feedUserId =
+        sessionData?.session
+          ?.user?.id || null;
+
+      const { data, error: err } = await supabase
   .from("posts")
   .select(
     `
@@ -772,6 +892,28 @@ useEffect(() => {
 
       setPosts(mapped);
 
+      const connectedPartnerResult =
+        await fetchConnectedPartnerFeedPosts({
+          userId: feedUserId,
+          limit: 20,
+        });
+
+      if (
+        connectedPartnerResult.ok
+      ) {
+        setConnectedPartnerPosts(
+          connectedPartnerResult.posts ||
+            []
+        );
+      } else {
+        console.log(
+          "Community connected Partner posts error:",
+          connectedPartnerResult.error
+        );
+
+        setConnectedPartnerPosts([]);
+      }
+
       // NEW: Preload profile data for non-anonymous authors
       const authorIds = mapped
         .filter((p) => !p.is_anonymous)
@@ -784,7 +926,11 @@ useEffect(() => {
       fetchProfilesForUsers(authorIds);
     } catch (e) {
       console.log("Error loading posts", e);
-      setError("Could not load posts right now.");
+      setError(
+        "Could not load posts right now."
+      );
+
+      setConnectedPartnerPosts([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -939,107 +1085,244 @@ useEffect(() => {
 
   // Pick from gallery (photo or video) → open preview (no immediate upload)
   async function pickStoryMedia(kind) {
-    // kind: "image" | "video"
-    console.log("pickStoryMedia called with:", kind);
+    console.log(
+      "pickStoryMedia called with:",
+      kind
+    );
 
     if (!currentUserId) {
-      Alert.alert("Not signed in", "Please sign in again before posting a story.");
+      Alert.alert(
+        "Not signed in",
+        "Please sign in again before posting a story."
+      );
+
       return;
     }
 
-    const ok = await ensureMediaPermissions();
+    const ok =
+      await ensureMediaPermissions();
+
     if (!ok) return;
 
     const mediaTypes =
       kind === "video"
-        ? ImagePicker.MediaTypeOptions.Videos
-        : ImagePicker.MediaTypeOptions.Images;
+        ? ImagePicker.MediaTypeOptions
+            .Videos
+        : ImagePicker.MediaTypeOptions
+            .Images;
 
     try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes,
-        quality: kind === "video" ? 0.4 : 0.7,
-        allowsEditing: kind === "image",
-        aspect: kind === "image" ? [9, 16] : undefined,
-      });
-
-      console.log("ImagePicker (gallery) result:", result);
+      const result =
+        await ImagePicker.launchImageLibraryAsync(
+          {
+            mediaTypes,
+            quality:
+              kind === "video"
+                ? 0.7
+                : 1,
+            allowsEditing: false,
+            videoMaxDuration:
+              kind === "video"
+                ? 15
+                : undefined,
+          }
+        );
 
       if (result.canceled) {
-        console.log("User cancelled picker");
         return;
       }
 
-      const asset = result.assets && result.assets[0];
-      if (!asset || !asset.uri) {
-        console.log("No asset/uri from picker");
+      const asset =
+        result.assets?.[0];
+
+      if (!asset?.uri) {
         return;
       }
 
-      const mediaType = kind === "video" ? "video" : "image";
+      if (kind === "image") {
+        setSelectedStoryImage(
+          asset
+        );
 
-      // Open preview overlay
+        setStoryImageEditorVisible(
+          true
+        );
+
+        return;
+      }
+
       setStoryPreview({
         uri: asset.uri,
-        mediaType,
+        mediaType: "video",
+        width:
+          asset.width || null,
+        height:
+          asset.height || null,
+        duration:
+          asset.duration || null,
+        fileName:
+          asset.fileName || null,
+        mimeType:
+          asset.mimeType ||
+          "video/mp4",
       });
-    } catch (e) {
-      console.log("Error choosing story media from gallery", e);
-      Alert.alert("Story failed", "We couldn’t open that media. Please try again or choose another file.");
+    } catch (error) {
+      console.log(
+        "Story gallery picker error:",
+        error
+      );
+
+      Alert.alert(
+        "Story failed",
+        "We couldn't open that media. Please try another file."
+      );
     }
   }
 
-  // Capture from camera (photo or video) → open preview (no immediate upload)
-  async function captureStoryMedia(kind) {
-    // kind: "image" | "video"
-    console.log("captureStoryMedia called with:", kind);
+  async function captureStoryMedia(
+    kind
+  ) {
+    console.log(
+      "captureStoryMedia called with:",
+      kind
+    );
 
     if (!currentUserId) {
-      Alert.alert("Not signed in", "Please sign in again before posting a story.");
+      Alert.alert(
+        "Not signed in",
+        "Please sign in again before posting a story."
+      );
+
       return;
     }
 
-    const ok = await ensureCameraPermissions();
+    const ok =
+      await ensureCameraPermissions();
+
     if (!ok) return;
 
     const mediaTypes =
       kind === "video"
-        ? ImagePicker.MediaTypeOptions.Videos
-        : ImagePicker.MediaTypeOptions.Images;
+        ? ImagePicker.MediaTypeOptions
+            .Videos
+        : ImagePicker.MediaTypeOptions
+            .Images;
 
     try {
-      const result = await ImagePicker.launchCameraAsync({
-        mediaTypes,
-        quality: kind === "video" ? 0.5 : 0.7,
-        allowsEditing: kind === "image",
-        aspect: kind === "image" ? [9, 16] : undefined,
-        videoMaxDuration: kind === "video" ? 15 : undefined, // ~15 seconds clips
-      });
-
-      console.log("ImagePicker (camera) result:", result);
+      const result =
+        await ImagePicker.launchCameraAsync(
+          {
+            mediaTypes,
+            quality:
+              kind === "video"
+                ? 0.7
+                : 1,
+            allowsEditing: false,
+            videoMaxDuration:
+              kind === "video"
+                ? 15
+                : undefined,
+          }
+        );
 
       if (result.canceled) {
-        console.log("User cancelled camera");
         return;
       }
 
-      const asset = result.assets && result.assets[0];
-      if (!asset || !asset.uri) {
-        console.log("No asset/uri from camera");
+      const asset =
+        result.assets?.[0];
+
+      if (!asset?.uri) {
         return;
       }
 
-      const mediaType = kind === "video" ? "video" : "image";
+      if (kind === "image") {
+        setSelectedStoryImage(
+          asset
+        );
 
-      // Open preview overlay
+        setStoryImageEditorVisible(
+          true
+        );
+
+        return;
+      }
+
       setStoryPreview({
         uri: asset.uri,
-        mediaType,
+        mediaType: "video",
+        width:
+          asset.width || null,
+        height:
+          asset.height || null,
+        duration:
+          asset.duration || null,
+        fileName:
+          asset.fileName || null,
+        mimeType:
+          asset.mimeType ||
+          "video/mp4",
       });
-    } catch (e) {
-      console.log("Error capturing story media from camera", e);
-      Alert.alert("Story failed", "We couldn’t capture that story. Please try again.");
+    } catch (error) {
+      console.log(
+        "Story camera picker error:",
+        error
+      );
+
+      Alert.alert(
+        "Story failed",
+        kind === "video"
+          ? "We couldn't record that video Story."
+          : "We couldn't take that photo."
+      );
     }
+  }
+
+  function handleStoryImageEditorCancel() {
+    setStoryImageEditorVisible(
+      false
+    );
+
+    setSelectedStoryImage(null);
+  }
+
+  function handleChooseDifferentStoryImage() {
+    setStoryImageEditorVisible(
+      false
+    );
+
+    setSelectedStoryImage(null);
+
+    setTimeout(() => {
+      setStoryMediaPickerMode(
+        "photo-source"
+      );
+    }, 180);
+  }
+
+  function handleStoryImagePrepared(
+    preparedImage
+  ) {
+    if (!preparedImage?.uri) {
+      Alert.alert(
+        "Story image",
+        "The prepared Story image could not be created."
+      );
+
+      return;
+    }
+
+    setStoryImageEditorVisible(
+      false
+    );
+
+    setSelectedStoryImage(null);
+
+    setStoryPreview({
+      ...preparedImage,
+      uri: preparedImage.uri,
+      mediaType: "image",
+    });
   }
 
   async function handlePostStoryFromPreview() {
@@ -1141,33 +1424,61 @@ useEffect(() => {
     setSelectedOverlayId(null);
   }
 
-  function promptPhotoStorySource() {
-    Alert.alert("Photo story", "How would you like to share your photo story?", [
-      { text: "From gallery", onPress: () => pickStoryMedia("image") },
-      { text: "Take photo", onPress: () => captureStoryMedia("image") },
-      { text: "Cancel", style: "cancel" },
-    ]);
+  function closeStoryMediaPicker() {
+    setStoryMediaPickerMode(null);
   }
 
-  function promptVideoStorySource() {
-    Alert.alert("Video story", "How would you like to share your video story?", [
-      { text: "From gallery", onPress: () => pickStoryMedia("video") },
-      { text: "Record video", onPress: () => captureStoryMedia("video") },
-      { text: "Cancel", style: "cancel" },
-    ]);
+  function openStoryTypePicker() {
+    setStoryMediaPickerMode("type");
+  }
+
+  function openPhotoStorySources() {
+    setStoryMediaPickerMode(
+      "photo-source"
+    );
+  }
+
+  function openVideoStorySources() {
+    setStoryMediaPickerMode(
+      "video-source"
+    );
+  }
+
+  async function handleStoryGallerySelection() {
+    const kind =
+      storyMediaPickerMode ===
+      "video-source"
+        ? "video"
+        : "image";
+
+    closeStoryMediaPicker();
+
+    await pickStoryMedia(kind);
+  }
+
+  async function handleStoryCameraSelection() {
+    const kind =
+      storyMediaPickerMode ===
+      "video-source"
+        ? "video"
+        : "image";
+
+    closeStoryMediaPicker();
+
+    await captureStoryMedia(kind);
   }
 
   function handleAddStoryPress() {
     if (!currentUserId) {
-      Alert.alert("Not signed in", "Please sign in again before posting a story.");
+      Alert.alert(
+        "Not signed in",
+        "Please sign in again before posting a story."
+      );
+
       return;
     }
 
-    Alert.alert("New story", "What would you like to create?", [
-      { text: "Photo story", onPress: () => promptPhotoStorySource() },
-      { text: "Video story", onPress: () => promptVideoStorySource() },
-      { text: "Cancel", style: "cancel" },
-    ]);
+    openStoryTypePicker();
   }
 
   function handleStoryBubblePress(group) {
@@ -1299,12 +1610,40 @@ function handleOpenFellowship() {
     setStoryOverlays((prev) =>
       prev.map((o) => {
         if (o.id !== selectedOverlayId) return o;
-        const current = o.scale ?? 1;
-        // Limit between 0.5x and 2.5x
-        const next = Math.min(2.5, Math.max(0.5, current + delta));
-        return { ...o, scale: next };
+
+        const current =
+          o.scale ?? 1;
+
+        const next = Math.min(
+          2.5,
+          Math.max(
+            0.5,
+            current + delta
+          )
+        );
+
+        return {
+          ...o,
+          scale: next,
+        };
       })
     );
+  }
+
+  function deleteSelectedStoryOverlay() {
+    if (!selectedOverlayId) {
+      return;
+    }
+
+    setStoryOverlays((prev) =>
+      prev.filter(
+        (overlay) =>
+          overlay.id !==
+          selectedOverlayId
+      )
+    );
+
+    setSelectedOverlayId(null);
   }
 
   async function handleCreatePost(content, url, isAnonymous, media) {
@@ -1614,7 +1953,36 @@ if (linkPreview) {
   }
 
  const renderItem = ({ item }) => {
-  // Resolve author profile (unless anonymous)
+   if (
+     item?.feed_source ===
+     "partner"
+   ) {
+     return (
+       <PartnerCommunityPostCard
+         post={item}
+         currentUserId={
+           currentUserId
+         }
+         onOpenPartnerProfile={(
+           partner
+         ) => {
+           if (!partner?.id) {
+             return;
+           }
+
+           navigation.navigate(
+             "PartnerProfilePublic",
+             {
+               partnerProfileId:
+                 partner.id,
+             }
+           );
+         }}
+       />
+     );
+   }
+
+   // Resolve author profile (unless anonymous)
   const authorProfile =
     !item.is_anonymous && item.user_id ? profilesById[item.user_id] || null : null;
 
@@ -1719,21 +2087,23 @@ if (linkPreview) {
 
   function handleYourStoryPress() {
     if (!currentUserId) {
-      Alert.alert("Not signed in", "Please sign in again before posting a story.");
+      Alert.alert(
+        "Not signed in",
+        "Please sign in again before posting a story."
+      );
+
       return;
     }
 
-    const ownGroup = orderedStoryGroups.find((g) => g.user_id === currentUserId);
+    if (yourGroup) {
+      handleStoryBubblePress(
+        yourGroup
+      );
 
-    if (ownGroup) {
-      Alert.alert("Your story", "What would you like to do?", [
-        { text: "View your story", onPress: () => handleStoryBubblePress(ownGroup) },
-        { text: "Add new story", onPress: () => handleAddStoryPress() },
-        { text: "Cancel", style: "cancel" },
-      ]);
-    } else {
-      handleAddStoryPress();
+      return;
     }
+
+    handleAddStoryPress();
   }
 
   const currentStory = storyViewerGroup && storyViewerGroup.stories[storyViewerIndex];
@@ -1883,207 +2253,649 @@ if (linkPreview) {
 </View>
 
 
-  {/* Community hero */}
-<View style={{ marginBottom: 16 }}>
+  {/* Community introduction */}
   <View
-    pointerEvents="none"
     style={{
-      position: "absolute",
-      top: -42,
-      right: -18,
-      width: 230,
-      height: 150,
-      borderRadius: 30,
-      backgroundColor: "rgba(217, 148, 0, 0.08)",
-      opacity: 0.9,
-    }}
-  />
-
-  <View
-    pointerEvents="none"
-    style={{
-      position: "absolute",
-      top: -8,
-      right: 38,
-      width: 86,
-      height: 86,
-      borderRadius: 43,
-      backgroundColor: "rgba(217, 148, 0, 0.12)",
-      shadowColor: HEAVENLY_GOLD,
-      shadowOpacity: 0.28,
-      shadowRadius: 28,
-      shadowOffset: { width: 0, height: 0 },
-      elevation: 8,
-    }}
-  />
-
-  <Text
-    style={{
-      color: theme.colors.muted,
-      fontSize: 16,
-      fontWeight: "700",
-      lineHeight: 23,
-      marginTop: 0,
-      maxWidth: 330,
+      marginBottom: 18,
+      borderRadius: 26,
+      padding: 18,
+      backgroundColor:
+        SURFACE,
+      borderWidth: 1,
+      borderColor:
+        CARD_BORDER,
+      shadowColor: SHADOW,
+      shadowOpacity: 0.08,
+      shadowRadius: 12,
+      shadowOffset: {
+        width: 0,
+        height: 5,
+      },
+      elevation: 3,
+      overflow: "hidden",
     }}
   >
-    Discover people, events, networks, and Christian life nearby.
-  </Text>
-</View>
+    <View
+      pointerEvents="none"
+      style={{
+        position: "absolute",
+        top: -55,
+        right: -40,
+        width: 165,
+        height: 165,
+        borderRadius: 83,
+        backgroundColor:
+          SOFT_GOLD_BG,
+      }}
+    />
 
-{/* Community quick cards */}
+    <View
+      pointerEvents="none"
+      style={{
+        position: "absolute",
+        bottom: -50,
+        left: -35,
+        width: 130,
+        height: 130,
+        borderRadius: 65,
+        backgroundColor:
+          SOFT_OLIVE_BG,
+      }}
+    />
+
+    <View
+      style={{
+        width: 46,
+        height: 46,
+        borderRadius: 17,
+        backgroundColor:
+          SOFT_OLIVE_BG,
+        borderWidth: 1,
+        borderColor:
+          OLIVE_BORDER,
+        alignItems: "center",
+        justifyContent:
+          "center",
+        marginBottom: 13,
+      }}
+    >
+      <Ionicons
+        name="people-outline"
+        size={23}
+        color={DEEP_OLIVE}
+      />
+    </View>
+
+    <Text
+      style={{
+        color: TEXT,
+        fontSize: 23,
+        lineHeight: 28,
+        fontWeight: "900",
+        letterSpacing: -0.35,
+        maxWidth: 310,
+      }}
+    >
+      Christian life, connected
+    </Text>
+
+    <Text
+      style={{
+        color: MUTED,
+        fontSize: 14,
+        fontWeight: "700",
+        lineHeight: 21,
+        marginTop: 7,
+        maxWidth: 325,
+      }}
+    >
+      Find fellowship, events,
+      purpose-led networks and
+      Christian Partners—all in one
+      place.
+    </Text>
+  </View>
+
+
+{/* Explore Community */}
 <View
   style={{
-    flexDirection: "row",
-    alignItems: "stretch",
-    justifyContent: "space-between",
-    gap: 8,
-    marginBottom: 24,
+    marginBottom: 22,
   }}
 >
-  <CommunityQuickCard
-    icon="people-outline"
-    iconColor={DEEP_OLIVE}
-    title="Fellowship"
-    subtitle={"Connect with\nChristians"}
-    onPress={() => Alert.alert("Fellowship", "The full Fellowship Hub is coming next.")}
-  />
-
-  <CommunityQuickCard
-    icon="calendar-outline"
-    iconColor={HEAVENLY_GOLD}
-    title="Events"
-    subtitle={"Find what’s\nhappening"}
-    onPress={() => Alert.alert("Events", "The Events Hub is coming next.")}
-  />
-
-  <CommunityQuickCard
-    icon="people-circle-outline"
-    iconColor={HEAVENLY_GOLD}
-    title="Networks"
-    subtitle={"Join purpose-led\nspaces"}
-    onPress={() => navigation.navigate("Networks")}
-  />
-
-  <CommunityQuickCard
-    icon="location-outline"
-    iconColor={DEEP_OLIVE}
-    title="Local"
-    subtitle={"Discover Christian\nlife nearby"}
-    onPress={() => Alert.alert("Local", "Local Christian life is coming next.")}
-  />
-</View>
-
-{/* Suggested Networks */}
-<View style={{ marginBottom: 20 }}>
   <View
     style={{
       flexDirection: "row",
       alignItems: "center",
-      justifyContent: "space-between",
+      justifyContent:
+        "space-between",
       marginBottom: 12,
     }}
   >
-   <Text
-  style={{
-    ...theme.premium.text.sectionTitle,
-  }}
->
-  Suggested Networks
-</Text>
-
-    <Pressable onPress={() => navigation.navigate("Networks")}>
+    <View
+      style={{
+        flex: 1,
+        minWidth: 0,
+      }}
+    >
       <Text
         style={{
-          color: HEAVENLY_GOLD,
-          fontWeight: "900",
-          fontSize: 14,
+          ...theme.premium.text
+            .sectionTitle,
+          color: TEXT,
         }}
       >
-        View all ›
+        Explore Community
       </Text>
-    </Pressable>
+
+      <Text
+        style={{
+          color: MUTED,
+          fontSize: 12.5,
+          fontWeight: "700",
+          lineHeight: 18,
+          marginTop: 3,
+        }}
+      >
+        Discover more ways to connect,
+        gather and grow.
+      </Text>
+    </View>
+
+    <View
+      style={{
+        width: 42,
+        height: 42,
+        borderRadius: 16,
+        backgroundColor:
+          SOFT_OLIVE_BG,
+        borderWidth: 1,
+        borderColor:
+          OLIVE_BORDER,
+        alignItems: "center",
+        justifyContent:
+          "center",
+        marginLeft: 12,
+      }}
+    >
+      <Ionicons
+        name="compass-outline"
+        size={21}
+        color={DEEP_OLIVE}
+      />
+    </View>
   </View>
-
-  <ScrollView
-    horizontal
-    showsHorizontalScrollIndicator={false}
-    contentContainerStyle={{ paddingRight: 16 }}
-  >
-    <SuggestedNetworkCard
-      imageUrl="https://images.unsplash.com/photo-1507692049790-de58290a4334?q=80&w=1200&auto=format&fit=crop"
-      badgeIcon="hand-left-outline"
-      title="Men’s Prayer Network"
-      subtitle="Brothers strengthening faith together"
-      members="1.2K members"
-      action="Join"
-      onPress={() => navigation.push("NetworkDetail", { networkId: "mens-prayer" })}
-    />
-
-    <SuggestedNetworkCard
-      imageUrl="https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?q=80&w=1200&auto=format&fit=crop"
-      badgeIcon="briefcase-outline"
-      title="Christian Business Network"
-      subtitle="Faith-driven purpose. Kingdom impact."
-      members="856 members"
-      action="Request"
-      onPress={() => navigation.push("NetworkDetail", { networkId: "business" })}
-    />
-
-    <SuggestedNetworkCard
-      imageUrl="https://images.unsplash.com/photo-1529699211952-734e80c4d42b?q=80&w=1200&auto=format&fit=crop"
-      badgeIcon="extension-puzzle-outline"
-      title="Chess Fellowship"
-      subtitle="Sharpen your mind. Glorify God."
-      members="423 members"
-      action="Join"
-      onPress={() => navigation.push("NetworkDetail", { networkId: "chess" })}
-    />
-  </ScrollView>
 
   <View
     style={{
-      flexDirection: "row",
-      justifyContent: "center",
-      gap: 8,
-      marginTop: 12,
+      backgroundColor: SURFACE,
+      borderRadius: 24,
+      borderWidth: 1,
+      borderColor: CARD_BORDER,
+      shadowColor: SHADOW,
+      shadowOpacity: 0.08,
+      shadowRadius: 12,
+      shadowOffset: {
+        width: 0,
+        height: 5,
+      },
+      elevation: 3,
+      overflow: "hidden",
     }}
   >
+    <Pressable
+      onPress={() =>
+        navigation.navigate(
+          "PartnerProfilesDirectory"
+        )
+      }
+      style={({ pressed }) => ({
+        paddingHorizontal: 15,
+        paddingVertical: 14,
+        flexDirection: "row",
+        alignItems: "center",
+        backgroundColor: pressed
+          ? SOFT_OLIVE_BG
+          : SURFACE,
+      })}
+    >
+      <View
+        style={{
+          width: 44,
+          height: 44,
+          borderRadius: 16,
+          backgroundColor:
+            SOFT_OLIVE_BG,
+          borderWidth: 1,
+          borderColor:
+            OLIVE_BORDER,
+          alignItems: "center",
+          justifyContent:
+            "center",
+          marginRight: 12,
+        }}
+      >
+        <Ionicons
+          name="briefcase-outline"
+          size={21}
+          color={DEEP_OLIVE}
+        />
+      </View>
+
+      <View
+        style={{
+          flex: 1,
+          minWidth: 0,
+        }}
+      >
+        <Text
+          style={{
+            color: TEXT,
+            fontSize: 15,
+            fontWeight: "900",
+          }}
+        >
+          Discover Christian Partners
+        </Text>
+
+        <Text
+          style={{
+            color: MUTED,
+            fontSize: 12,
+            fontWeight: "700",
+            lineHeight: 17,
+            marginTop: 3,
+          }}
+          numberOfLines={2}
+        >
+          Businesses, ministries,
+          creators and organisations.
+        </Text>
+      </View>
+
+      <Ionicons
+        name="chevron-forward"
+        size={19}
+        color={DEEP_OLIVE}
+      />
+    </Pressable>
+
     <View
       style={{
-        width: 7,
-        height: 7,
-        borderRadius: 4,
-        backgroundColor: HEAVENLY_GOLD,
+        height: 1,
+        backgroundColor:
+          CARD_BORDER,
+        marginLeft: 71,
       }}
     />
+
+    <Pressable
+      onPress={() =>
+        navigation.navigate(
+          "Networks"
+        )
+      }
+      style={({ pressed }) => ({
+        paddingHorizontal: 15,
+        paddingVertical: 14,
+        flexDirection: "row",
+        alignItems: "center",
+        backgroundColor: pressed
+          ? SOFT_GOLD_BG
+          : SURFACE,
+      })}
+    >
+      <View
+        style={{
+          width: 44,
+          height: 44,
+          borderRadius: 16,
+          backgroundColor:
+            SOFT_GOLD_BG,
+          borderWidth: 1,
+          borderColor:
+            AMBER_BORDER,
+          alignItems: "center",
+          justifyContent:
+            "center",
+          marginRight: 12,
+        }}
+      >
+        <Ionicons
+          name="people-circle-outline"
+          size={22}
+          color={EVENT_BROWN}
+        />
+      </View>
+
+      <View
+        style={{
+          flex: 1,
+          minWidth: 0,
+        }}
+      >
+        <Text
+          style={{
+            color: TEXT,
+            fontSize: 15,
+            fontWeight: "900",
+          }}
+        >
+          Explore Christian Networks
+        </Text>
+
+        <Text
+          style={{
+            color: MUTED,
+            fontSize: 12,
+            fontWeight: "700",
+            lineHeight: 17,
+            marginTop: 3,
+          }}
+          numberOfLines={2}
+        >
+          Join purpose-led spaces built
+          around shared interests.
+        </Text>
+      </View>
+
+      <Ionicons
+        name="chevron-forward"
+        size={19}
+        color={EVENT_BROWN}
+      />
+    </Pressable>
+
     <View
       style={{
-        width: 7,
-        height: 7,
-        borderRadius: 4,
-        backgroundColor: theme.colors.divider,
+        height: 1,
+        backgroundColor:
+          CARD_BORDER,
+        marginLeft: 71,
       }}
     />
+
+    <Pressable
+      onPress={() =>
+        navigation.navigate(
+          "EventsScreen"
+        )
+      }
+      style={({ pressed }) => ({
+        paddingHorizontal: 15,
+        paddingVertical: 14,
+        flexDirection: "row",
+        alignItems: "center",
+        backgroundColor: pressed
+          ? SOFT_GOLD_BG
+          : SURFACE,
+      })}
+    >
+      <View
+        style={{
+          width: 44,
+          height: 44,
+          borderRadius: 16,
+          backgroundColor:
+            SOFT_GOLD_BG,
+          borderWidth: 1,
+          borderColor:
+            AMBER_BORDER,
+          alignItems: "center",
+          justifyContent:
+            "center",
+          marginRight: 12,
+        }}
+      >
+        <Ionicons
+          name="calendar-outline"
+          size={21}
+          color={EVENT_BROWN}
+        />
+      </View>
+
+      <View
+        style={{
+          flex: 1,
+          minWidth: 0,
+        }}
+      >
+        <Text
+          style={{
+            color: TEXT,
+            fontSize: 15,
+            fontWeight: "900",
+          }}
+        >
+          Find Christian Events
+        </Text>
+
+        <Text
+          style={{
+            color: MUTED,
+            fontSize: 12,
+            fontWeight: "700",
+            lineHeight: 17,
+            marginTop: 3,
+          }}
+          numberOfLines={2}
+        >
+          Discover church gatherings,
+          courses, concerts and events.
+        </Text>
+      </View>
+
+      <Ionicons
+        name="chevron-forward"
+        size={19}
+        color={EVENT_BROWN}
+      />
+    </Pressable>
+
     <View
       style={{
-        width: 7,
-        height: 7,
-        borderRadius: 4,
-        backgroundColor: theme.colors.divider,
+        height: 1,
+        backgroundColor:
+          CARD_BORDER,
+        marginLeft: 71,
       }}
     />
+
+    <Pressable
+      onPress={
+        handleOpenFellowship
+      }
+      style={({ pressed }) => ({
+        paddingHorizontal: 15,
+        paddingVertical: 14,
+        flexDirection: "row",
+        alignItems: "center",
+        backgroundColor: pressed
+          ? SOFT_OLIVE_BG
+          : SURFACE,
+      })}
+    >
+      <View
+        style={{
+          width: 44,
+          height: 44,
+          borderRadius: 16,
+          backgroundColor:
+            SOFT_OLIVE_BG,
+          borderWidth: 1,
+          borderColor:
+            OLIVE_BORDER,
+          alignItems: "center",
+          justifyContent:
+            "center",
+          marginRight: 12,
+        }}
+      >
+        <Ionicons
+          name="people-outline"
+          size={21}
+          color={DEEP_OLIVE}
+        />
+      </View>
+
+      <View
+        style={{
+          flex: 1,
+          minWidth: 0,
+        }}
+      >
+        <Text
+          style={{
+            color: TEXT,
+            fontSize: 15,
+            fontWeight: "900",
+          }}
+        >
+          Fellowship Connections
+        </Text>
+
+        <Text
+          style={{
+            color: MUTED,
+            fontSize: 12,
+            fontWeight: "700",
+            lineHeight: 17,
+            marginTop: 3,
+          }}
+          numberOfLines={2}
+        >
+          Build meaningful Christian
+          relationships across Triunely.
+        </Text>
+      </View>
+
+      <Ionicons
+        name="chevron-forward"
+        size={19}
+        color={DEEP_OLIVE}
+      />
+    </Pressable>
   </View>
-</View>   
+</View>  
 
       {/* Stories */}
-      <View style={{ marginBottom: 12 }}>
-        <Text style={{ color: theme.colors.sage, fontWeight: "800", marginBottom: 8 }}>Stories</Text>
+      <View
+        style={{
+          marginBottom: 18,
+          borderRadius: 24,
+          paddingTop: 15,
+          paddingBottom: 14,
+          backgroundColor: SURFACE,
+          borderWidth: 1,
+          borderColor: CARD_BORDER,
+          shadowColor: SHADOW,
+          shadowOpacity: 0.08,
+          shadowRadius: 12,
+          shadowOffset: {
+            width: 0,
+            height: 5,
+          },
+          elevation: 3,
+          overflow: "hidden",
+        }}
+      >
+        <View
+          style={{
+            paddingHorizontal: 15,
+            marginBottom: 8,
+            flexDirection: "row",
+            alignItems: "center",
+          }}
+        >
+          <View
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: 14,
+              backgroundColor:
+                SOFT_GOLD_BG,
+              borderWidth: 1,
+              borderColor:
+                AMBER_BORDER,
+              alignItems: "center",
+              justifyContent:
+                "center",
+              marginRight: 10,
+            }}
+          >
+            <Ionicons
+              name="sparkles-outline"
+              size={19}
+              color={EVENT_BROWN}
+            />
+          </View>
+
+          <View
+            style={{
+              flex: 1,
+              minWidth: 0,
+            }}
+          >
+            <Text
+              style={{
+                color: TEXT,
+                fontSize: 18,
+                lineHeight: 22,
+                fontWeight: "900",
+              }}
+            >
+              Stories
+            </Text>
+
+            <Text
+              style={{
+                color: MUTED,
+                fontSize: 11.5,
+                lineHeight: 16,
+                fontWeight: "700",
+                marginTop: 2,
+              }}
+            >
+              Share moments from Christian life.
+            </Text>
+          </View>
+
+          <Pressable
+            onPress={
+              handleAddStoryPress
+            }
+            hitSlop={8}
+            style={({ pressed }) => ({
+              width: 38,
+              height: 38,
+              borderRadius: 14,
+              backgroundColor:
+                pressed
+                  ? SOFT_OLIVE_BG
+                  : PREMIUM_CREAM,
+              borderWidth: 1,
+              borderColor:
+                OLIVE_BORDER,
+              alignItems: "center",
+              justifyContent:
+                "center",
+            })}
+          >
+            <Ionicons
+              name="add"
+              size={21}
+              color={DEEP_OLIVE}
+            />
+          </Pressable>
+        </View>
 
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ paddingVertical: 4, paddingRight: 16 }}
+contentContainerStyle={{
+  paddingVertical: 5,
+  paddingHorizontal: 15,
+}}
         >
           {/* Your story bubble */}
           <Pressable
@@ -2096,46 +2908,82 @@ if (linkPreview) {
             })}
           >
             <View style={{ position: "relative", width: STORY_SIZE, height: STORY_SIZE }}>
-              {/* PULSE HALO (only if your story has unseen items) */}
+              {/* Soft pulse for unseen Story */}
               {yourHasUnseen ? (
                 <Animated.View
                   pointerEvents="none"
                   style={{
                     position: "absolute",
-                    top: -8,
-                    left: -8,
-                    width: STORY_SIZE + 16,
-                    height: STORY_SIZE + 16,
-                    borderRadius: (STORY_SIZE + 16) / 2,
-                    backgroundColor: "rgba(255,215,0,0.22)",
+                    top: -7,
+                    left: -7,
+                    width: STORY_SIZE + 14,
+                    height: STORY_SIZE + 14,
+                    borderRadius:
+                      (STORY_SIZE + 14) / 2,
+                    backgroundColor:
+                      "rgba(79, 99, 59, 0.14)",
                     opacity: pulseOpacity,
-                    transform: [{ scale: pulseScale }],
-                    shadowColor: theme.colors.gold,
-                    shadowOpacity: 0.35,
-                    shadowRadius: 14,
-                    shadowOffset: { width: 0, height: 0 },
-                    elevation: 10,
+                    transform: [
+                      {
+                        scale: pulseScale,
+                      },
+                    ],
+                    shadowColor: DEEP_OLIVE,
+                    shadowOpacity: 0.18,
+                    shadowRadius: 10,
+                    shadowOffset: {
+                      width: 0,
+                      height: 0,
+                    },
+                    elevation: 5,
                   }}
                 />
               ) : null}
 
-              {/* OUTER RING */}
+              {/* Premium Story ring */}
               <View
                 style={{
                   width: STORY_SIZE,
                   height: STORY_SIZE,
-                  borderRadius: STORY_SIZE / 2,
+                  borderRadius:
+                    STORY_SIZE / 2,
                   padding: STORY_RING,
-                  backgroundColor: hasOwnStory ? theme.colors.goldHalo : "rgba(255,215,0,0.14)",
-                  borderWidth: 1,
-                  borderColor: hasOwnStory ? theme.colors.gold : theme.colors.goldOutline,
-
-                  shadowColor: theme.colors.gold,
-                  shadowOpacity: hasOwnStory ? 0.45 : 0.22,
-                  shadowRadius: hasOwnStory ? 12 : 8,
-                  shadowOffset: { width: 0, height: 0 },
-
-                  elevation: hasOwnStory ? 8 : 5,
+                  backgroundColor:
+                    hasOwnStory
+                      ? yourHasUnseen
+                        ? "rgba(180, 83, 9, 0.12)"
+                        : "rgba(79, 99, 59, 0.09)"
+                      : PREMIUM_CREAM,
+                  borderWidth:
+                    yourHasUnseen
+                      ? 2
+                      : 1,
+                  borderColor:
+                    yourHasUnseen
+                      ? EVENT_AMBER
+                      : hasOwnStory
+                        ? OLIVE_BORDER
+                        : CARD_BORDER,
+                  shadowColor:
+                    yourHasUnseen
+                      ? EVENT_AMBER
+                      : SHADOW,
+                  shadowOpacity:
+                    yourHasUnseen
+                      ? 0.16
+                      : 0.08,
+                  shadowRadius:
+                    yourHasUnseen
+                      ? 8
+                      : 5,
+                  shadowOffset: {
+                    width: 0,
+                    height: 3,
+                  },
+                  elevation:
+                    yourHasUnseen
+                      ? 4
+                      : 2,
                 }}
               >
                 {/* INNER AVATAR */}
@@ -2160,27 +3008,67 @@ if (linkPreview) {
                 </View>
               </View>
 
-              {/* + badge */}
-              <View
-                style={{
+              {/* Add Story badge */}
+              <Pressable
+                onPress={(event) => {
+                  event.stopPropagation?.();
+                  handleAddStoryPress();
+                }}
+                hitSlop={8}
+                style={({ pressed }) => ({
                   position: "absolute",
-                  bottom: -2,
-                  right: -2,
-                  width: 24,
-                  height: 24,
-                  borderRadius: 12,
-                  backgroundColor: theme.colors.gold,
+                  bottom: -3,
+                  right: -3,
+                  width: 27,
+                  height: 27,
+                  borderRadius: 10,
+                  backgroundColor:
+                    pressed
+                      ? EVENT_BROWN
+                      : EVENT_AMBER,
                   alignItems: "center",
                   justifyContent: "center",
-                  borderWidth: 2,
-                  borderColor: theme.colors.surface,
-                }}
+                  borderWidth: 2.5,
+                  borderColor: SURFACE,
+                  shadowColor: SHADOW,
+                  shadowOpacity: 0.2,
+                  shadowRadius: 5,
+                  shadowOffset: {
+                    width: 0,
+                    height: 2,
+                  },
+                  elevation: 5,
+                  transform: [
+                    {
+                      scale:
+                        pressed
+                          ? 0.92
+                          : 1,
+                    },
+                  ],
+                })}
               >
-                <Text style={{ color: theme.colors.text, fontWeight: "900", marginTop: -1 }}>+</Text>
-              </View>
+                <Ionicons
+                  name="add"
+                  size={18}
+                  color={SURFACE}
+                />
+              </Pressable>
             </View>
 
-            <Text style={{ color: theme.colors.muted, fontSize: 12, marginTop: 8 }}>Your story</Text>
+<Text
+  style={{
+    color: MUTED,
+    fontSize: 11.5,
+    fontWeight: "800",
+    marginTop: 7,
+    maxWidth:
+      STORY_SIZE + 8,
+  }}
+  numberOfLines={1}
+>
+  Your story
+</Text>
           </Pressable>
 
           {/* Other users' stories */}
@@ -2208,25 +3096,46 @@ if (linkPreview) {
                       opacity: pressed ? 0.92 : 1,
                     })}
                   >
-                    {/* OUTER RING (glow) */}
+                    {/* Premium Story ring */}
                     <View
                       style={{
                         width: STORY_SIZE,
                         height: STORY_SIZE,
-                        borderRadius: STORY_SIZE / 2,
+                        borderRadius:
+                          STORY_SIZE / 2,
                         padding: STORY_RING,
-                        backgroundColor: hasUnseen ? theme.colors.goldHalo : "rgba(255,255,255,0.06)",
-                        borderWidth: 1,
-                        borderColor: hasUnseen ? theme.colors.gold : theme.colors.divider,
-
-                        // Glow (iOS)
-                        shadowColor: hasUnseen ? theme.colors.gold : "#000",
-                        shadowOpacity: hasUnseen ? 0.45 : 0.12,
-                        shadowRadius: hasUnseen ? 12 : 8,
-                        shadowOffset: { width: 0, height: 0 },
-
-                        // Glow (Android)
-                        elevation: hasUnseen ? 8 : 4,
+                        backgroundColor:
+                          hasUnseen
+                            ? "rgba(180, 83, 9, 0.11)"
+                            : "rgba(79, 99, 59, 0.07)",
+                        borderWidth:
+                          hasUnseen
+                            ? 2
+                            : 1,
+                        borderColor:
+                          hasUnseen
+                            ? EVENT_AMBER
+                            : OLIVE_BORDER,
+                        shadowColor:
+                          hasUnseen
+                            ? EVENT_AMBER
+                            : SHADOW,
+                        shadowOpacity:
+                          hasUnseen
+                            ? 0.15
+                            : 0.06,
+                        shadowRadius:
+                          hasUnseen
+                            ? 8
+                            : 4,
+                        shadowOffset: {
+                          width: 0,
+                          height: 3,
+                        },
+                        elevation:
+                          hasUnseen
+                            ? 4
+                            : 2,
                       }}
                     >
                       {/* INNER AVATAR */}
@@ -2254,7 +3163,14 @@ if (linkPreview) {
                     </View>
 
                     <Text
-                      style={{ color: theme.colors.muted, fontSize: 12, marginTop: 8, maxWidth: STORY_SIZE + 8 }}
+style={{
+  color: MUTED,
+  fontSize: 11.5,
+  fontWeight: "800",
+  marginTop: 7,
+  maxWidth:
+    STORY_SIZE + 8,
+}}
                       numberOfLines={1}
                     >
                       {name}
@@ -2266,49 +3182,141 @@ if (linkPreview) {
         </ScrollView>
       </View>
 
-      {/* Composer */}
-      <GlowCard innerStyle={{ padding: 12 }}>
-        <View style={{ flexDirection: "row", alignItems: "center" }}>
-          {profileAvatarUrl ? (
-            <Image source={{ uri: profileAvatarUrl }} style={{ width: 38, height: 38, borderRadius: 19, marginRight: 10 }} />
-          ) : (
-            <View
-              style={{
-                width: 38,
-                height: 38,
-                borderRadius: 19,
-                backgroundColor: theme.colors.surfaceAlt,
-                alignItems: "center",
-                justifyContent: "center",
-                marginRight: 10,
-                borderWidth: 1,
-                borderColor: theme.colors.divider,
-              }}
-            >
-              <Text style={{ color: theme.colors.text2, fontWeight: "900" }}>Y</Text>
-            </View>
-          )}
-
-          <Pressable
-            onPress={() => setShowNewModal(true)}
+      {/* Community composer */}
+      <View
+        style={{
+          borderRadius: 22,
+          backgroundColor: SURFACE,
+          borderWidth: 1,
+          borderColor: OLIVE_BORDER,
+          padding: 12,
+          shadowColor: SHADOW,
+          shadowOpacity: 0.08,
+          shadowRadius: 10,
+          shadowOffset: {
+            width: 0,
+            height: 4,
+          },
+          elevation: 2,
+        }}
+      >
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+          }}
+        >
+          <View
             style={{
-              flex: 1,
-              backgroundColor: theme.colors.surfaceAlt,
-              borderRadius: 999,
-              paddingVertical: 10,
-              paddingHorizontal: 12,
+              width: 42,
+              height: 42,
+              borderRadius: 21,
+              padding: 2,
+              backgroundColor:
+                SOFT_OLIVE_BG,
               borderWidth: 1,
-              borderColor: theme.colors.divider,
+              borderColor:
+                OLIVE_BORDER,
+              marginRight: 10,
             }}
           >
-            <Text style={{ color: theme.colors.muted, fontSize: 14, fontWeight: "700" }}>What’s on your heart?</Text>
+            <View
+              style={{
+                flex: 1,
+                borderRadius: 19,
+                overflow: "hidden",
+                backgroundColor:
+                  PREMIUM_CREAM,
+                alignItems: "center",
+                justifyContent:
+                  "center",
+              }}
+            >
+              {profileAvatarUrl ? (
+                <Image
+                  source={{
+                    uri: profileAvatarUrl,
+                  }}
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                  }}
+                />
+              ) : (
+                <Text
+                  style={{
+                    color: DEEP_OLIVE,
+                    fontWeight: "900",
+                  }}
+                >
+                  Y
+                </Text>
+              )}
+            </View>
+          </View>
+
+          <Pressable
+            onPress={() =>
+              setShowNewModal(true)
+            }
+            style={({ pressed }) => ({
+              flex: 1,
+              minHeight: 44,
+              backgroundColor:
+                pressed
+                  ? SOFT_OLIVE_BG
+                  : PREMIUM_CREAM,
+              borderRadius: 999,
+              paddingVertical: 11,
+              paddingHorizontal: 15,
+              borderWidth: 1,
+              borderColor:
+                CARD_BORDER,
+              justifyContent:
+                "center",
+            })}
+          >
+            <Text
+              style={{
+                color: MUTED,
+                fontSize: 14,
+                fontWeight: "700",
+              }}
+            >
+              What’s on your heart?
+            </Text>
           </Pressable>
 
-          <Pressable onPress={() => setShowNewModal(true)} style={{ marginLeft: 10, padding: 6 }}>
-            <Text style={{ fontSize: 18, color: theme.colors.text2 }}>📷</Text>
+          <Pressable
+            onPress={() =>
+              setShowNewModal(true)
+            }
+            hitSlop={6}
+            style={({ pressed }) => ({
+              width: 42,
+              height: 42,
+              borderRadius: 15,
+              marginLeft: 9,
+              backgroundColor:
+                pressed
+                  ? SOFT_GOLD_BG
+                  : PREMIUM_CREAM,
+              borderWidth: 1,
+              borderColor:
+                AMBER_BORDER,
+              alignItems: "center",
+              justifyContent:
+                "center",
+            })}
+          >
+            <Ionicons
+              name="image-outline"
+              size={21}
+              color={EVENT_AMBER}
+            />
           </Pressable>
         </View>
-      </GlowCard>
+      </View>
 
       {/* Community Feed header */}
 <View style={{ marginTop: 20, marginBottom: 12 }}>
@@ -2414,7 +3422,16 @@ if (linkPreview) {
   );
 
   return (
-    <Screen backgroundColor={theme.colors.bg} padded={false} style={{ flex: 1 }} contentStyle={{ flex: 1 }}>
+<Screen
+  backgroundColor={
+    PREMIUM_CREAM
+  }
+  padded={false}
+  style={{ flex: 1 }}
+  contentStyle={{
+    flex: 1,
+  }}
+>
       {({ bottomPad }) => (
         <>
           {loading ? (
@@ -2425,16 +3442,31 @@ if (linkPreview) {
           ) : (
             <FlatList
               data={filteredPosts}
-              keyExtractor={(item) => item.id}
+              keyExtractor={(item) =>
+                item.feed_key ||
+                `${
+                  item.feed_source ||
+                  "community"
+                }:${item.id}`
+              }
               renderItem={renderItem}
               ListHeaderComponent={renderFeedHeader}
               contentContainerStyle={{
                 paddingHorizontal: 0,
                 paddingTop: 0,
                 paddingBottom: bottomPad + 16,
-                backgroundColor: theme.colors.bg,
+backgroundColor:
+  PREMIUM_CREAM,
               }}
-              ItemSeparatorComponent={() => <View style={{ height: 10, backgroundColor: theme.colors.bg }} />}
+ItemSeparatorComponent={() => (
+  <View
+    style={{
+      height: 12,
+      backgroundColor:
+        PREMIUM_CREAM,
+    }}
+  />
+)}
               onRefresh={() => {
                 fetchPosts(true);
                 loadStories();
@@ -2541,7 +3573,13 @@ if (linkPreview) {
                 <View style={{ maxHeight: 520, paddingBottom: 10 }}>
                   <FlatList
                     data={filteredPosts}
-                    keyExtractor={(item) => item.id}
+              keyExtractor={(item) =>
+                item.feed_key ||
+                `${
+                  item.feed_source ||
+                  "community"
+                }:${item.id}`
+              }
                     renderItem={({ item }) => (
                       <Pressable
                         onPress={() => {
@@ -2581,382 +3619,129 @@ if (linkPreview) {
             </View>
           </Modal>
 
-          {/* STORY PREVIEW OVERLAY (before upload, with text/emoji/stickers) */}
-          {storyPreview && (
-            <View
-              style={{
-                position: "absolute",
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                backgroundColor: "rgba(0,0,0,0.95)",
-                zIndex: 1001,
-                paddingTop: insets.top + 10,
-                paddingBottom: insets.bottom + 10,
-              }}
-            >
-              {/* Header */}
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  paddingHorizontal: 16,
-                  marginBottom: 8,
-                }}
-              >
-                <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>Preview story</Text>
-                <Pressable
-                  onPress={handleCancelStoryPreview}
-                  style={{ paddingHorizontal: 8, paddingVertical: 4 }}
-                  disabled={storyPosting}
-                >
-                  <Text style={{ color: "#fff", fontSize: 18 }}>✕</Text>
-                </Pressable>
-              </View>
+                    <TriunelyImageEditor
+            visible={
+              storyImageEditorVisible
+            }
+            imageUri={
+              selectedStoryImage?.uri ||
+              null
+            }
+            cropMode="story"
+            title="Prepare your Story"
+            onCancel={
+              handleStoryImageEditorCancel
+            }
+            onChooseDifferent={
+              handleChooseDifferentStoryImage
+            }
+            onComplete={
+              handleStoryImagePrepared
+            }
+          />
 
-              {/* Optional text input row for adding overlay text */}
-              {isTypingStoryText && (
-                <View style={{ paddingHorizontal: 16, marginBottom: 8 }}>
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      backgroundColor: "#111827",
-                      borderRadius: 999,
-                      paddingHorizontal: 12,
-                      paddingVertical: 4,
-                    }}
-                  >
-                    <TextInput
-                      value={storyTextDraft}
-                      onChangeText={setStoryTextDraft}
-                      placeholder="Type your text…"
-                      placeholderTextColor="#9CA3AF"
-                      style={{ flex: 1, color: "#fff", paddingVertical: 6 }}
-                    />
-                    <Pressable
-                      onPress={handleAddTextOverlay}
-                      style={{
-                        marginLeft: 8,
-                        paddingHorizontal: 12,
-                        paddingVertical: 6,
-                        borderRadius: 999,
-                        backgroundColor: theme.colors.gold,
-                      }}
-                    >
-                      <Text style={{ color: theme.colors.text, fontWeight: "800" }}>Add</Text>
-                    </Pressable>
-                  </View>
-                </View>
-              )}
+                    <TriunelyStoryMediaPicker
+            visible={Boolean(
+              storyMediaPickerMode
+            )}
+            mode={
+              storyMediaPickerMode ||
+              "type"
+            }
+            onClose={
+              closeStoryMediaPicker
+            }
+            onChoosePhoto={
+              storyMediaPickerMode ===
+                "type"
+                ? openPhotoStorySources
+                : openStoryTypePicker
+            }
+            onChooseVideo={
+              openVideoStorySources
+            }
+            onChooseGallery={
+              handleStoryGallerySelection
+            }
+            onChooseCamera={
+              handleStoryCameraSelection
+            }
+          />
 
-              {/* Content with overlays on top */}
-              <View
-                style={{
-                  flex: 1,
-                  justifyContent: "center",
-                  alignItems: "center",
-                  paddingHorizontal: 10,
-                  position: "relative",
-                }}
-                onLayout={(e) => setStoryCanvasLayout(e.nativeEvent.layout)}
-              >
-                {storyPreview.mediaType === "image" ? (
-                  <Image source={{ uri: storyPreview.uri }} style={{ width: "100%", height: "100%", borderRadius: 12 }} resizeMode="contain" />
-                ) : (
-                  <Video
-                    source={{ uri: storyPreview.uri }}
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      borderRadius: 12,
-                      backgroundColor: "#000",
-                    }}
-                    resizeMode="contain"
-                    shouldPlay
-                    isLooping
-                    useNativeControls
-                  />
-                )}
+          <TriunelyStoryPreview
+            visible={Boolean(
+              storyPreview
+            )}
+            preview={
+              storyPreview
+            }
+            insets={insets}
+            posting={
+              storyPosting
+            }
+            overlays={
+              storyOverlays
+            }
+            selectedOverlayId={
+              selectedOverlayId
+            }
+            setSelectedOverlayId={
+              setSelectedOverlayId
+            }
+            canvasLayout={
+              storyCanvasLayout
+            }
+            setCanvasLayout={
+              setStoryCanvasLayout
+            }
+            isTypingText={
+              isTypingStoryText
+            }
+            setIsTypingText={
+              setIsTypingStoryText
+            }
+            textDraft={
+              storyTextDraft
+            }
+            setTextDraft={
+              setStoryTextDraft
+            }
+            textStyleMode={
+              storyTextStyleMode
+            }
+            setTextStyleMode={
+              setStoryTextStyleMode
+            }
+            onAddText={
+              handleAddTextOverlay
+            }
+            onAddEmoji={
+              addEmojiOverlay
+            }
+            onAddSticker={
+              addStickerOverlay
+            }
+            onAdjustOverlayScale={
+              adjustSelectedOverlayScale
+            }
+            onDeleteSelectedOverlay={
+              deleteSelectedStoryOverlay
+            }
+            onUpdateOverlayPosition={
+              updateOverlayPosition
+            }
+            getOverlayAbsoluteStyle={
+              getOverlayAbsoluteStyle
+            }
+            onCancel={
+              handleCancelStoryPreview
+            }
+            onPost={
+              handlePostStoryFromPreview
+            }
+          />
 
-                {/* Render overlays for this draft story (draggable in preview) */}
-                {storyOverlays.map((overlay) => {
-                  const baseStyle = getOverlayAbsoluteStyle(overlay, storyCanvasLayout);
-
-                  if (overlay.type === "emoji") {
-                    const scale = overlay.scale ?? 1;
-                    const fontSize = 40 * scale;
-
-                    return (
-                      <View
-                        key={overlay.id}
-                        style={baseStyle}
-                        onStartShouldSetResponder={() => true}
-                        onResponderGrant={() => setSelectedOverlayId(overlay.id)}
-                        onResponderMove={(e) => {
-                          if (!storyCanvasLayout) return;
-                          const { pageX, pageY } = e.nativeEvent;
-                          const { x, y } = storyCanvasLayout;
-                          const localX = pageX - x;
-                          const localY = pageY - y;
-                          updateOverlayPosition(overlay.id, localX, localY, storyCanvasLayout);
-                        }}
-                      >
-                        <Text
-                          style={{
-                            fontSize,
-                            textShadowColor: "rgba(0,0,0,0.6)",
-                            textShadowOffset: { width: 0, height: 2 },
-                            textShadowRadius: 4,
-                          }}
-                        >
-                          {overlay.value}
-                        </Text>
-                      </View>
-                    );
-                  }
-
-                  const isSticker = overlay.type === "sticker";
-                  const isHighlight = overlay.textStyle === "highlight" && overlay.type === "text";
-
-                  const bgColor = isSticker || isHighlight ? "rgba(0,0,0,0.65)" : "transparent";
-
-                  const baseFontSize = isSticker || isHighlight ? 20 : 16;
-                  const scale = overlay.scale ?? 1;
-                  const fontSize = baseFontSize * scale;
-                  const fontWeight = isSticker || isHighlight ? "700" : "600";
-
-                  const isSelected = selectedOverlayId === overlay.id;
-
-                  return (
-                    <View
-                      key={overlay.id}
-                      style={[
-                        baseStyle,
-                        {
-                          paddingHorizontal: 14,
-                          paddingVertical: 8,
-                          borderRadius: 999,
-                          backgroundColor: bgColor,
-                          borderWidth: isSelected ? 2 : isSticker ? 1 : 0,
-                          borderColor: isSelected ? "#3B82F6" : isSticker ? "#FBBF24" : "transparent",
-                        },
-                      ]}
-                      onStartShouldSetResponder={() => true}
-                      onResponderGrant={() => setSelectedOverlayId(overlay.id)}
-                      onResponderMove={(e) => {
-                        if (!storyCanvasLayout) return;
-                        const { pageX, pageY } = e.nativeEvent;
-                        const { x, y } = storyCanvasLayout;
-                        const localX = pageX - x;
-                        const localY = pageY - y;
-                        updateOverlayPosition(overlay.id, localX, localY, storyCanvasLayout);
-                      }}
-                    >
-                      <Text
-                        style={{
-                          color: "#fff",
-                          fontWeight,
-                          fontSize,
-                          textTransform: isSticker ? "uppercase" : "none",
-                          textShadowColor: "rgba(0,0,0,0.8)",
-                          textShadowOffset: { width: 0, height: 1 },
-                          textShadowRadius: 3,
-                          letterSpacing: isSticker ? 1 : 0.2,
-                        }}
-                      >
-                        {overlay.value}
-                      </Text>
-                    </View>
-                  );
-                })}
-              </View>
-
-              {/* PREVIEW TOOLBAR + ACTIONS */}
-              <View style={{ paddingHorizontal: 16, paddingTop: 10 }}>
-                {/* Top row tools */}
-                <View style={{ flexDirection: "row", gap: 10, marginBottom: 10 }}>
-                  <Pressable
-                    onPress={() => setIsTypingStoryText((v) => !v)}
-                    style={{
-                      flex: 1,
-                      backgroundColor: "rgba(255,255,255,0.10)",
-                      borderWidth: 1,
-                      borderColor: "rgba(255,255,255,0.16)",
-                      paddingVertical: 10,
-                      borderRadius: 999,
-                      alignItems: "center",
-                    }}
-                  >
-                    <Text style={{ color: "#fff", fontWeight: "800" }}>Text</Text>
-                  </Pressable>
-
-                  <Pressable
-                    onPress={() =>
-                      Alert.alert("Add emoji", "Choose one", [
-                        { text: "🙏", onPress: () => addEmojiOverlay("🙏") },
-                        { text: "❤️", onPress: () => addEmojiOverlay("❤️") },
-                        { text: "👍", onPress: () => addEmojiOverlay("👍") },
-                        { text: "😇", onPress: () => addEmojiOverlay("😇") },
-                        { text: "Cancel", style: "cancel" },
-                      ])
-                    }
-                    style={{
-                      flex: 1,
-                      backgroundColor: "rgba(255,255,255,0.10)",
-                      borderWidth: 1,
-                      borderColor: "rgba(255,255,255,0.16)",
-                      paddingVertical: 10,
-                      borderRadius: 999,
-                      alignItems: "center",
-                    }}
-                  >
-                    <Text style={{ color: "#fff", fontWeight: "800" }}>Emoji</Text>
-                  </Pressable>
-
-                  <Pressable
-                    onPress={() =>
-                      Alert.alert("Add sticker", "Choose one", [
-                        { text: "AMEN", onPress: () => addStickerOverlay("AMEN") },
-                        { text: "GOD IS GOOD", onPress: () => addStickerOverlay("GOD IS GOOD") },
-                        { text: "PRAYING", onPress: () => addStickerOverlay("PRAYING") },
-                        { text: "BLESSED", onPress: () => addStickerOverlay("BLESSED") },
-                        { text: "Cancel", style: "cancel" },
-                      ])
-                    }
-                    style={{
-                      flex: 1,
-                      backgroundColor: "rgba(255,255,255,0.10)",
-                      borderWidth: 1,
-                      borderColor: "rgba(255,255,255,0.16)",
-                      paddingVertical: 10,
-                      borderRadius: 999,
-                      alignItems: "center",
-                    }}
-                  >
-                    <Text style={{ color: "#fff", fontWeight: "800" }}>Sticker</Text>
-                  </Pressable>
-                </View>
-
-                {/* Second row: highlight + size + delete */}
-                <View style={{ flexDirection: "row", gap: 10, marginBottom: 12 }}>
-                  <Pressable
-                    onPress={() => setStoryTextStyleMode((m) => (m === "highlight" ? "normal" : "highlight"))}
-                    style={{
-                      flex: 1,
-                      backgroundColor:
-                        storyTextStyleMode === "highlight" ? "rgba(255,215,0,0.30)" : "rgba(255,255,255,0.10)",
-                      borderWidth: 1,
-                      borderColor:
-                        storyTextStyleMode === "highlight" ? "rgba(255,215,0,0.65)" : "rgba(255,255,255,0.16)",
-                      paddingVertical: 10,
-                      borderRadius: 999,
-                      alignItems: "center",
-                    }}
-                  >
-                    <Text style={{ color: "#fff", fontWeight: "900" }}>Highlight</Text>
-                  </Pressable>
-
-                  <Pressable
-                    onPress={() => adjustSelectedOverlayScale(-0.1)}
-                    disabled={!selectedOverlayId}
-                    style={{
-                      width: 52,
-                      backgroundColor: selectedOverlayId ? "rgba(255,255,255,0.10)" : "rgba(255,255,255,0.05)",
-                      borderWidth: 1,
-                      borderColor: "rgba(255,255,255,0.16)",
-                      paddingVertical: 10,
-                      borderRadius: 999,
-                      alignItems: "center",
-                      justifyContent: "center",
-                      opacity: selectedOverlayId ? 1 : 0.5,
-                    }}
-                  >
-                    <Text style={{ color: "#fff", fontWeight: "900" }}>−</Text>
-                  </Pressable>
-
-                  <Pressable
-                    onPress={() => adjustSelectedOverlayScale(0.1)}
-                    disabled={!selectedOverlayId}
-                    style={{
-                      width: 52,
-                      backgroundColor: selectedOverlayId ? "rgba(255,255,255,0.10)" : "rgba(255,255,255,0.05)",
-                      borderWidth: 1,
-                      borderColor: "rgba(255,255,255,0.16)",
-                      paddingVertical: 10,
-                      borderRadius: 999,
-                      alignItems: "center",
-                      justifyContent: "center",
-                      opacity: selectedOverlayId ? 1 : 0.5,
-                    }}
-                  >
-                    <Text style={{ color: "#fff", fontWeight: "900" }}>+</Text>
-                  </Pressable>
-
-                  <Pressable
-                    onPress={() => {
-                      if (!selectedOverlayId) return;
-                      setStoryOverlays((prev) => prev.filter((o) => o.id !== selectedOverlayId));
-                      setSelectedOverlayId(null);
-                    }}
-                    disabled={!selectedOverlayId}
-                    style={{
-                      width: 52,
-                      backgroundColor: selectedOverlayId ? "rgba(239,68,68,0.25)" : "rgba(255,255,255,0.05)",
-                      borderWidth: 1,
-                      borderColor: selectedOverlayId ? "rgba(239,68,68,0.55)" : "rgba(255,255,255,0.16)",
-                      paddingVertical: 10,
-                      borderRadius: 999,
-                      alignItems: "center",
-                      justifyContent: "center",
-                      opacity: selectedOverlayId ? 1 : 0.5,
-                    }}
-                  >
-                    <Text style={{ color: "#fff", fontWeight: "900" }}>🗑</Text>
-                  </Pressable>
-                </View>
-
-                {/* Bottom actions */}
-                <View style={{ flexDirection: "row", gap: 10 }}>
-                  <Pressable
-                    onPress={handleCancelStoryPreview}
-                    disabled={storyPosting}
-                    style={{
-                      flex: 1,
-                      backgroundColor: "rgba(255,255,255,0.10)",
-                      borderWidth: 1,
-                      borderColor: "rgba(255,255,255,0.16)",
-                      paddingVertical: 12,
-                      borderRadius: 999,
-                      alignItems: "center",
-                      opacity: storyPosting ? 0.6 : 1,
-                    }}
-                  >
-                    <Text style={{ color: "#fff", fontWeight: "900" }}>Cancel</Text>
-                  </Pressable>
-
-                  <Pressable
-                    onPress={handlePostStoryFromPreview}
-                    disabled={storyPosting}
-                    style={{
-                      flex: 1,
-                      backgroundColor: theme.colors.gold,
-                      paddingVertical: 12,
-                      borderRadius: 999,
-                      alignItems: "center",
-                      opacity: storyPosting ? 0.7 : 1,
-                    }}
-                  >
-                    <Text style={{ color: theme.colors.text, fontWeight: "900" }}>
-                      {storyPosting ? "Posting…" : "Post story"}
-                    </Text>
-                  </Pressable>
-                </View>
-              </View>
-            </View>
-          )}
+          {/* STORY VIEWER OVERLAY (ONLY ONCE) */}
 
           {/* STORY VIEWER OVERLAY (ONLY ONCE) */}
           {storyViewerGroup && currentStory && (

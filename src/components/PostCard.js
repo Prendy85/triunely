@@ -21,36 +21,125 @@ import { WebView } from "react-native-webview";
 import { getDomainFromUrl, getYouTubeVideoId, openExternalUrl } from "../lib/youtube";
 import { theme } from "../theme/theme";
 
-function FeedActionButton({ icon, label, active, onPress, onLongPress }) {
+const POST_REACTIONS = [
+  {
+    type: "like",
+    emoji: "👍",
+    label: "Like",
+  },
+  {
+    type: "love",
+    emoji: "❤️",
+    label: "Love",
+  },
+  {
+    type: "pray",
+    emoji: "🙏",
+    label: "Pray",
+  },
+  {
+    type: "laugh",
+    emoji: "😂",
+    label: "Laugh",
+  },
+  {
+    type: "sad",
+    emoji: "😢",
+    label: "Sad",
+  },
+  {
+    type: "support",
+    emoji: "🤍",
+    label: "Support",
+  },
+];
+
+function getPostReactionMeta(type) {
+  return (
+    POST_REACTIONS.find(
+      (reaction) =>
+        reaction.type === type
+    ) || null
+  );
+}
+
+function FeedActionButton({
+  icon,
+  emoji,
+  label,
+  active = false,
+  onPress,
+  onLongPress,
+  disabled = false,
+}) {
   return (
     <Pressable
       onPress={onPress}
       onLongPress={onLongPress}
+      delayLongPress={280}
+      disabled={disabled}
       style={({ pressed }) => ({
         flex: 1,
+        minHeight: 46,
+        borderRadius: 15,
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "center",
-        paddingVertical: 10,
-        gap: 8,
+        paddingHorizontal: 8,
         backgroundColor: active
-          ? theme.colors.goldHalo
+          ? "rgba(180, 83, 9, 0.10)"
           : pressed
-          ? theme.colors.surfaceAlt
-          : theme.colors.surface,
+            ? "rgba(79, 99, 59, 0.09)"
+            : "transparent",
+        opacity: disabled
+          ? 0.35
+          : pressed
+            ? 0.8
+            : 1,
+        transform: [
+          {
+            scale:
+              pressed && !disabled
+                ? 0.97
+                : 1,
+          },
+        ],
       })}
     >
-      <Ionicons
-        name={icon}
-        size={18}
-        color={active ? theme.colors.goldPressed : theme.colors.text2}
-      />
+      {emoji ? (
+        <Text
+          style={{
+            fontSize: 18,
+            lineHeight: 22,
+            marginRight: 6,
+          }}
+        >
+          {emoji}
+        </Text>
+      ) : (
+        <Ionicons
+          name={icon}
+          size={19}
+          color={
+            active
+              ? "#B45309"
+              : "#4F633B"
+          }
+          style={{
+            marginRight: 6,
+          }}
+        />
+      )}
+
       <Text
         style={{
-          color: active ? theme.colors.goldPressed : theme.colors.text2,
-          fontWeight: "800",
-          fontSize: 13,
+          color: active
+            ? "#9A4708"
+            : "#4F633B",
+          fontWeight: "900",
+          fontSize: 12.5,
         }}
+        numberOfLines={1}
       >
         {label}
       </Text>
@@ -259,15 +348,53 @@ export default function PostCard({
     return `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`;
   }, [ytId]);
 
-  const reactions = post?.reactions || [];
-  const likeCount = reactions.filter((r) => r.type === "like").length;
-  const loveCount = reactions.filter((r) => r.type === "love").length;
-  const prayCount = reactions.filter((r) => r.type === "pray").length;
-  const totalReactions = likeCount + loveCount + prayCount;
+  const reactions =
+    Array.isArray(post?.reactions)
+      ? post.reactions
+      : [];
 
-  const userReaction = currentUserId
-    ? reactions.find((r) => r.user_id === currentUserId)
-    : null;
+  const reactionCounts =
+    reactions.reduce(
+      (counts, reaction) => {
+        const type =
+          reaction?.type;
+
+        if (!type) {
+          return counts;
+        }
+
+        counts[type] =
+          (counts[type] || 0) + 1;
+
+        return counts;
+      },
+      {}
+    );
+
+  const totalReactions =
+    reactions.length;
+
+  const userReaction =
+    currentUserId
+      ? reactions.find(
+          (reaction) =>
+            reaction.user_id ===
+            currentUserId
+        ) || null
+      : null;
+
+  const selectedReaction =
+    getPostReactionMeta(
+      userReaction?.type
+    );
+
+  const visibleReactionTypes =
+    POST_REACTIONS.filter(
+      (reaction) =>
+        reactionCounts[
+          reaction.type
+        ] > 0
+    ).slice(0, 3);
 
   const createdLabel = post?.created_at
     ? new Date(post.created_at).toLocaleString()
@@ -314,17 +441,40 @@ export default function PostCard({
   const canPressAvatar =
     typeof onPressAvatar === "function" && !author?.isAnonymous && !!author?.id;
 
-  const socialLeft =
-    totalReactions > 0
-      ? `${totalReactions} reaction${totalReactions === 1 ? "" : "s"}`
-      : "";
   const socialRight =
-    post?.comment_count && post.comment_count > 0
-      ? `${post.comment_count} comment${post.comment_count === 1 ? "" : "s"}`
+    Number(post?.comment_count || 0) > 0
+      ? `${post.comment_count} comment${
+          post.comment_count === 1
+            ? ""
+            : "s"
+        }`
       : "";
 
-  const likeIcon =
-    userReaction?.type === "like" ? "thumbs-up" : "thumbs-up-outline";
+  function handlePrimaryReactionPress() {
+    /*
+     * No reaction:
+     * quickly apply Like.
+     *
+     * Existing reaction:
+     * tapping the same reaction toggles
+     * it off through Community's
+     * existing setReaction function.
+     */
+    onSetReaction?.(
+      post.id,
+      selectedReaction?.type ||
+        "like"
+    );
+  }
+
+  function toggleReactionPicker() {
+    setReactionPickerForPost?.(
+      reactionPickerForPost ===
+        post.id
+        ? null
+        : post.id
+    );
+  }
 
   const openYouTubeModal = () => {
     if (!preferInAppYouTube) return;
@@ -1188,73 +1338,245 @@ export default function PostCard({
         </Pressable>
       ) : null}
 
-      {(socialLeft || socialRight) && (
+      {(totalReactions > 0 || socialRight) ? (
         <View
           style={{
-            flexDirection: "row",
-            justifyContent: "space-between",
-            marginTop: 12,
+            marginTop: 13,
             paddingTop: 10,
             borderTopWidth: 1,
-            borderTopColor: theme.colors.divider,
+            borderTopColor: "rgba(15, 23, 42, 0.08)",
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
           }}
         >
-          <Text style={{ color: theme.colors.muted, fontSize: 12, fontWeight: "800" }}>
-            {socialLeft}
-          </Text>
-          <Text style={{ color: theme.colors.muted, fontSize: 12, fontWeight: "800" }}>
-            {socialRight}
-          </Text>
-        </View>
-      )}
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+            }}
+          >
+            {visibleReactionTypes.length > 0 ? (
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  marginRight: 6,
+                }}
+              >
+                {visibleReactionTypes.map((reaction, index) => (
+                  <View
+                    key={reaction.type}
+                    style={{
+                      width: 25,
+                      height: 25,
+                      borderRadius: 13,
+                      marginLeft: index === 0 ? 0 : -6,
+                      backgroundColor: "#FFFCF5",
+                      borderWidth: 1.5,
+                      borderColor: "#FFFFFF",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      zIndex: visibleReactionTypes.length - index,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 14,
+                      }}
+                    >
+                      {reaction.emoji}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
 
-      <View style={{ flexDirection: "row", marginTop: 10, borderTopWidth: 1, borderTopColor: theme.colors.divider }}>
+            {totalReactions > 0 ? (
+              <Text
+                style={{
+                  color: "#6B7280",
+                  fontSize: 12,
+                  fontWeight: "800",
+                }}
+              >
+                {totalReactions}
+              </Text>
+            ) : null}
+          </View>
+
+          {socialRight ? (
+            <Pressable
+              onPress={() => onOpenComments?.(post)}
+              style={({ pressed }) => ({
+                opacity: pressed ? 0.68 : 1,
+              })}
+            >
+              <Text
+                style={{
+                  color: "#6B7280",
+                  fontSize: 12,
+                  fontWeight: "800",
+                }}
+              >
+                {socialRight}
+              </Text>
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
+
+      <View
+        style={{
+          marginTop: 9,
+          padding: 4,
+          borderRadius: 19,
+          backgroundColor: "#FFFCF5",
+          borderWidth: 1,
+          borderColor: "rgba(79, 99, 59, 0.15)",
+          flexDirection: "row",
+          alignItems: "center",
+        }}
+      >
         <FeedActionButton
-          icon={likeIcon}
-          label="Like"
-          active={!!userReaction}
-          onPress={() => onSetReaction?.(post.id, "like")}
-          onLongPress={() => setReactionPickerForPost?.(post.id)}
+          icon={selectedReaction ? undefined : "thumbs-up-outline"}
+          emoji={selectedReaction?.emoji}
+          label={selectedReaction?.label || "React"}
+          active={Boolean(selectedReaction)}
+          onPress={handlePrimaryReactionPress}
+          onLongPress={toggleReactionPicker}
         />
+
+        <View
+          style={{
+            width: 1,
+            height: 25,
+            backgroundColor: "rgba(79, 99, 59, 0.14)",
+          }}
+        />
+
         <FeedActionButton
-          icon="chatbubble-outline"
+          icon="chatbubble-ellipses-outline"
           label="Comment"
-          active={false}
           onPress={() => onOpenComments?.(post)}
         />
+
+        <View
+          style={{
+            width: 1,
+            height: 25,
+            backgroundColor: "rgba(79, 99, 59, 0.14)",
+          }}
+        />
+
         <FeedActionButton
           icon="arrow-redo-outline"
           label="Share"
-          active={false}
+          disabled={typeof onShare !== "function"}
           onPress={() => onShare?.(post)}
         />
       </View>
 
-      {reactionPickerForPost === post.id && (
+      {reactionPickerForPost === post.id ? (
         <View
           style={{
-            flexDirection: "row",
-            marginTop: 10,
+            marginTop: 9,
             alignSelf: "flex-start",
-            backgroundColor: theme.colors.surfaceAlt,
-            paddingHorizontal: 10,
-            paddingVertical: 8,
-            borderRadius: 999,
+            borderRadius: 22,
+            backgroundColor: "#FFFFFF",
             borderWidth: 1,
-            borderColor: theme.colors.divider,
+            borderColor: "rgba(79, 99, 59, 0.18)",
+            paddingHorizontal: 7,
+            paddingVertical: 7,
+            flexDirection: "row",
+            alignItems: "center",
+            shadowColor: "rgba(15, 23, 42, 0.12)",
+            shadowOpacity: 0.14,
+            shadowRadius: 10,
+            shadowOffset: {
+              width: 0,
+              height: 4,
+            },
+            elevation: 5,
           }}
         >
-          <Pressable onPress={() => onSetReaction?.(post.id, "like")} style={{ marginHorizontal: 6 }}>
-            <Text style={{ fontSize: 20 }}>👍</Text>
-          </Pressable>
-          <Pressable onPress={() => onSetReaction?.(post.id, "love")} style={{ marginHorizontal: 6 }}>
-            <Text style={{ fontSize: 20 }}>❤️</Text>
-          </Pressable>
-          <Pressable onPress={() => onSetReaction?.(post.id, "pray")} style={{ marginHorizontal: 6 }}>
-            <Text style={{ fontSize: 20 }}>🙏</Text>
+          {POST_REACTIONS.map((reaction) => {
+            const isSelected =
+              userReaction?.type === reaction.type;
+
+            return (
+              <Pressable
+                key={reaction.type}
+                onPress={() =>
+                  onSetReaction?.(
+                    post.id,
+                    reaction.type
+                  )
+                }
+                accessibilityLabel={reaction.label}
+                style={({ pressed }) => ({
+                  width: 43,
+                  height: 43,
+                  borderRadius: 16,
+                  marginHorizontal: 2,
+                  backgroundColor: isSelected
+                    ? "rgba(180, 83, 9, 0.12)"
+                    : pressed
+                      ? "rgba(79, 99, 59, 0.10)"
+                      : "transparent",
+                  borderWidth: isSelected ? 1 : 0,
+                  borderColor:
+                    "rgba(180, 83, 9, 0.25)",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  transform: [
+                    {
+                      scale: pressed
+                        ? 1.12
+                        : isSelected
+                          ? 1.06
+                          : 1,
+                    },
+                  ],
+                })}
+              >
+                <Text
+                  style={{
+                    fontSize: 23,
+                    lineHeight: 28,
+                  }}
+                >
+                  {reaction.emoji}
+                </Text>
+              </Pressable>
+            );
+          })}
+
+          <Pressable
+            onPress={() =>
+              setReactionPickerForPost?.(null)
+            }
+            hitSlop={7}
+            style={({ pressed }) => ({
+              width: 33,
+              height: 33,
+              borderRadius: 12,
+              marginLeft: 4,
+              backgroundColor: pressed
+                ? "rgba(79, 99, 59, 0.10)"
+                : "#FFFCF5",
+              alignItems: "center",
+              justifyContent: "center",
+            })}
+          >
+            <Ionicons
+              name="close"
+              size={17}
+              color="#4F633B"
+            />
           </Pressable>
         </View>
-      )}
+      ) : null}
     </View>
   );
 }
