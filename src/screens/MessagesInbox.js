@@ -6,6 +6,7 @@ import {
   ActivityIndicator,
   FlatList,
   Image,
+  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -14,6 +15,8 @@ import {
   TextInput,
   View,
 } from "react-native";
+
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import Screen from "../components/Screen";
 import {
@@ -146,7 +149,24 @@ function formatDate(value) {
   }
 }
 
-export default function MessagesInbox({ navigation }) {
+export default function MessagesInbox({
+  navigation,
+  route,
+}) {
+  const insets =
+    useSafeAreaInsets();
+
+  const sharedPost =
+    route?.params?.sharedPost ||
+    null;
+
+  const sharedPostId =
+    route?.params?.sharedPostId ||
+    sharedPost?.id ||
+    null;
+
+  const isSharingPost =
+    !!sharedPostId;
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState([]);
   const [me, setMe] = useState(null);
@@ -154,10 +174,21 @@ export default function MessagesInbox({ navigation }) {
 
   const [refreshing, setRefreshing] = useState(false);
 
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const [pickerQuery, setPickerQuery] = useState("");
-  const [pickerLoading, setPickerLoading] = useState(false);
-  const [pickerResults, setPickerResults] = useState([]);
+  const [pickerOpen, setPickerOpen] =
+    useState(isSharingPost);
+
+  const [pickerQuery, setPickerQuery] =
+    useState("");
+
+  const [
+    pickerLoading,
+    setPickerLoading,
+  ] = useState(false);
+
+  const [
+    pickerResults,
+    setPickerResults,
+  ] = useState([]);
 
   const load = useCallback(async () => {
     try {
@@ -189,7 +220,14 @@ export default function MessagesInbox({ navigation }) {
   useFocusEffect(
     useCallback(() => {
       load();
-    }, [load])
+
+      if (isSharingPost) {
+        setActiveTab("people");
+        setPickerQuery("");
+        setPickerResults([]);
+        setPickerOpen(true);
+      }
+    }, [load, isSharingPost])
   );
 
   const filteredRows = useMemo(() => {
@@ -232,15 +270,33 @@ export default function MessagesInbox({ navigation }) {
       const isDM = type === "dm";
 
       navigation.navigate("Chat", {
-        conversationId: row.conversation_id,
+        conversationId:
+          row.conversation_id,
         type,
-        title: titleForRow(row),
-        avatarUrl: isDM ? row.other_avatar_url || null : null,
-        otherUserId: isDM ? row.other_user_id || null : null,
-        handle: isDM ? row.other_handle || row.other_username || null : null,
+        title:
+          titleForRow(row),
+        avatarUrl: isDM
+          ? row.other_avatar_url ||
+            null
+          : null,
+        otherUserId: isDM
+          ? row.other_user_id ||
+            null
+          : null,
+        handle: isDM
+          ? row.other_handle ||
+            row.other_username ||
+            null
+          : null,
+        sharedPostId,
+        sharedPost,
       });
     },
-    [navigation]
+    [
+      navigation,
+      sharedPostId,
+      sharedPost,
+    ]
   );
 
   const openPicker = useCallback(() => {
@@ -293,10 +349,20 @@ export default function MessagesInbox({ navigation }) {
         navigation.navigate("Chat", {
           conversationId,
           type: "dm",
-          title: userRow.display_name || "Conversation",
-          avatarUrl: userRow.avatar_url || null,
-          otherUserId: userRow.id,
-          handle: userRow.username || userRow.handle || null,
+          title:
+            userRow.display_name ||
+            "Conversation",
+          avatarUrl:
+            userRow.avatar_url ||
+            null,
+          otherUserId:
+            userRow.id,
+          handle:
+            userRow.username ||
+            userRow.handle ||
+            null,
+          sharedPostId,
+          sharedPost,
         });
       } catch (e) {
         console.log("startDmWith error", e);
@@ -304,7 +370,11 @@ export default function MessagesInbox({ navigation }) {
         setPickerLoading(false);
       }
     },
-    [navigation]
+    [
+      navigation,
+      sharedPostId,
+      sharedPost,
+    ]
   );
 
   function renderUnderlineTabs() {
@@ -949,12 +1019,29 @@ const avatarUrl =
         />
       )}
 
-      <Modal visible={pickerOpen} animationType="slide" transparent>
-        <View
+      <Modal
+        visible={pickerOpen}
+        animationType="slide"
+        transparent
+        statusBarTranslucent
+        navigationBarTranslucent
+        onRequestClose={() =>
+          setPickerOpen(false)
+        }
+      >
+        <KeyboardAvoidingView
+          behavior={
+            Platform.OS === "ios"
+              ? "padding"
+              : "height"
+          }
+          keyboardVerticalOffset={0}
           style={{
             flex: 1,
-            backgroundColor: "rgba(0,0,0,0.42)",
-            justifyContent: "flex-end",
+            backgroundColor:
+              "rgba(0,0,0,0.42)",
+            justifyContent:
+              "flex-end",
           }}
         >
           <View
@@ -962,10 +1049,18 @@ const avatarUrl =
               backgroundColor: CREAM,
               borderTopLeftRadius: 28,
               borderTopRightRadius: 28,
-              padding: 20,
-              maxHeight: "82%",
+              paddingTop: 20,
+              paddingHorizontal: 20,
+              paddingBottom:
+                Math.max(
+                  insets.bottom,
+                  18
+                ) + 10,
+              maxHeight: "88%",
+              minHeight: 280,
               borderWidth: 1,
-              borderColor: theme.colors.divider,
+              borderColor:
+                theme.colors.divider,
             }}
           >
             <View
@@ -996,7 +1091,9 @@ const avatarUrl =
                     marginTop: 2,
                   }}
                 >
-                  Search for someone to message.
+                  {isSharingPost
+                    ? "Choose someone to share this post with."
+                    : "Search for someone to message."}
                 </Text>
               </View>
 
@@ -1183,7 +1280,7 @@ const avatarUrl =
               />
             )}
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </Screen>
   );

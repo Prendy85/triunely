@@ -142,46 +142,238 @@ export async function getOtherMemberProfile(conversationId) {
 
 // ---------- Messages ----------
 
-export async function fetchMessages(conversationId, limit = 80) {
-  if (!conversationId) throw new Error("Missing conversationId");
+export async function fetchMessages(
+  conversationId,
+  limit = 80
+) {
+  if (!conversationId) {
+    throw new Error(
+      "Missing conversationId"
+    );
+  }
 
-  const { data, error } = await supabase
-    .from("messages")
-    .select(
-      "id, conversation_id, sender_id, body, created_at, message_type, audio_url, audio_duration_ms"
-    )
-    .eq("conversation_id", conversationId)
-    .order("created_at", { ascending: false })
-    .limit(limit);
+  const { data, error } =
+    await supabase
+      .from("messages")
+      .select(
+        `
+        id,
+        conversation_id,
+        sender_id,
+        body,
+        created_at,
+        message_type,
+        audio_url,
+        audio_duration_ms,
+        shared_post_id,
+
+        shared_post:shared_post_id (
+          id,
+          user_id,
+          church_id,
+          shared_post_id,
+          content,
+          url,
+          link_title,
+          link_description,
+          link_image,
+          is_anonymous,
+          media_url,
+          media_type,
+          created_at,
+
+          churches:church_id (
+            id,
+            name,
+            display_name,
+            avatar_url,
+            is_verified
+          ),
+
+          shared_post:shared_post_id (
+            id,
+            user_id,
+            church_id,
+            content,
+            url,
+            link_title,
+            link_description,
+            link_image,
+            is_anonymous,
+            media_url,
+            media_type,
+            created_at,
+
+            churches:church_id (
+              id,
+              name,
+              display_name,
+              avatar_url,
+              is_verified
+            )
+          )
+        )
+        `
+      )
+      .eq(
+        "conversation_id",
+        conversationId
+      )
+      .order("created_at", {
+        ascending: false,
+      })
+      .limit(limit);
 
   if (error) {
-    console.log("fetchMessages error", {
-      message: error?.message,
-      details: error?.details,
-      hint: error?.hint,
-      code: error?.code,
-      conversationId,
-      limit,
-    });
+    console.log(
+      "fetchMessages error",
+      {
+        message: error?.message,
+        details: error?.details,
+        hint: error?.hint,
+        code: error?.code,
+        conversationId,
+        limit,
+      }
+    );
+
     throw error;
   }
 
-  const result = (data ?? []).slice().reverse();
+  const result =
+    (data || []).slice().reverse();
 
-  // console.log("fetchMessages success", {
-  //   conversationId,
-  //   requestedLimit: limit,
-  //   returnedCount: result.length,
-  //   audioCount: result.filter((m) => m?.message_type === "audio").length,
-  //   lastIds: result.slice(-5).map((m) => ({
-  //     id: m.id,
-  //     type: m.message_type,
-  //     hasAudioUrl: !!m.audio_url,
-  //     hasBody: m.body != null,
-  //   })),
-  // });
+  const sharedAuthorIds = [
+    ...new Set(
+      result
+        .flatMap((message) => {
+          const outerPost =
+            message?.shared_post ||
+            null;
 
-  return result;
+          const originalPost =
+            outerPost?.shared_post ||
+            null;
+
+          return [
+            outerPost?.user_id,
+            originalPost?.user_id,
+          ];
+        })
+        .filter(Boolean)
+    ),
+  ];
+
+  let sharedProfilesById = {};
+
+  if (
+    sharedAuthorIds.length > 0
+  ) {
+    const {
+      data: profileRows,
+      error: profilesError,
+    } = await supabase
+      .from("profiles")
+      .select(
+        `
+        id,
+        display_name,
+        avatar_url
+        `
+      )
+      .in(
+        "id",
+        sharedAuthorIds
+      );
+
+    if (profilesError) {
+      console.log(
+        "fetchMessages shared profiles error",
+        {
+          message:
+            profilesError?.message,
+          details:
+            profilesError?.details,
+          hint:
+            profilesError?.hint,
+          code:
+            profilesError?.code,
+        }
+      );
+    } else {
+      sharedProfilesById =
+        Object.fromEntries(
+          (profileRows || []).map(
+            (profile) => [
+              profile.id,
+              {
+                id: profile.id,
+                display_name:
+                  profile.display_name ||
+                  "Triunely member",
+                avatar_url:
+                  profile.avatar_url ||
+                  null,
+              },
+            ]
+          )
+        );
+    }
+  }
+
+  return result.map(
+    (message) => {
+      const outerPost =
+        message?.shared_post ||
+        null;
+
+      if (!outerPost) {
+        return message;
+      }
+
+      const originalPost =
+        outerPost?.shared_post ||
+        null;
+
+      const hydratedOriginal =
+        originalPost
+          ? {
+              ...originalPost,
+              church:
+                originalPost
+                  ?.churches ||
+                null,
+              author_profile:
+                originalPost
+                  ?.is_anonymous
+                  ? null
+                  : sharedProfilesById[
+                      originalPost
+                        .user_id
+                    ] || null,
+            }
+          : null;
+
+      return {
+        ...message,
+        shared_post: {
+          ...outerPost,
+          church:
+            outerPost?.churches ||
+            null,
+          author_profile:
+            outerPost
+              ?.is_anonymous
+              ? null
+              : sharedProfilesById[
+                  outerPost.user_id
+                ] || null,
+          shared_post:
+            hydratedOriginal,
+        },
+      };
+    }
+  );
 }
 
 export async function sendMessage(conversationId, body) {
@@ -220,6 +412,90 @@ export async function sendMessage(conversationId, body) {
   }
 
   // console.log("sendMessage success", { conversationId, senderId: me });
+}
+
+export async function sendSharedPostMessage({
+  conversationId,
+  sharedPostId,
+  body = null,
+}) {
+  if (!conversationId) {
+    throw new Error(
+      "Missing conversationId"
+    );
+  }
+
+  if (!sharedPostId) {
+    throw new Error(
+      "Missing sharedPostId"
+    );
+  }
+
+  const text =
+    String(body ?? "").trim() ||
+    null;
+
+  const { data: sess } =
+    await supabase.auth
+      .getSession();
+
+  const me =
+    sess?.session?.user?.id;
+
+  if (!me) {
+    throw new Error(
+      "Not signed in"
+    );
+  }
+
+  const { data, error } =
+    await supabase
+      .from("messages")
+      .insert({
+        conversation_id:
+          conversationId,
+        sender_id: me,
+        body: text,
+        message_type:
+          "shared_post",
+        shared_post_id:
+          sharedPostId,
+      })
+      .select(
+        `
+        id,
+        conversation_id,
+        sender_id,
+        body,
+        created_at,
+        message_type,
+        shared_post_id
+        `
+      )
+      .single();
+
+  if (error) {
+    console.log(
+      "sendSharedPostMessage insert error",
+      {
+        message:
+          error?.message,
+        details:
+          error?.details,
+        hint:
+          error?.hint,
+        code:
+          error?.code,
+        conversationId,
+        sharedPostId,
+        senderId: me,
+      }
+    );
+
+    throw error;
+  }
+
+  return data;
 }
 
 export async function uploadChatAudio({

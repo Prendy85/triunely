@@ -18,6 +18,8 @@ import {
   View,
 } from "react-native";
 
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
 import { supabase } from "../lib/supabase";
 
 const PREMIUM_CREAM = "#FFFCF5";
@@ -129,6 +131,8 @@ export default function PostCommentsModal({
   currentUserId,
   onCommentAdded,
 }) {
+  const insets =
+    useSafeAreaInsets();
   const [
     comments,
     setComments,
@@ -1097,8 +1101,14 @@ export default function PostCommentsModal({
                 paddingBottom:
                   Platform.OS ===
                   "ios"
-                    ? 22
-                    : 14,
+                    ? Math.max(
+                        insets.bottom,
+                        12
+                      ) + 10
+                    : Math.max(
+                        insets.bottom,
+                        24
+                      ) + 12,
               }}
             >
               <View

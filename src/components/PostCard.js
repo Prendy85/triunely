@@ -302,12 +302,402 @@ function isYouTubeHomeRedirect(url) {
   );
 }
 /* -------------------- end helpers -------------------- */
+function SharedPostPreview({
+  sharedPost,
+  onPressOriginalPost,
+  onPressOriginalAuthor,
+}) {
+  const [
+    imageAspectRatio,
+    setImageAspectRatio,
+  ] = useState(null);
+
+  if (!sharedPost) {
+    return null;
+  }
+
+  const sharedChurch =
+    sharedPost?.church || null;
+
+  const sharedAuthorProfile =
+    sharedPost?.author_profile ||
+    null;
+
+  const originalOwnerName =
+    sharedChurch?.display_name ||
+    sharedChurch?.name ||
+    sharedAuthorProfile
+      ?.display_name ||
+    (sharedPost?.is_anonymous
+      ? "Anonymous"
+      : "Triunely member");
+
+  const originalAvatarUrl =
+    sharedChurch?.avatar_url ||
+    sharedAuthorProfile
+      ?.avatar_url ||
+    null;
+
+  const canOpenOriginalAuthor =
+    !sharedPost?.is_anonymous &&
+    typeof onPressOriginalAuthor ===
+      "function";
+
+  const sharedMediaType =
+    String(
+      sharedPost?.media_type || ""
+    );
+
+  const sharedIsImage =
+    !!sharedPost?.media_url &&
+    sharedMediaType.startsWith(
+      "image"
+    );
+
+  const sharedIsVideo =
+    !!sharedPost?.media_url &&
+    sharedMediaType.startsWith(
+      "video"
+    );
+
+  const sharedUrl =
+    normalizeHttpUrl(
+      sharedPost?.url
+    );
+
+  function handleSharedLinkPress() {
+    if (!sharedUrl) {
+      return;
+    }
+
+    openExternalUrl(
+      sharedUrl,
+      Linking,
+      Alert
+    );
+  }
+
+  return (
+    <View
+      style={{
+        marginTop: 12,
+        borderRadius: 17,
+        borderWidth: 1,
+        borderColor:
+          "rgba(79, 99, 59, 0.22)",
+        backgroundColor: "#FFFCF5",
+        overflow: "hidden",
+      }}
+    >
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          paddingHorizontal: 13,
+          paddingTop: 12,
+          paddingBottom: 10,
+        }}
+      >
+        {originalAvatarUrl ? (
+          <Pressable
+            onPress={() => {
+              if (
+                canOpenOriginalAuthor
+              ) {
+                onPressOriginalAuthor();
+              }
+            }}
+            disabled={
+              !canOpenOriginalAuthor
+            }
+          >
+            <Image
+              source={{
+                uri:
+                  originalAvatarUrl,
+              }}
+            style={{
+              width: 34,
+              height: 34,
+              borderRadius: 17,
+              backgroundColor:
+                "#F3F1E8",
+              }}
+            />
+          </Pressable>
+        ) : (
+          <View
+            style={{
+              width: 34,
+              height: 34,
+              borderRadius: 17,
+              alignItems: "center",
+              justifyContent:
+                "center",
+              backgroundColor:
+                "rgba(79, 99, 59, 0.11)",
+            }}
+          >
+            <Ionicons
+              name={
+                sharedChurch
+                  ? "business-outline"
+                  : "person-outline"
+              }
+              size={17}
+              color="#4F633B"
+            />
+          </View>
+        )}
+
+        <View
+          style={{
+            flex: 1,
+            marginLeft: 9,
+          }}
+        >
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+            }}
+          >
+            <Pressable
+              onPress={() => {
+                if (
+                  canOpenOriginalAuthor
+                ) {
+                  onPressOriginalAuthor();
+                }
+              }}
+              disabled={
+                !canOpenOriginalAuthor
+              }
+              style={{
+                flexShrink: 1,
+              }}
+            >
+              <Text
+                numberOfLines={1}
+                style={{
+                  color: "#1F2933",
+                  fontSize: 13,
+                  fontWeight: "900",
+                }}
+              >
+                {originalOwnerName}
+              </Text>
+            </Pressable>
+
+            {!!sharedChurch
+              ?.is_verified && (
+              <Ionicons
+                name="checkmark-circle"
+                size={14}
+                color="#B45309"
+                style={{
+                  marginLeft: 4,
+                }}
+              />
+            )}
+          </View>
+
+          <Text
+            style={{
+              color: "#6B7280",
+              fontSize: 10.5,
+              fontWeight: "700",
+              marginTop: 2,
+            }}
+          >
+            Original post
+          </Text>
+        </View>
+
+        <Ionicons
+          name="repeat-outline"
+          size={18}
+          color="#B45309"
+        />
+      </View>
+
+      {!!sharedPost?.content && (
+        <Text
+          style={{
+            color: "#1F2933",
+            paddingHorizontal: 13,
+            paddingBottom: 12,
+            fontSize: 14,
+            lineHeight: 20,
+            fontWeight: "500",
+          }}
+        >
+          {sharedPost.content}
+        </Text>
+      )}
+
+      {sharedIsImage && (
+        <Image
+          source={{
+            uri:
+              sharedPost.media_url,
+          }}
+          resizeMode="cover"
+          style={{
+            width: "100%",
+            aspectRatio:
+              imageAspectRatio || 1,
+            backgroundColor:
+              "#F3F1E8",
+          }}
+          onLoad={(event) => {
+            const source =
+              event?.nativeEvent
+                ?.source;
+
+            const width =
+              Number(
+                source?.width
+              );
+
+            const height =
+              Number(
+                source?.height
+              );
+
+            if (
+              width > 0 &&
+              height > 0
+            ) {
+              const ratio =
+                Math.min(
+                  Math.max(
+                    width /
+                      height,
+                    0.5
+                  ),
+                  2.2
+                );
+
+              setImageAspectRatio(
+                ratio
+              );
+            }
+          }}
+        />
+      )}
+
+      {sharedIsVideo && (
+        <View
+          style={{
+            width: "100%",
+            backgroundColor: "#000",
+          }}
+        >
+          <Video
+            source={{
+              uri:
+                sharedPost.media_url,
+            }}
+            style={{
+              width: "100%",
+              aspectRatio: 9 / 16,
+              backgroundColor:
+                "#000",
+            }}
+            resizeMode="cover"
+            useNativeControls
+            shouldPlay={false}
+            isLooping={false}
+          />
+        </View>
+      )}
+
+      {!!sharedUrl && (
+        <Pressable
+          onPress={
+            handleSharedLinkPress
+          }
+          style={({ pressed }) => ({
+            flexDirection: "row",
+            alignItems: "center",
+            paddingHorizontal: 13,
+            paddingVertical: 12,
+            backgroundColor: pressed
+              ? "rgba(79, 99, 59, 0.10)"
+              : "rgba(79, 99, 59, 0.06)",
+            borderTopWidth: 1,
+            borderTopColor:
+              "rgba(79, 99, 59, 0.12)",
+          })}
+        >
+          <Ionicons
+            name="link-outline"
+            size={17}
+            color="#4F633B"
+          />
+
+          <View
+            style={{
+              flex: 1,
+              marginLeft: 8,
+            }}
+          >
+            {!!sharedPost
+              ?.link_title && (
+              <Text
+                numberOfLines={1}
+                style={{
+                  color:
+                    "#1F2933",
+                  fontSize: 12.5,
+                  fontWeight:
+                    "900",
+                }}
+              >
+                {
+                  sharedPost.link_title
+                }
+              </Text>
+            )}
+
+            <Text
+              numberOfLines={1}
+              style={{
+                color: "#6B7280",
+                fontSize: 11,
+                fontWeight: "700",
+                marginTop:
+                  sharedPost
+                    ?.link_title
+                    ? 2
+                    : 0,
+              }}
+            >
+              {getDomainFromUrl(
+                sharedUrl
+              ) || "Open link"}
+            </Text>
+          </View>
+
+          <Ionicons
+            name="open-outline"
+            size={16}
+            color="#B45309"
+          />
+        </Pressable>
+      )}
+    </View>
+  );
+}
 
 export default function PostCard({
   post,
   currentUserId,
   author, // { id, name, avatarUrl, isAnonymous, isOwner }
   onPressAvatar, // (userId) => void
+  onPressOriginalPost,
+  onPressOriginalAuthor,
   onDelete,
   onHide,
   onOpenComments,
@@ -1134,18 +1524,38 @@ export default function PostCard({
         </View>
       )}
 
-      {!isFormationShare && !!post?.content && (
-        <Text
-          style={{
-            color: theme.colors.text,
-            marginTop: 10,
-            fontSize: 15,
-            lineHeight: 21,
-            fontWeight: "500",
-          }}
-        >
-          {post.content}
-        </Text>
+      {!isFormationShare &&
+        !!post?.content && (
+          <Text
+            style={{
+              color:
+                theme.colors.text,
+              marginTop: 10,
+              fontSize: 15,
+              lineHeight: 21,
+              fontWeight: "500",
+            }}
+          >
+            {post.content}
+          </Text>
+        )}
+
+      {!!post?.shared_post_id && (
+        <SharedPostPreview
+          sharedPost={
+            post?.shared_post
+          }
+          onPressOriginalPost={() =>
+            onPressOriginalPost?.(
+              post.shared_post
+            )
+          }
+          onPressOriginalAuthor={() =>
+            onPressOriginalAuthor?.(
+              post.shared_post
+            )
+          }
+        />
       )}
 
       {isImage && (

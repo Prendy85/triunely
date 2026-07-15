@@ -12,11 +12,16 @@ import {
   Modal,
   Pressable,
   ScrollView,
+  Share,
   Text,
   TextInput,
-  View
+  View,
 } from "react-native";
 
+import * as Clipboard from "expo-clipboard";
+
+import CommunityDeletePostModal from "../components/CommunityDeletePostModal";
+import CommunityShareSheet from "../components/CommunityShareSheet";
 import NewPostModal from "../components/NewPostModal";
 import PostCommentsModal from "../components/PostCommentsModal";
 import { createStory, fetchActiveStories } from "../lib/stories";
@@ -25,7 +30,11 @@ import { isFeedVideoMedia, uploadFeedMedia } from "../lib/uploadFeedMedia";
 
 import { Ionicons } from "@expo/vector-icons";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
-import { useFocusEffect, useNavigation } from "@react-navigation/native";
+import {
+  useFocusEffect,
+  useNavigation,
+  useRoute,
+} from "@react-navigation/native";
 import { useCallback } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import PostCard from "../components/PostCard";
@@ -372,6 +381,7 @@ function FeedActionButton({ icon, label, active, onPress, onLongPress }) {
 
 export default function Community() {
   const navigation = useNavigation();
+  const route = useRoute();
   const insets = useSafeAreaInsets();
   const { openFellowshipRequests } = useFellowshipRequestsModal();
 
@@ -435,6 +445,14 @@ console.log("USER ID IN RT:", rt?.userId);
 
   const [showCommentsModal, setShowCommentsModal] = useState(false);
   const [selectedPostForComments, setSelectedPostForComments] = useState(null);
+
+  const [showShareSheet, setShowShareSheet] = useState(false);
+  const [selectedPostForShare, setSelectedPostForShare] = useState(null);
+  const [sharingToFeed, setSharingToFeed] = useState(false);
+
+  const [showDeletePostModal, setShowDeletePostModal] = useState(false);
+  const [selectedPostIdForDelete, setSelectedPostIdForDelete] = useState(null);
+  const [deletingPost, setDeletingPost] = useState(false);
 
   // Which post (if any) has the reaction picker open
   const [reactionPickerForPost, setReactionPickerForPost] = useState(null);
@@ -821,73 +839,139 @@ useEffect(() => {
           ?.user?.id || null;
 
       const { data, error: err } = await supabase
-  .from("posts")
-  .select(
-    `
-    id,
-    user_id,
-    church_id,
-    churches:church_id (
-      id,
-      name,
-      display_name,
-      avatar_url,
-      is_verified
-    ),
+        .from("posts")
+        .select(
+          `
+          id,
+          user_id,
+          church_id,
+          shared_post_id,
 
-    content,
-    url,
-    link_title,
-    link_description,
-    link_image,
-    is_anonymous,
-    media_url,
-    media_type,
-    created_at,
-    post_reactions (
-      user_id,
-      type
-    ),
-    post_comments (
-      count
-    )
-  `
-  )
+          churches:church_id (
+            id,
+            name,
+            display_name,
+            avatar_url,
+            is_verified
+          ),
 
-          .eq("community_id", HOME_COMMUNITY_ID)
+          shared_post:shared_post_id (
+            id,
+            user_id,
+            church_id,
+            content,
+            url,
+            link_title,
+            link_description,
+            link_image,
+            is_anonymous,
+            media_url,
+            media_type,
+            created_at,
 
-  // IMPORTANT: do NOT filter visibility here.
-  // We want global + church + fellowship + your own, and RLS will decide what you’re allowed to see.
+            churches:church_id (
+              id,
+              name,
+              display_name,
+              avatar_url,
+              is_verified
+            )
+          ),
 
-        .order("created_at", { ascending: false })
+          content,
+          url,
+          link_title,
+          link_description,
+          link_image,
+          is_anonymous,
+          media_url,
+          media_type,
+          created_at,
+
+          post_reactions (
+            user_id,
+            type
+          ),
+
+          post_comments (
+            count
+          )
+          `
+        )
+        .eq(
+          "community_id",
+          HOME_COMMUNITY_ID
+        )
+
+        // Do not filter visibility here.
+        // RLS decides which posts the user may read.
+        .order(
+          "created_at",
+          {
+            ascending: false,
+          }
+        )
         .limit(PAGE_LIMIT);
 
-      if (err) throw err;
+      if (err) {
+        throw err;
+      }
 
       const mapped =
         (data || []).map((row) => {
           const commentCount =
-            Array.isArray(row.post_comments) && row.post_comments.length > 0
-              ? row.post_comments[0].count ?? 0
+            Array.isArray(
+              row.post_comments
+            ) &&
+            row.post_comments.length > 0
+              ? row.post_comments[0]
+                  .count ?? 0
               : 0;
 
           return {
-  id: row.id,
-  user_id: row.user_id,
-    church_id: row.church_id,
-  church: row.churches || null,
-  content: row.content,
-  url: row.url,
-  link_title: row.link_title,
-  link_description: row.link_description,
-  link_image: row.link_image,
-  is_anonymous: row.is_anonymous,
-  media_url: row.media_url,
-  media_type: row.media_type,
-  created_at: row.created_at,
-  reactions: row.post_reactions || [],
-  comment_count: commentCount,
-};
+            id: row.id,
+            user_id: row.user_id,
+            church_id: row.church_id,
+            church:
+              row.churches || null,
+
+            shared_post_id:
+              row.shared_post_id ||
+              null,
+
+            shared_post:
+              row.shared_post
+                ? {
+                    ...row.shared_post,
+                    church:
+                      row.shared_post
+                        .churches ||
+                      null,
+                  }
+                : null,
+
+            content: row.content,
+            url: row.url,
+            link_title:
+              row.link_title,
+            link_description:
+              row.link_description,
+            link_image:
+              row.link_image,
+            is_anonymous:
+              row.is_anonymous,
+            media_url:
+              row.media_url,
+            media_type:
+              row.media_type,
+            created_at:
+              row.created_at,
+            reactions:
+              row.post_reactions ||
+              [],
+            comment_count:
+              commentCount,
+          };
         }) ?? [];
 
       setPosts(mapped);
@@ -914,16 +998,43 @@ useEffect(() => {
         setConnectedPartnerPosts([]);
       }
 
-      // NEW: Preload profile data for non-anonymous authors
+      // Preload the authors of normal posts
+      // and the original authors of shared posts.
       const authorIds = mapped
-        .filter((p) => !p.is_anonymous)
-        .map((p) => p.user_id)
+        .flatMap((post) => {
+          const ids = [];
+
+          if (
+            !post?.is_anonymous &&
+            post?.user_id
+          ) {
+            ids.push(post.user_id);
+          }
+
+          if (
+            !post?.shared_post
+              ?.is_anonymous &&
+            post?.shared_post
+              ?.user_id
+          ) {
+            ids.push(
+              post.shared_post.user_id
+            );
+          }
+
+          return ids;
+        })
         .filter(Boolean);
 
-      // Always include current user (so "You" can still show display_name if you want later)
-      if (currentUserId) authorIds.push(currentUserId);
+      if (currentUserId) {
+        authorIds.push(
+          currentUserId
+        );
+      }
 
-      fetchProfilesForUsers(authorIds);
+      fetchProfilesForUsers(
+        authorIds
+      );
     } catch (e) {
       console.log("Error loading posts", e);
       setError(
@@ -962,6 +1073,40 @@ useEffect(() => {
             `
             id,
             user_id,
+            church_id,
+            shared_post_id,
+
+            churches:church_id (
+              id,
+              name,
+              display_name,
+              avatar_url,
+              is_verified
+            ),
+
+            shared_post:shared_post_id (
+              id,
+              user_id,
+              church_id,
+              content,
+              url,
+              link_title,
+              link_description,
+              link_image,
+              is_anonymous,
+              media_url,
+              media_type,
+              created_at,
+
+              churches:church_id (
+                id,
+                name,
+                display_name,
+                avatar_url,
+                is_verified
+              )
+            ),
+
             content,
             url,
             link_title,
@@ -971,28 +1116,45 @@ useEffect(() => {
             media_url,
             media_type,
             created_at,
+
             post_reactions (
               user_id,
               type
             ),
+
             post_comments (
               count
             )
-          `
+            `
           )
           .eq("id", newRow.id)
           .single();
 
-        if (error || !full) return;
+        if (error || !full) {
+          return;
+        }
 
         const commentCount =
-          Array.isArray(full.post_comments) && full.post_comments.length > 0
+          Array.isArray(full.post_comments) &&
+          full.post_comments.length > 0
             ? full.post_comments[0].count ?? 0
             : 0;
 
         const mappedNew = {
           id: full.id,
           user_id: full.user_id,
+          church_id: full.church_id,
+          church: full.churches || null,
+
+          shared_post_id: full.shared_post_id || null,
+
+          shared_post: full.shared_post
+            ? {
+                ...full.shared_post,
+                church: full.shared_post.churches || null,
+              }
+            : null,
+
           content: full.content,
           url: full.url,
           link_title: full.link_title,
@@ -1012,9 +1174,36 @@ useEffect(() => {
           return [mappedNew, ...(prev ?? [])];
         });
 
-        // Preload author profile
-        if (!mappedNew.is_anonymous) {
-          fetchProfilesForUsers([mappedNew.user_id]);
+        // Preload both the sharer and the
+        // original author of a shared post.
+        const realtimeAuthorIds = [];
+
+        if (
+          !mappedNew?.is_anonymous &&
+          mappedNew?.user_id
+        ) {
+          realtimeAuthorIds.push(
+            mappedNew.user_id
+          );
+        }
+
+        if (
+          !mappedNew?.shared_post
+            ?.is_anonymous &&
+          mappedNew?.shared_post
+            ?.user_id
+        ) {
+          realtimeAuthorIds.push(
+            mappedNew.shared_post.user_id
+          );
+        }
+
+        if (
+          realtimeAuthorIds.length > 0
+        ) {
+          fetchProfilesForUsers(
+            realtimeAuthorIds
+          );
         }
       }
     )
@@ -1855,24 +2044,73 @@ if (linkPreview) {
   }
 
   function confirmDeletePost(postId) {
-    Alert.alert("Delete post?", "This will remove the post and its reactions/comments for everyone.", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Delete", style: "destructive", onPress: () => deletePost(postId) },
-    ]);
+    if (!postId || deletingPost) {
+      return;
+    }
+
+    setSelectedPostIdForDelete(postId);
+    setShowDeletePostModal(true);
   }
 
-  async function deletePost(postId) {
-    if (!currentUserId) return;
+  function closeDeletePostModal() {
+    if (deletingPost) {
+      return;
+    }
+
+    setShowDeletePostModal(false);
+    setSelectedPostIdForDelete(null);
+  }
+
+  async function deleteSelectedPost() {
+    if (
+      !currentUserId ||
+      !selectedPostIdForDelete ||
+      deletingPost
+    ) {
+      return;
+    }
 
     try {
-      const { error } = await supabase.from("posts").delete().eq("id", postId).eq("user_id", currentUserId);
+      setDeletingPost(true);
 
-      if (error) throw error;
+      const { error } = await supabase
+        .from("posts")
+        .delete()
+        .eq(
+          "id",
+          selectedPostIdForDelete
+        )
+        .eq(
+          "user_id",
+          currentUserId
+        );
 
-      setPosts((prev) => prev.filter((p) => p.id !== postId));
-    } catch (e) {
-      console.log("Error deleting post", e);
-      Alert.alert("Delete failed", "We couldn’t delete this post. Please try again.");
+      if (error) {
+        throw error;
+      }
+
+      setPosts((previousPosts) =>
+        previousPosts.filter(
+          (post) =>
+            post.id !==
+            selectedPostIdForDelete
+        )
+      );
+
+      setShowDeletePostModal(false);
+      setSelectedPostIdForDelete(null);
+    } catch (error) {
+      console.log(
+        "Error deleting post",
+        error
+      );
+
+      Alert.alert(
+        "Delete failed",
+        "We couldn’t delete this post. Please try again."
+      );
+    } finally {
+      setDeletingPost(false);
     }
   }
 
@@ -1903,53 +2141,227 @@ if (linkPreview) {
     }
   }
 
-  async function sharePost(post) {
+  function closeShareSheet() {
+    if (sharingToFeed) {
+      return;
+    }
+
+    setShowShareSheet(false);
+    setSelectedPostForShare(null);
+  }
+
+  function sharePost(post) {
     if (!currentUserId) {
-      Alert.alert("Please sign in", "You need to be signed in to share.");
+      Alert.alert(
+        "Please sign in",
+        "You need to be signed in to share."
+      );
+      return;
+    }
+
+    if (!post?.id) {
+      return;
+    }
+
+    setSelectedPostForShare(post);
+    setShowShareSheet(true);
+  }
+
+  async function handleConfirmFeedShare(commentary) {
+    if (
+      !currentUserId ||
+      !selectedPostForShare?.id ||
+      sharingToFeed
+    ) {
       return;
     }
 
     try {
+      setSharingToFeed(true);
+
+      const payload = {
+        user_id: currentUserId,
+        community_id: HOME_COMMUNITY_ID,
+        shared_post_id: selectedPostForShare.id,
+        content: String(commentary || "").trim(),
+        visibility: "communities",
+        is_anonymous: false,
+      };
+
       const { data, error } = await supabase
         .from("posts")
-        .insert({
-          user_id: currentUserId,
-          community_id: HOME_COMMUNITY_ID,
-          content: post.content,
-          url: post.url,
-          media_url: post.media_url,
-          media_type: post.media_type,
-          visibility: "communities",
-          is_anonymous: false,
-        })
+        .insert(payload)
         .select(
           `
           id,
           user_id,
+          shared_post_id,
           content,
           url,
+          link_title,
+          link_description,
+          link_image,
           is_anonymous,
           media_url,
           media_type,
           created_at
-        `
+          `
         )
         .single();
 
-      if (error) throw error;
+      if (error) {
+        throw error;
+      }
 
-      const newPost = { ...data, reactions: [], comment_count: 0 };
+      const newPost = {
+        ...data,
 
-      setPosts((prev) => [newPost, ...prev]);
+        shared_post: {
+          ...selectedPostForShare,
+          church:
+            selectedPostForShare?.church ||
+            null,
+        },
 
-      // NEW: Ensure we have the author's profile cached for immediate render
-      if (newPost.user_id) fetchProfilesForUsers([newPost.user_id]);
+        reactions: [],
+        comment_count: 0,
+      };
 
-      Alert.alert("Shared", "Post shared to your feed.");
-    } catch (e) {
-      console.log("Error sharing post", e);
-      Alert.alert("Share failed", "We couldn’t share this post. Please try again.");
+      setPosts((previousPosts) => {
+        const existingIndex =
+          previousPosts.findIndex(
+            (existingPost) =>
+              existingPost.id ===
+              newPost.id
+          );
+
+        if (existingIndex === -1) {
+          return [
+            newPost,
+            ...previousPosts,
+          ];
+        }
+
+        return previousPosts.map(
+          (existingPost) =>
+            existingPost.id ===
+            newPost.id
+              ? {
+                  ...existingPost,
+                  ...newPost,
+                  shared_post:
+                    newPost.shared_post,
+                }
+              : existingPost
+        );
+      });
+
+      if (newPost.user_id) {
+        fetchProfilesForUsers([
+          newPost.user_id,
+        ]);
+      }
+
+      setShowShareSheet(false);
+      setSelectedPostForShare(null);
+    } catch (error) {
+      console.log(
+        "Error sharing post to feed:",
+        error
+      );
+
+      Alert.alert(
+        "Share failed",
+        "We couldn’t share this post. Please try again."
+      );
+    } finally {
+      setSharingToFeed(false);
     }
+  }
+
+  function buildCommunityPostLink(post) {
+    if (!post?.id) {
+      return null;
+    }
+
+    return `triunelyapp://community/post/${post.id}`;
+  }
+
+  async function handleCopyPostLink(post) {
+    const postLink =
+      buildCommunityPostLink(post);
+
+    if (!postLink) {
+      return;
+    }
+
+    try {
+      await Clipboard.setStringAsync(
+        postLink
+      );
+
+      setShowShareSheet(false);
+      setSelectedPostForShare(null);
+    } catch (error) {
+      console.log(
+        "Copy Community post link error:",
+        error
+      );
+
+      Alert.alert(
+        "Copy failed",
+        "We couldn’t copy this post link."
+      );
+    }
+  }
+
+  async function handleExternalPostShare(
+    post
+  ) {
+    const postLink =
+      buildCommunityPostLink(post);
+
+    if (!postLink) {
+      return;
+    }
+
+    const postText =
+      String(post?.content || "").trim();
+
+    try {
+      await Share.share({
+        title: "Share from Triunely",
+        message: postText
+          ? `${postText}\n\n${postLink}`
+          : postLink,
+        url: postLink,
+      });
+
+      setShowShareSheet(false);
+      setSelectedPostForShare(null);
+    } catch (error) {
+      console.log(
+        "External Community share error:",
+        error
+      );
+    }
+  }
+
+  function handleSendPostInMessage(post) {
+    if (!post?.id) {
+      return;
+    }
+
+    setShowShareSheet(false);
+    setSelectedPostForShare(null);
+
+    navigation.navigate(
+      "SharePostRecipient",
+      {
+        sharedPostId: post.id,
+        sharedPost: post,
+      }
+    );
   }
 
  const renderItem = ({ item }) => {
@@ -1982,9 +2394,39 @@ if (linkPreview) {
      );
    }
 
-   // Resolve author profile (unless anonymous)
+  // Resolve the author of the feed post.
   const authorProfile =
-    !item.is_anonymous && item.user_id ? profilesById[item.user_id] || null : null;
+    !item.is_anonymous &&
+    item.user_id
+      ? profilesById[
+          item.user_id
+        ] || null
+      : null;
+
+  // Resolve the original author when
+  // this is a shared post.
+  const sharedAuthorProfile =
+    !item?.shared_post
+      ?.is_anonymous &&
+    item?.shared_post
+      ?.user_id
+      ? profilesById[
+          item.shared_post
+            .user_id
+        ] || null
+      : null;
+
+  const postForCard =
+    item?.shared_post
+      ? {
+          ...item,
+          shared_post: {
+            ...item.shared_post,
+            author_profile:
+              sharedAuthorProfile,
+          },
+        }
+      : item;
 
   // Determine display name
   let who;
@@ -2007,7 +2449,7 @@ if (linkPreview) {
 
   return (
     <PostCard
-      post={item}
+      post={postForCard}
       currentUserId={currentUserId}
          author={
   item.church_id && item.church
@@ -2052,9 +2494,83 @@ if (linkPreview) {
 }}
 
 
-      onHide={(postId) => confirmHidePost(postId)}
-      onOpenComments={(post) => openComments(post)}
-      onShare={(post) => sharePost(post)}
+      onPressOriginalAuthor={(
+        originalPost
+      ) => {
+        if (
+          originalPost?.church_id
+        ) {
+          navigation.navigate(
+            "MainTabs",
+            {
+              screen: "Church",
+              params: {
+                screen:
+                  "ChurchProfilePublic",
+                params: {
+                  churchId:
+                    originalPost.church_id,
+                },
+              },
+            }
+          );
+
+          return;
+        }
+
+        if (
+          !originalPost?.user_id ||
+          originalPost?.is_anonymous
+        ) {
+          return;
+        }
+
+        if (
+          currentUserId &&
+          originalPost.user_id ===
+            currentUserId
+        ) {
+          navigation.navigate(
+            "MainTabs",
+            {
+              screen: "Profile",
+            }
+          );
+
+          return;
+        }
+
+        navigation.navigate(
+          "UserProfile",
+          {
+            userId:
+              originalPost.user_id,
+          }
+        );
+      }}
+      onPressOriginalPost={(
+        originalPost
+      ) => {
+        if (!originalPost?.id) {
+          return;
+        }
+
+        openComments(
+          originalPost
+        );
+      }}
+      onDelete={(postId) =>
+        confirmDeletePost(postId)
+      }
+      onHide={(postId) =>
+        confirmHidePost(postId)
+      }
+      onOpenComments={(post) =>
+        openComments(post)
+      }
+      onShare={(post) =>
+        sharePost(post)
+      }
       onSetReaction={(postId, typeOrNull) => setReaction(postId, typeOrNull)}
       reactionPickerForPost={reactionPickerForPost}
       setReactionPickerForPost={setReactionPickerForPost}
@@ -3497,6 +4013,32 @@ ItemSeparatorComponent={() => (
             onCommentAdded={handleCommentAdded}
           />
 
+          <CommunityDeletePostModal
+            visible={showDeletePostModal}
+            deleting={deletingPost}
+            onCancel={closeDeletePostModal}
+            onConfirm={deleteSelectedPost}
+          />
+
+          <CommunityShareSheet
+            visible={showShareSheet}
+            post={selectedPostForShare}
+            sharingToFeed={sharingToFeed}
+            onClose={closeShareSheet}
+            onConfirmFeedShare={
+              handleConfirmFeedShare
+            }
+            onSendInMessage={
+              handleSendPostInMessage
+            }
+            onShareExternally={
+              handleExternalPostShare
+            }
+            onCopyLink={
+              handleCopyPostLink
+            }
+          />
+
           {/* SEARCH OVERLAY */}
           <Modal
             visible={showSearch}
@@ -3741,7 +4283,6 @@ ItemSeparatorComponent={() => (
             }
           />
 
-          {/* STORY VIEWER OVERLAY (ONLY ONCE) */}
 
           {/* STORY VIEWER OVERLAY (ONLY ONCE) */}
           {storyViewerGroup && currentStory && (

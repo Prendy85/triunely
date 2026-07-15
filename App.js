@@ -38,6 +38,7 @@ import CompleteProfileOnboarding from "./src/screens/CompleteProfileOnboarding";
 import Coach from "./src/screens/Coach";
 import CoachChats from "./src/screens/CoachChats";
 import Community from "./src/screens/Community";
+import CommunityPostDetail from "./src/screens/CommunityPostDetail";
 import Daily from "./src/screens/Daily";
 import Prayer from "./src/screens/Prayer";
 import Profile from "./src/screens/Profile";
@@ -50,6 +51,7 @@ import MessagesInbox from "./src/screens/MessagesInbox";
 import NetworkDetail from "./src/screens/NetworkDetail";
 import Networks from "./src/screens/Networks";
 import NotificationsScreen from "./src/screens/NotificationsScreen";
+import SharePostRecipientScreen from "./src/screens/SharePostRecipientScreen";
 import UserProfile from "./src/screens/UserProfile";
 
 // Apologetics screens
@@ -456,6 +458,12 @@ function CommunityStackNavigator() {
       <CommunityStack.Screen name="CommunityMain" component={Community} />
 
       <CommunityStack.Screen
+        name="CommunityPostDetail"
+        component={CommunityPostDetail}
+        options={{ animation: "slide_from_right" }}
+      />
+
+      <CommunityStack.Screen
         name="Networks"
         component={Networks}
         options={{ animation: "slide_from_right" }}
@@ -733,6 +741,12 @@ function RootNavigator({ initialTabName = "Daily" }) {
       <RootStack.Screen
         name="MessagesInbox"
         component={MessagesInbox}
+        options={{ animation: "slide_from_right" }}
+      />
+
+            <RootStack.Screen
+        name="SharePostRecipient"
+        component={SharePostRecipientScreen}
         options={{ animation: "slide_from_right" }}
       />
 

@@ -1,5 +1,9 @@
 // src/screens/Chat.js
-import { Audio } from "expo-av";
+import { Ionicons } from "@expo/vector-icons";
+import {
+  Audio,
+  Video,
+} from "expo-av";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -24,6 +28,7 @@ import {
   markConversationRead,
   sendAudioMessage,
   sendMessage,
+  sendSharedPostMessage,
   uploadChatAudio,
 } from "../lib/messages";
 import { supabase } from "../lib/supabase";
@@ -52,8 +57,32 @@ export default function Chat({ route, navigation }) {
   const initialTitle = route?.params?.title || "Chat";
   const initialAvatarUrl = route?.params?.avatarUrl || null;
   const initialOtherUserId = route?.params?.otherUserId || null;
-  const initialHandle = route?.params?.handle || null;
-  const type = route?.params?.type || "dm";
+  const initialHandle =
+    route?.params?.handle ||
+    null;
+
+  const type =
+    route?.params?.type ||
+    "dm";
+
+  const incomingSharedPost =
+    route?.params?.sharedPost ||
+    null;
+
+  const incomingSharedPostId =
+    route?.params
+      ?.sharedPostId ||
+    incomingSharedPost?.id ||
+    null;
+
+  const [
+    pendingSharedPost,
+    setPendingSharedPost,
+  ] = useState(
+    incomingSharedPostId
+      ? incomingSharedPost
+      : null
+  );
 
   const [loading, setLoading] = useState(true);
   const [messages, setMessages] = useState([]);
@@ -282,19 +311,56 @@ export default function Chat({ route, navigation }) {
   async function handleSend() {
     try {
       const text = draft.trim();
-      if (!text) return;
+
+      if (
+        !text &&
+        !pendingSharedPost?.id
+      ) {
+        return;
+      }
 
       setDraft("");
 
-      await sendMessage(conversationId, text);
+      if (pendingSharedPost?.id) {
+        await sendSharedPostMessage({
+          conversationId,
+          sharedPostId:
+            pendingSharedPost.id,
+          body: text || null,
+        });
 
-      const rows = await fetchMessages(conversationId, 80);
+        setPendingSharedPost(null);
+      } else {
+        await sendMessage(
+          conversationId,
+          text
+        );
+      }
+
+      const rows =
+        await fetchMessages(
+          conversationId,
+          80
+        );
+
       setMessages(rows || []);
-      await markConversationRead(conversationId);
+
+      await markConversationRead(
+        conversationId
+      );
 
       scrollToBottom(true);
     } catch (e) {
-      console.log("sendMessage error", e);
+      console.log(
+        "send message error",
+        e
+      );
+
+      Alert.alert(
+        "Message failed",
+        e?.message ||
+          "Could not send this message."
+      );
     }
   }
 
@@ -841,10 +907,129 @@ export default function Chat({ route, navigation }) {
   );
 
   function renderMessageBubble(item) {
-    const mine = me && item.sender_id === me;
-    const isAudio = item.message_type === "audio" && !!item.audio_url;
-    const isPlaying = playingMessageId === item.id;
-    const isBusy = playbackBusyId === item.id;
+    const mine =
+      me &&
+      item.sender_id === me;
+
+    const isAudio =
+      item.message_type ===
+        "audio" &&
+      !!item.audio_url;
+
+    const isSharedPost =
+      item.message_type ===
+        "shared_post" &&
+      !!item.shared_post_id;
+
+    const sharedPost =
+      item?.shared_post || null;
+
+    const sharedChurch =
+      sharedPost?.churches ||
+      sharedPost?.church ||
+      null;
+
+    const sharedAuthor =
+      sharedPost?.author_profile ||
+      null;
+
+    const sharedOwnerName =
+      sharedPost?.is_anonymous
+        ? "Anonymous"
+        : sharedChurch?.display_name ||
+          sharedChurch?.name ||
+          sharedAuthor?.display_name ||
+          sharedAuthor?.username ||
+          "Triunely member";
+
+    const sharedOwnerAvatar =
+      sharedChurch?.avatar_url ||
+      sharedAuthor?.avatar_url ||
+      null;
+
+    const sharedByName =
+      mine
+        ? "You"
+        : headerName ||
+          "Triunely member";
+
+    const sharedMediaType =
+      String(
+        sharedPost?.media_type ||
+          ""
+      ).toLowerCase();
+
+    const sharedMediaUrl =
+      sharedPost?.media_url ||
+      null;
+
+    const sharedIsImage =
+      !!sharedMediaUrl &&
+      sharedMediaType.startsWith(
+        "image"
+      );
+
+    const sharedIsVideo =
+      !!sharedMediaUrl &&
+      sharedMediaType.startsWith(
+        "video"
+      );
+
+    const originalPost =
+      sharedPost?.shared_post ||
+      null;
+
+    const originalChurch =
+      originalPost?.churches ||
+      originalPost?.church ||
+      null;
+
+    const originalAuthor =
+      originalPost?.author_profile ||
+      null;
+
+    const originalOwnerName =
+      originalPost?.is_anonymous
+        ? "Anonymous"
+        : originalChurch
+            ?.display_name ||
+          originalChurch?.name ||
+          originalAuthor
+            ?.display_name ||
+          "Triunely member";
+
+    const originalOwnerAvatar =
+      originalChurch?.avatar_url ||
+      originalAuthor?.avatar_url ||
+      null;
+
+    const originalMediaUrl =
+      originalPost?.media_url ||
+      null;
+
+    const originalMediaType =
+      String(
+        originalPost?.media_type ||
+          ""
+      ).toLowerCase();
+
+    const originalIsImage =
+      !!originalMediaUrl &&
+      originalMediaType.startsWith(
+        "image"
+      );
+
+    const originalIsVideo =
+      !!originalMediaUrl &&
+      originalMediaType.startsWith(
+        "video"
+      );
+
+    const isPlaying =
+      playingMessageId === item.id;
+
+    const isBusy =
+      playbackBusyId === item.id;
 
     return (
       <Pressable
@@ -866,7 +1051,11 @@ export default function Chat({ route, navigation }) {
         {isAudio ? (
           <View>
             <Pressable
-              onPress={() => togglePlayAudioMessage(item)}
+              onPress={() =>
+                togglePlayAudioMessage(
+                  item
+                )
+              }
               onLongPress={mine ? () => confirmDeleteMessage(item) : undefined}
               delayLongPress={300}
               style={{
@@ -912,8 +1101,620 @@ export default function Chat({ route, navigation }) {
               </Text>
             </Pressable>
           </View>
+        ) : isSharedPost ? (
+          <View>
+            <Text
+              style={{
+                color:
+                  theme.colors.muted,
+                fontSize: 11.5,
+                fontWeight: "800",
+                marginBottom: 8,
+              }}
+            >
+              {sharedByName} shared a post
+            </Text>
+
+            {!!item?.body && (
+              <Text
+                style={{
+                  color:
+                    theme.colors.text,
+                  fontWeight: "700",
+                  marginBottom: 9,
+                  lineHeight: 20,
+                }}
+              >
+                {item.body}
+              </Text>
+            )}
+
+            {sharedPost ? (
+              <Pressable
+                onPress={() => {
+                  if (
+                    !sharedPost?.id
+                  ) {
+                    return;
+                  }
+
+                  navigation.navigate(
+                    "MainTabs",
+                    {
+                      screen:
+                        "Community",
+                      params: {
+                        initial: false,
+                        screen:
+                          "CommunityPostDetail",
+                        params: {
+                          postId:
+                            sharedPost.id,
+                        },
+                      },
+                    }
+                  );
+                }}
+                style={({ pressed }) => ({
+                  minWidth: 220,
+                  maxWidth: 290,
+                  borderRadius: 15,
+                  borderWidth: 1,
+                  borderColor:
+                    "rgba(79, 99, 59, 0.20)",
+                  backgroundColor:
+                    "#FFFCF5",
+                  overflow: "hidden",
+                  opacity: pressed
+                    ? 0.86
+                    : 1,
+                })}
+              >
+                <View
+                  style={{
+                    flexDirection:
+                      "row",
+                    alignItems:
+                      "center",
+                    paddingHorizontal:
+                      11,
+                    paddingTop: 10,
+                    paddingBottom: 8,
+                  }}
+                >
+                  {sharedOwnerAvatar ? (
+                    <Image
+                      source={{
+                        uri:
+                          sharedOwnerAvatar,
+                      }}
+                      style={{
+                        width: 32,
+                        height: 32,
+                        borderRadius: 16,
+                        backgroundColor:
+                          theme.colors
+                            .surfaceAlt,
+                      }}
+                    />
+                  ) : (
+                    <View
+                      style={{
+                        width: 32,
+                        height: 32,
+                        borderRadius: 16,
+                        alignItems:
+                          "center",
+                        justifyContent:
+                          "center",
+                        backgroundColor:
+                          "rgba(79, 99, 59, 0.10)",
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 15,
+                        }}
+                      >
+                        ↗
+                      </Text>
+                    </View>
+                  )}
+
+                  <View
+                    style={{
+                      flex: 1,
+                      marginLeft: 8,
+                    }}
+                  >
+                    <Text
+                      numberOfLines={1}
+                      style={{
+                        color:
+                          theme.colors
+                            .text,
+                        fontSize: 12.5,
+                        fontWeight:
+                          "900",
+                      }}
+                    >
+                      {sharedOwnerName}
+                    </Text>
+
+                    <Text
+                      style={{
+                        color:
+                          theme.colors
+                            .muted,
+                        fontSize: 10.5,
+                        fontWeight:
+                          "700",
+                        marginTop: 2,
+                      }}
+                    >
+                      Shared on Community
+                    </Text>
+                  </View>
+
+                  <Text
+                    style={{
+                      color: "#B45309",
+                      fontSize: 17,
+                      fontWeight:
+                        "900",
+                    }}
+                  >
+                    ↗
+                  </Text>
+                </View>
+
+                {!!sharedPost
+                  ?.content && (
+                  <Text
+                    numberOfLines={5}
+                    style={{
+                      color:
+                        theme.colors.text,
+                      paddingHorizontal:
+                        11,
+                      paddingBottom: 10,
+                      fontSize: 13,
+                      lineHeight: 18,
+                      fontWeight:
+                        "600",
+                    }}
+                  >
+                    {
+                      sharedPost.content
+                    }
+                  </Text>
+                )}
+
+                {sharedIsImage && (
+                  <Image
+                    source={{
+                      uri: sharedMediaUrl,
+                    }}
+                    resizeMode="cover"
+                    style={{
+                      width: "100%",
+                      height: 170,
+                      backgroundColor:
+                        theme.colors
+                          .surfaceAlt,
+                    }}
+                  />
+                )}
+
+                {sharedIsVideo && (
+                  <View
+                    style={{
+                      width: "100%",
+                      height: 170,
+                      backgroundColor:
+                        "#111811",
+                      overflow: "hidden",
+                    }}
+                  >
+                    <Video
+                      source={{
+                        uri: sharedMediaUrl,
+                      }}
+                      resizeMode="cover"
+                      shouldPlay={false}
+                      isLooping={false}
+                      isMuted
+                      useNativeControls={
+                        false
+                      }
+                      positionMillis={0}
+                      pointerEvents="none"
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                      }}
+                    />
+
+                    <View
+                      pointerEvents="none"
+                      style={{
+                        position:
+                          "absolute",
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        alignItems:
+                          "center",
+                        justifyContent:
+                          "center",
+                        backgroundColor:
+                          "rgba(0,0,0,0.16)",
+                      }}
+                    >
+                      <View
+                        style={{
+                          width: 50,
+                          height: 50,
+                          borderRadius: 25,
+                          alignItems:
+                            "center",
+                          justifyContent:
+                            "center",
+                          backgroundColor:
+                            "rgba(255,255,255,0.92)",
+                          borderWidth: 1,
+                          borderColor:
+                            "rgba(255,255,255,0.65)",
+                        }}
+                      >
+                        <Ionicons
+                          name="play"
+                          size={23}
+                          color="#4F633B"
+                          style={{
+                            marginLeft: 3,
+                          }}
+                        />
+                      </View>
+                    </View>
+
+                    <View
+                      pointerEvents="none"
+                      style={{
+                        position:
+                          "absolute",
+                        left: 9,
+                        bottom: 9,
+                        flexDirection:
+                          "row",
+                        alignItems:
+                          "center",
+                        borderRadius: 999,
+                        paddingHorizontal:
+                          9,
+                        paddingVertical: 5,
+                        backgroundColor:
+                          "rgba(0,0,0,0.62)",
+                      }}
+                    >
+                      <Ionicons
+                        name="videocam"
+                        size={13}
+                        color="#FFFFFF"
+                      />
+
+                      <Text
+                        style={{
+                          color:
+                            "#FFFFFF",
+                          fontSize: 10.5,
+                          fontWeight:
+                            "900",
+                          marginLeft: 5,
+                        }}
+                      >
+                        Video post
+                      </Text>
+                    </View>
+                  </View>
+                )}
+
+                {!!originalPost && (
+                  <View
+                    style={{
+                      marginHorizontal: 10,
+                      marginTop: 10,
+                      marginBottom: 10,
+                      borderRadius: 13,
+                      borderWidth: 1,
+                      borderColor:
+                        "rgba(180, 83, 9, 0.20)",
+                      backgroundColor:
+                        "#FFFFFF",
+                      overflow: "hidden",
+                    }}
+                  >
+                    <View
+                      style={{
+                        flexDirection:
+                          "row",
+                        alignItems:
+                          "center",
+                        paddingHorizontal:
+                          10,
+                        paddingTop: 10,
+                        paddingBottom: 8,
+                      }}
+                    >
+                      {originalOwnerAvatar ? (
+                        <Image
+                          source={{
+                            uri:
+                              originalOwnerAvatar,
+                          }}
+                          style={{
+                            width: 30,
+                            height: 30,
+                            borderRadius: 15,
+                            backgroundColor:
+                              theme.colors
+                                .surfaceAlt,
+                          }}
+                        />
+                      ) : (
+                        <View
+                          style={{
+                            width: 30,
+                            height: 30,
+                            borderRadius: 15,
+                            alignItems:
+                              "center",
+                            justifyContent:
+                              "center",
+                            backgroundColor:
+                              "rgba(180, 83, 9, 0.10)",
+                          }}
+                        >
+                          <Ionicons
+                            name="person-outline"
+                            size={15}
+                            color="#B45309"
+                          />
+                        </View>
+                      )}
+
+                      <View
+                        style={{
+                          flex: 1,
+                          marginLeft: 8,
+                        }}
+                      >
+                        <Text
+                          numberOfLines={1}
+                          style={{
+                            color:
+                              theme.colors
+                                .text,
+                            fontSize: 12,
+                            fontWeight:
+                              "900",
+                          }}
+                        >
+                          {originalOwnerName}
+                        </Text>
+
+                        <Text
+                          style={{
+                            color:
+                              theme.colors
+                                .muted,
+                            fontSize: 10,
+                            fontWeight:
+                              "700",
+                            marginTop: 2,
+                          }}
+                        >
+                          Original post
+                        </Text>
+                      </View>
+
+                      <Ionicons
+                        name="arrow-forward-circle-outline"
+                        size={18}
+                        color="#B45309"
+                      />
+                    </View>
+
+                    {!!originalPost?.content && (
+                      <Text
+                        numberOfLines={6}
+                        style={{
+                          color:
+                            theme.colors
+                              .text,
+                          paddingHorizontal:
+                            10,
+                          paddingBottom: 10,
+                          fontSize: 12.5,
+                          lineHeight: 18,
+                          fontWeight:
+                            "600",
+                        }}
+                      >
+                        {originalPost.content}
+                      </Text>
+                    )}
+
+                    {originalIsImage && (
+                      <Image
+                        source={{
+                          uri:
+                            originalMediaUrl,
+                        }}
+                        resizeMode="cover"
+                        style={{
+                          width: "100%",
+                          height: 180,
+                          backgroundColor:
+                            theme.colors
+                              .surfaceAlt,
+                        }}
+                      />
+                    )}
+
+                    {originalIsVideo && (
+                      <View
+                        style={{
+                          width: "100%",
+                          height: 180,
+                          backgroundColor:
+                            "#111811",
+                          overflow: "hidden",
+                        }}
+                      >
+                        <Video
+                          source={{
+                            uri:
+                              originalMediaUrl,
+                          }}
+                          resizeMode="cover"
+                          shouldPlay={false}
+                          isLooping={false}
+                          isMuted
+                          useNativeControls={
+                            false
+                          }
+                          positionMillis={0}
+                          pointerEvents="none"
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                          }}
+                        />
+
+                        <View
+                          pointerEvents="none"
+                          style={{
+                            position:
+                              "absolute",
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            alignItems:
+                              "center",
+                            justifyContent:
+                              "center",
+                            backgroundColor:
+                              "rgba(0,0,0,0.18)",
+                          }}
+                        >
+                          <View
+                            style={{
+                              width: 48,
+                              height: 48,
+                              borderRadius: 24,
+                              alignItems:
+                                "center",
+                              justifyContent:
+                                "center",
+                              backgroundColor:
+                                "rgba(255,255,255,0.94)",
+                            }}
+                          >
+                            <Ionicons
+                              name="play"
+                              size={22}
+                              color="#4F633B"
+                              style={{
+                                marginLeft: 3,
+                              }}
+                            />
+                          </View>
+                        </View>
+
+                        <View
+                          pointerEvents="none"
+                          style={{
+                            position:
+                              "absolute",
+                            left: 9,
+                            bottom: 9,
+                            flexDirection:
+                              "row",
+                            alignItems:
+                              "center",
+                            borderRadius: 999,
+                            paddingHorizontal:
+                              9,
+                            paddingVertical: 5,
+                            backgroundColor:
+                              "rgba(0,0,0,0.65)",
+                          }}
+                        >
+                          <Ionicons
+                            name="videocam"
+                            size={13}
+                            color="#FFFFFF"
+                          />
+
+                          <Text
+                            style={{
+                              color:
+                                "#FFFFFF",
+                              fontSize: 10.5,
+                              fontWeight:
+                                "900",
+                              marginLeft: 5,
+                            }}
+                          >
+                            Original video
+                          </Text>
+                        </View>
+                      </View>
+                    )}
+                  </View>
+                )}
+              </Pressable>
+            ) : (
+              <View
+                style={{
+                  borderRadius: 13,
+                  borderWidth: 1,
+                  borderColor:
+                    theme.colors
+                      .divider,
+                  backgroundColor:
+                    theme.colors
+                      .surfaceAlt,
+                  padding: 11,
+                }}
+              >
+                <Text
+                  style={{
+                    color:
+                      theme.colors.muted,
+                    fontSize: 12,
+                    fontWeight: "700",
+                  }}
+                >
+                  This Community post
+                  is no longer available.
+                </Text>
+              </View>
+            )}
+          </View>
         ) : (
-          <Text style={{ color: theme.colors.text, fontWeight: "700" }}>{item.body}</Text>
+          <Text
+            style={{
+              color:
+                theme.colors.text,
+              fontWeight: "700",
+            }}
+          >
+            {item.body}
+          </Text>
         )}
 
         <Text style={{ color: theme.colors.muted, fontSize: 11, marginTop: 6 }}>
@@ -942,11 +1743,38 @@ export default function Chat({ route, navigation }) {
         >
           <View style={{ flexDirection: "row", alignItems: "center" }}>
             <Pressable
-              onPress={() => navigation.goBack()}
+              onPress={() =>
+                navigation.goBack()
+              }
               hitSlop={10}
-              style={{ paddingRight: 12, paddingVertical: 6 }}
+              style={({ pressed }) => ({
+                width: 42,
+                height: 42,
+                borderRadius: 21,
+                alignItems: "center",
+                justifyContent: "center",
+                marginRight: 11,
+                backgroundColor:
+                  pressed
+                    ? "rgba(79, 99, 59, 0.12)"
+                    : "#FFFCF5",
+                borderWidth: 1,
+                borderColor:
+                  "rgba(79, 99, 59, 0.18)",
+                transform: [
+                  {
+                    scale: pressed
+                      ? 0.95
+                      : 1,
+                  },
+                ],
+              })}
             >
-              <Text style={{ color: theme.colors.text2, fontWeight: "900" }}>Back</Text>
+              <Ionicons
+                name="arrow-back"
+                size={22}
+                color="#4F633B"
+              />
             </Pressable>
 
             <Pressable
@@ -1025,13 +1853,529 @@ export default function Chat({ route, navigation }) {
               }}
               style={{
                 borderTopWidth: 1,
-                borderTopColor: theme.colors.divider,
-                backgroundColor: theme.colors.surface,
+                borderTopColor:
+                  "rgba(79, 99, 59, 0.16)",
+                backgroundColor:
+                  "#FFFCF5",
                 paddingHorizontal: 12,
-                paddingTop: 12,
-                paddingBottom: 8,
+                paddingTop: 11,
+                paddingBottom: 10,
+                shadowColor: "#1F2933",
+                shadowOpacity: 0.08,
+                shadowRadius: 12,
+                shadowOffset: {
+                  width: 0,
+                  height: -4,
+                },
+                elevation: 12,
               }}
             >
+              {!!pendingSharedPost && (
+                <View
+                  style={{
+                    marginBottom: 10,
+                    borderRadius: 16,
+                    borderWidth: 1,
+                    borderColor:
+                      "rgba(79, 99, 59, 0.18)",
+                    backgroundColor:
+                      "#FFFCF5",
+                    overflow: "hidden",
+                  }}
+                >
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      paddingHorizontal: 12,
+                      paddingTop: 11,
+                      paddingBottom: 9,
+                    }}
+                  >
+                    <View
+                      style={{
+                        width: 32,
+                        height: 32,
+                        borderRadius: 16,
+                        alignItems: "center",
+                        justifyContent:
+                          "center",
+                        backgroundColor:
+                          "rgba(79, 99, 59, 0.10)",
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 16,
+                        }}
+                      >
+                        ↗
+                      </Text>
+                    </View>
+
+                    <View
+                      style={{
+                        flex: 1,
+                        marginLeft: 9,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color:
+                            theme.colors
+                              .text,
+                          fontSize: 12.5,
+                          fontWeight: "900",
+                        }}
+                      >
+                        Community post
+                      </Text>
+
+                      <Text
+                        numberOfLines={1}
+                        style={{
+                          color:
+                            theme.colors
+                              .muted,
+                          fontSize: 11,
+                          fontWeight: "700",
+                          marginTop: 2,
+                        }}
+                      >
+                        Ready to send
+                      </Text>
+                    </View>
+
+                    <Pressable
+                      onPress={() =>
+                        setPendingSharedPost(
+                          null
+                        )
+                      }
+                      hitSlop={10}
+                      style={({ pressed }) => ({
+                        width: 34,
+                        height: 34,
+                        borderRadius: 17,
+                        alignItems: "center",
+                        justifyContent:
+                          "center",
+                        backgroundColor:
+                          pressed
+                            ? "rgba(180, 83, 9, 0.10)"
+                            : theme.colors
+                                .surface,
+                        borderWidth: 1,
+                        borderColor:
+                          theme.colors
+                            .divider,
+                      })}
+                    >
+                      <Text
+                        style={{
+                          color:
+                            theme.colors
+                              .text,
+                          fontSize: 18,
+                          fontWeight: "800",
+                        }}
+                      >
+                        ×
+                      </Text>
+                    </Pressable>
+                  </View>
+
+                  {!!pendingSharedPost
+                    ?.content && (
+                    <Text
+                      numberOfLines={4}
+                      style={{
+                        color:
+                          theme.colors.text,
+                        paddingHorizontal: 12,
+                        paddingBottom: 11,
+                        fontSize: 13,
+                        lineHeight: 18,
+                        fontWeight: "600",
+                      }}
+                    >
+                      {
+                        pendingSharedPost.content
+                      }
+                    </Text>
+                  )}
+
+                  {!!pendingSharedPost
+                    ?.media_url &&
+                    String(
+                      pendingSharedPost
+                        ?.media_type ||
+                        ""
+                    )
+                      .toLowerCase()
+                      .startsWith(
+                        "image"
+                      ) && (
+                      <Image
+                        source={{
+                          uri:
+                            pendingSharedPost
+                              .media_url,
+                        }}
+                        resizeMode="cover"
+                        style={{
+                          width: "100%",
+                          height: 120,
+                          backgroundColor:
+                            theme.colors
+                              .surfaceAlt,
+                        }}
+                      />
+                    )}
+
+                  {!!pendingSharedPost
+                    ?.media_url &&
+                    String(
+                      pendingSharedPost
+                        ?.media_type ||
+                        ""
+                    )
+                      .toLowerCase()
+                      .startsWith(
+                        "video"
+                      ) && (
+                      <View
+                        style={{
+                          width: "100%",
+                          height: 130,
+                          backgroundColor:
+                            "#111811",
+                          overflow: "hidden",
+                        }}
+                      >
+                        <Video
+                          source={{
+                            uri:
+                              pendingSharedPost
+                                .media_url,
+                          }}
+                          resizeMode="cover"
+                          shouldPlay={false}
+                          isMuted
+                          useNativeControls={
+                            false
+                          }
+                          pointerEvents="none"
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                          }}
+                        />
+
+                        <View
+                          pointerEvents="none"
+                          style={{
+                            position:
+                              "absolute",
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            alignItems:
+                              "center",
+                            justifyContent:
+                              "center",
+                            backgroundColor:
+                              "rgba(0,0,0,0.18)",
+                          }}
+                        >
+                          <View
+                            style={{
+                              width: 44,
+                              height: 44,
+                              borderRadius: 22,
+                              alignItems:
+                                "center",
+                              justifyContent:
+                                "center",
+                              backgroundColor:
+                                "rgba(255,255,255,0.94)",
+                            }}
+                          >
+                            <Ionicons
+                              name="play"
+                              size={21}
+                              color="#4F633B"
+                              style={{
+                                marginLeft: 3,
+                              }}
+                            />
+                          </View>
+                        </View>
+                      </View>
+                    )}
+
+                  {!!pendingSharedPost
+                    ?.shared_post && (
+                    <View
+                      style={{
+                        marginHorizontal: 10,
+                        marginTop: 9,
+                        marginBottom: 10,
+                        borderRadius: 13,
+                        borderWidth: 1,
+                        borderColor:
+                          "rgba(180, 83, 9, 0.20)",
+                        backgroundColor:
+                          "#FFFFFF",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <View
+                        style={{
+                          flexDirection:
+                            "row",
+                          alignItems:
+                            "center",
+                          paddingHorizontal:
+                            10,
+                          paddingVertical: 9,
+                        }}
+                      >
+                        {!!pendingSharedPost
+                          ?.shared_post
+                          ?.author_profile
+                          ?.avatar_url ? (
+                          <Image
+                            source={{
+                              uri:
+                                pendingSharedPost
+                                  .shared_post
+                                  .author_profile
+                                  .avatar_url,
+                            }}
+                            style={{
+                              width: 30,
+                              height: 30,
+                              borderRadius: 15,
+                            }}
+                          />
+                        ) : (
+                          <View
+                            style={{
+                              width: 30,
+                              height: 30,
+                              borderRadius: 15,
+                              alignItems:
+                                "center",
+                              justifyContent:
+                                "center",
+                              backgroundColor:
+                                "rgba(180, 83, 9, 0.10)",
+                            }}
+                          >
+                            <Ionicons
+                              name="person-outline"
+                              size={15}
+                              color="#B45309"
+                            />
+                          </View>
+                        )}
+
+                        <View
+                          style={{
+                            flex: 1,
+                            marginLeft: 8,
+                          }}
+                        >
+                          <Text
+                            numberOfLines={1}
+                            style={{
+                              color:
+                                "#1F2933",
+                              fontSize: 12,
+                              fontWeight:
+                                "900",
+                            }}
+                          >
+                            {pendingSharedPost
+                              ?.shared_post
+                              ?.author_profile
+                              ?.display_name ||
+                              pendingSharedPost
+                                ?.shared_post
+                                ?.church
+                                ?.display_name ||
+                              pendingSharedPost
+                                ?.shared_post
+                                ?.churches
+                                ?.display_name ||
+                              "Original author"}
+                          </Text>
+
+                          <Text
+                            style={{
+                              color:
+                                "#6B7280",
+                              fontSize: 10,
+                              fontWeight:
+                                "700",
+                              marginTop: 2,
+                            }}
+                          >
+                            Original post
+                          </Text>
+                        </View>
+                      </View>
+
+                      {!!pendingSharedPost
+                        ?.shared_post
+                        ?.content && (
+                        <Text
+                          numberOfLines={5}
+                          style={{
+                            color:
+                              "#1F2933",
+                            paddingHorizontal:
+                              10,
+                            paddingBottom: 9,
+                            fontSize: 12.5,
+                            lineHeight: 18,
+                            fontWeight:
+                              "600",
+                          }}
+                        >
+                          {
+                            pendingSharedPost
+                              .shared_post
+                              .content
+                          }
+                        </Text>
+                      )}
+
+                      {!!pendingSharedPost
+                        ?.shared_post
+                        ?.media_url &&
+                        String(
+                          pendingSharedPost
+                            ?.shared_post
+                            ?.media_type ||
+                            ""
+                        )
+                          .toLowerCase()
+                          .startsWith(
+                            "image"
+                          ) && (
+                          <Image
+                            source={{
+                              uri:
+                                pendingSharedPost
+                                  .shared_post
+                                  .media_url,
+                            }}
+                            resizeMode="cover"
+                            style={{
+                              width: "100%",
+                              height: 150,
+                              backgroundColor:
+                                theme.colors
+                                  .surfaceAlt,
+                            }}
+                          />
+                        )}
+
+                      {!!pendingSharedPost
+                        ?.shared_post
+                        ?.media_url &&
+                        String(
+                          pendingSharedPost
+                            ?.shared_post
+                            ?.media_type ||
+                            ""
+                        )
+                          .toLowerCase()
+                          .startsWith(
+                            "video"
+                          ) && (
+                          <View
+                            style={{
+                              width: "100%",
+                              height: 150,
+                              backgroundColor:
+                                "#111811",
+                              overflow:
+                                "hidden",
+                            }}
+                          >
+                            <Video
+                              source={{
+                                uri:
+                                  pendingSharedPost
+                                    .shared_post
+                                    .media_url,
+                              }}
+                              resizeMode="cover"
+                              shouldPlay={
+                                false
+                              }
+                              isMuted
+                              useNativeControls={
+                                false
+                              }
+                              pointerEvents="none"
+                              style={{
+                                width: "100%",
+                                height: "100%",
+                              }}
+                            />
+
+                            <View
+                              pointerEvents="none"
+                              style={{
+                                position:
+                                  "absolute",
+                                top: 0,
+                                left: 0,
+                                right: 0,
+                                bottom: 0,
+                                alignItems:
+                                  "center",
+                                justifyContent:
+                                  "center",
+                                backgroundColor:
+                                  "rgba(0,0,0,0.18)",
+                              }}
+                            >
+                              <View
+                                style={{
+                                  width: 44,
+                                  height: 44,
+                                  borderRadius: 22,
+                                  alignItems:
+                                    "center",
+                                  justifyContent:
+                                    "center",
+                                  backgroundColor:
+                                    "rgba(255,255,255,0.94)",
+                                }}
+                              >
+                                <Ionicons
+                                  name="play"
+                                  size={21}
+                                  color="#4F633B"
+                                  style={{
+                                    marginLeft: 3,
+                                  }}
+                                />
+                              </View>
+                            </View>
+                          </View>
+                        )}
+                    </View>
+                  )}
+                </View>
+              )}
+
               <View style={{ flexDirection: "row", alignItems: "center", columnGap: 10 }}>
                 <TextInput
                   value={draft}
@@ -1054,59 +2398,144 @@ export default function Chat({ route, navigation }) {
                   enablesReturnKeyAutomatically
                   style={{
                     flex: 1,
-                    backgroundColor: theme.colors.surfaceAlt,
-                    borderRadius: 999,
-                    borderWidth: 1,
-                    borderColor: willCancelOnRelease ? "#ff8c8c" : theme.colors.divider,
-                    paddingHorizontal: 14,
-                    paddingVertical: 10,
-                    color: theme.colors.text,
+                    minHeight: 46,
+                    backgroundColor:
+                      "#FFFFFF",
+                    borderRadius: 23,
+                    borderWidth: 1.5,
+                    borderColor:
+                      willCancelOnRelease
+                        ? "#DC2626"
+                        : isRecording
+                        ? "#B45309"
+                        : "rgba(79, 99, 59, 0.28)",
+                    paddingHorizontal: 16,
+                    paddingVertical: 11,
+                    color: "#1F2933",
+                    fontSize: 14,
                     fontWeight: "700",
-                    opacity: isRecording ? 0.8 : 1,
+                    opacity:
+                      isRecording
+                        ? 0.82
+                        : 1,
+                    shadowColor:
+                      "#4F633B",
+                    shadowOpacity: 0.05,
+                    shadowRadius: 5,
+                    shadowOffset: {
+                      width: 0,
+                      height: 2,
+                    },
+                    elevation: 1,
                   }}
                 />
 
                 <Pressable
                   onPress={handleSend}
-                  disabled={isRecording || composerDisabled}
-                  style={{
-                    paddingHorizontal: 16,
-                    paddingVertical: 10,
-                    borderRadius: 999,
-                    backgroundColor: theme.colors.gold,
-                    opacity: isRecording || composerDisabled ? 0.6 : 1,
-                  }}
+                  disabled={
+                    isRecording ||
+                    composerDisabled ||
+                    (!draft.trim() &&
+                      !pendingSharedPost?.id)
+                  }
+                  hitSlop={6}
+                  style={({ pressed }) => ({
+                    width: 46,
+                    height: 46,
+                    borderRadius: 23,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor:
+                      pressed
+                        ? "#7C2D12"
+                        : "#B45309",
+                    borderWidth: 1,
+                    borderColor:
+                      "rgba(124, 45, 18, 0.30)",
+                    opacity:
+                      isRecording ||
+                      composerDisabled ||
+                      (!draft.trim() &&
+                        !pendingSharedPost?.id)
+                        ? 0.45
+                        : pressed
+                        ? 0.78
+                        : 1,
+                    transform: [
+                      {
+                        scale: pressed
+                          ? 0.95
+                          : 1,
+                      },
+                    ],
+                  })}
                 >
-                  <Text style={{ color: theme.colors.text, fontWeight: "900" }}>Send</Text>
+                  <Ionicons
+                    name="send"
+                    size={20}
+                    color="#FFFFFF"
+                  />
                 </Pressable>
 
-                {/* Press-and-hold mic with swipe left cancel */}
+                {/* Press-and-hold microphone with swipe-left cancel */}
                 <Animated.View
                   {...micPanResponder.panHandlers}
                   style={{
-                    transform: [{ translateX: micDragX }],
-                    opacity: composerDisabled ? 0.6 : 1,
+                    transform: [
+                      {
+                        translateX:
+                          micDragX,
+                      },
+                    ],
+                    opacity:
+                      composerDisabled
+                        ? 0.45
+                        : 1,
                   }}
                 >
                   <View
                     style={{
-                      paddingHorizontal: 12,
-                      paddingVertical: 10,
-                      borderRadius: 999,
+                      width: 46,
+                      height: 46,
+                      borderRadius: 23,
+                      alignItems:
+                        "center",
+                      justifyContent:
+                        "center",
                       borderWidth: 1,
-                      borderColor: willCancelOnRelease
-                        ? "#ff8c8c"
-                        : isRecording
-                        ? theme.colors.gold
-                        : theme.colors.divider,
-                      backgroundColor: isRecording ? theme.colors.goldHalo : theme.colors.surfaceAlt,
-                      minWidth: 52,
-                      alignItems: "center",
+                      borderColor:
+                        willCancelOnRelease
+                          ? "#DC2626"
+                          : isRecording
+                          ? theme.colors.gold
+                          : theme.colors
+                              .divider,
+                      backgroundColor:
+                        willCancelOnRelease
+                          ? "rgba(220, 38, 38, 0.10)"
+                          : isRecording
+                          ? theme.colors
+                              .goldHalo
+                          : theme.colors
+                              .surfaceAlt,
                     }}
                   >
-                    <Text style={{ color: theme.colors.text, fontWeight: "900" }}>
-                      {isRecording ? "Rec" : "Mic"}
-                    </Text>
+                    <Ionicons
+                      name={
+                        isRecording
+                          ? "radio"
+                          : "mic"
+                      }
+                      size={21}
+                      color={
+                        willCancelOnRelease
+                          ? "#DC2626"
+                          : isRecording
+                          ? "#B45309"
+                          : theme.colors
+                              .text
+                      }
+                    />
                   </View>
                 </Animated.View>
               </View>
