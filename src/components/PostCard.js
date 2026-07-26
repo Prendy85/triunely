@@ -1,7 +1,8 @@
 // src/components/PostCard.js
 import { Ionicons } from "@expo/vector-icons";
-import { Video } from "expo-av";
-import { useMemo, useRef, useState } from "react";
+import { useVideoPlayer, VideoView } from "expo-video";
+import * as VideoThumbnails from "expo-video-thumbnails";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -291,7 +292,7 @@ async function openYouTubeExternally({ rawUrl, videoId }) {
 function isYouTubeHomeRedirect(url) {
   if (!url || typeof url !== "string") return false;
   const u = url.trim();
-  // These are the common “fallback” navigations we’ve seen when YouTube refuses the embed
+
   return (
     u === "https://www.youtube.com/" ||
     u === "https://m.youtube.com/" ||
@@ -301,7 +302,379 @@ function isYouTubeHomeRedirect(url) {
     u.startsWith("https://m.youtube.com/?")
   );
 }
+
 /* -------------------- end helpers -------------------- */
+
+function FullscreenCommunityVideoPlayer({
+  uri,
+  onClose,
+  loop = false,
+}) {
+  const player = useVideoPlayer(
+    {
+      uri,
+      useCaching: false,
+    },
+    (videoPlayer) => {
+      videoPlayer.loop = loop;
+
+      videoPlayer.bufferOptions = {
+        maxBufferBytes: 12 * 1024 * 1024,
+        preferredForwardBufferDuration: 8,
+        minBufferForPlayback: 1.5,
+      };
+
+      videoPlayer.play();
+    }
+  );
+
+  function closePlayer() {
+    try {
+      player.pause();
+    } catch (error) {
+      console.log("COMMUNITY VIDEO PAUSE ERROR:", error);
+    }
+
+    onClose?.();
+  }
+
+  return (
+    <Modal
+      visible
+      animationType="fade"
+      presentationStyle="fullScreen"
+      statusBarTranslucent
+      onRequestClose={closePlayer}
+    >
+      <StatusBar
+        barStyle="light-content"
+        translucent
+        backgroundColor="transparent"
+      />
+
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: "#000000",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <VideoView
+          player={player}
+          nativeControls
+          contentFit="contain"
+          surfaceType="surfaceView"
+          style={{
+            width: "100%",
+            height: "100%",
+            backgroundColor: "#000000",
+          }}
+        />
+
+        <Pressable
+          onPress={closePlayer}
+          hitSlop={12}
+          style={({ pressed }) => ({
+            position: "absolute",
+            top: Platform.OS === "android" ? 34 : 52,
+            right: 18,
+            width: 44,
+            height: 44,
+            borderRadius: 22,
+            backgroundColor: pressed
+              ? "rgba(255,255,255,0.30)"
+              : "rgba(0,0,0,0.64)",
+            borderWidth: 1,
+            borderColor: "rgba(255,255,255,0.25)",
+            alignItems: "center",
+            justifyContent: "center",
+          })}
+        >
+          <Ionicons
+            name="close"
+            size={25}
+            color="#FFFFFF"
+          />
+        </Pressable>
+      </View>
+    </Modal>
+  );
+}
+
+function CommunityVideoPreview({
+  uri,
+  thumbnailUrl = null,
+  fallbackAspectRatio = 9 / 16,
+  resizeMode = "contain",
+  loop = false,
+  containerStyle = null,
+}) {
+  const [
+    generatedThumbnail,
+    setGeneratedThumbnail,
+  ] = useState(null);
+
+  const [
+    thumbnailDimensions,
+    setThumbnailDimensions,
+  ] = useState(null);
+
+  const [
+    preparingThumbnail,
+    setPreparingThumbnail,
+  ] = useState(
+    !Boolean(thumbnailUrl)
+  );
+
+  const [
+    playerVisible,
+    setPlayerVisible,
+  ] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+
+    if (!uri || thumbnailUrl) {
+      setGeneratedThumbnail(null);
+      setPreparingThumbnail(false);
+      return undefined;
+    }
+
+    async function createThumbnail() {
+      try {
+        setPreparingThumbnail(true);
+
+        const result =
+          await VideoThumbnails
+            .getThumbnailAsync(
+              uri,
+              {
+                time: 300,
+                quality: 0.45,
+              }
+            );
+
+        if (!active) {
+          return;
+        }
+
+        setGeneratedThumbnail(
+          result?.uri || null
+        );
+
+        if (
+          Number(result?.width) > 0 &&
+          Number(result?.height) > 0
+        ) {
+          setThumbnailDimensions({
+            width:
+              Number(result.width),
+            height:
+              Number(result.height),
+          });
+        }
+      } catch (error) {
+        console.log(
+          "COMMUNITY VIDEO THUMBNAIL ERROR:",
+          error
+        );
+
+        if (active) {
+          setGeneratedThumbnail(null);
+        }
+      } finally {
+        if (active) {
+          setPreparingThumbnail(false);
+        }
+      }
+    }
+
+    createThumbnail();
+
+    return () => {
+      active = false;
+    };
+  }, [
+    thumbnailUrl,
+    uri,
+  ]);
+
+  useEffect(() => {
+    let active = true;
+
+    if (!thumbnailUrl) {
+      return undefined;
+    }
+
+    Image.getSize(
+      thumbnailUrl,
+      (width, height) => {
+        if (
+          active &&
+          width > 0 &&
+          height > 0
+        ) {
+          setThumbnailDimensions({
+            width,
+            height,
+          });
+        }
+      },
+      () => {
+        if (active) {
+          setThumbnailDimensions(null);
+        }
+      }
+    );
+
+    return () => {
+      active = false;
+    };
+  }, [thumbnailUrl]);
+
+  const previewUri =
+    thumbnailUrl ||
+    generatedThumbnail;
+
+  const aspectRatio =
+    thumbnailDimensions?.width &&
+    thumbnailDimensions?.height
+      ? thumbnailDimensions.width /
+        thumbnailDimensions.height
+      : fallbackAspectRatio;
+
+  return (
+    <>
+      <Pressable
+        onPress={() =>
+          setPlayerVisible(true)
+        }
+        accessibilityRole="button"
+        accessibilityLabel="Play video fullscreen"
+        style={({ pressed }) => [
+          {
+            width: "100%",
+            aspectRatio,
+            backgroundColor: "#000000",
+            alignItems: "center",
+            justifyContent: "center",
+            overflow: "hidden",
+            opacity:
+              pressed
+                ? 0.92
+                : 1,
+          },
+          containerStyle,
+        ]}
+      >
+        {previewUri ? (
+          <Image
+            source={{
+              uri: previewUri,
+            }}
+            resizeMode={resizeMode}
+            style={{
+              width: "100%",
+              height: "100%",
+              backgroundColor: "#000000",
+            }}
+          />
+        ) : null}
+
+        <View
+          pointerEvents="none"
+          style={{
+            position: "absolute",
+            top: 0,
+            right: 0,
+            bottom: 0,
+            left: 0,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor:
+              previewUri
+                ? "rgba(0,0,0,0.20)"
+                : "rgba(0,0,0,0.88)",
+          }}
+        >
+          {preparingThumbnail ? (
+            <>
+              <ActivityIndicator
+                size="small"
+                color="#FFFFFF"
+              />
+
+              <Text
+                style={{
+                  color: "#FFFFFF",
+                  fontSize: 11.5,
+                  fontWeight: "800",
+                  marginTop: 9,
+                }}
+              >
+                Preparing video…
+              </Text>
+            </>
+          ) : (
+            <>
+              <View
+                style={{
+                  width: 60,
+                  height: 60,
+                  borderRadius: 30,
+                  backgroundColor:
+                    "rgba(255,255,255,0.95)",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  shadowColor: "#000000",
+                  shadowOpacity: 0.24,
+                  shadowRadius: 10,
+                  shadowOffset: {
+                    width: 0,
+                    height: 4,
+                  },
+                  elevation: 5,
+                }}
+              >
+                <Ionicons
+                  name="play"
+                  size={28}
+                  color="#B45309"
+                  style={{
+                    marginLeft: 4,
+                  }}
+                />
+              </View>
+
+              <Text
+                style={{
+                  color: "#FFFFFF",
+                  fontSize: 11.5,
+                  fontWeight: "900",
+                  marginTop: 10,
+                }}
+              >
+                Play video
+              </Text>
+            </>
+          )}
+        </View>
+      </Pressable>
+
+      {playerVisible ? (
+        <FullscreenCommunityVideoPlayer
+          uri={uri}
+          loop={loop}
+          onClose={() =>
+            setPlayerVisible(false)
+          }
+        />
+      ) : null}
+    </>
+  );
+}
+
 function SharedPostPreview({
   sharedPost,
   onPressOriginalPost,
@@ -416,12 +789,12 @@ function SharedPostPreview({
                 uri:
                   originalAvatarUrl,
               }}
-            style={{
-              width: 34,
-              height: 34,
-              borderRadius: 17,
-              backgroundColor:
-                "#F3F1E8",
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: 17,
+                backgroundColor:
+                  "#F3F1E8",
               }}
             />
           </Pressable>
@@ -588,29 +961,21 @@ function SharedPostPreview({
       )}
 
       {sharedIsVideo && (
-        <View
-          style={{
-            width: "100%",
-            backgroundColor: "#000",
-          }}
-        >
-          <Video
-            source={{
-              uri:
-                sharedPost.media_url,
-            }}
-            style={{
-              width: "100%",
-              aspectRatio: 9 / 16,
-              backgroundColor:
-                "#000",
-            }}
-            resizeMode="cover"
-            useNativeControls
-            shouldPlay={false}
-            isLooping={false}
-          />
-        </View>
+        <CommunityVideoPreview
+          uri={
+            sharedPost.media_url
+          }
+          thumbnailUrl={
+            sharedPost
+              ?.media_thumbnail_url ||
+            null
+          }
+          fallbackAspectRatio={
+            9 / 16
+          }
+          resizeMode="contain"
+          loop={false}
+        />
       )}
 
       {!!sharedUrl && (
@@ -690,7 +1055,6 @@ function SharedPostPreview({
     </View>
   );
 }
-
 export default function PostCard({
   post,
   currentUserId,
@@ -726,15 +1090,22 @@ export default function PostCard({
   );
 
   // Determine if it’s YouTube by URL
-  const isYouTubeLink = useMemo(() => isYouTubeUrl(post?.url), [post?.url]);
+  const isYouTubeLink = useMemo(
+    () => isYouTubeUrl(post?.url),
+    [post?.url]
+  );
 
   const ytId = useMemo(
-    () => (post?.url ? extractYouTubeVideoIdRobust(post.url) : null),
+    () =>
+      post?.url
+        ? extractYouTubeVideoIdRobust(post.url)
+        : null,
     [post?.url]
   );
 
   const youtubeThumb = useMemo(() => {
     if (!ytId) return null;
+
     return `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`;
   }, [ytId]);
 
@@ -786,53 +1157,107 @@ export default function PostCard({
         ] > 0
     ).slice(0, 3);
 
-  const createdLabel = post?.created_at
-    ? new Date(post.created_at).toLocaleString()
-    : "";
+  const createdLabel =
+    post?.created_at
+      ? new Date(
+          post.created_at
+        ).toLocaleString()
+      : "";
 
   const isImage =
     post?.media_url &&
     post?.media_type &&
-    String(post.media_type).startsWith("image");
+    String(
+      post.media_type
+    ).startsWith("image");
 
   const isVideo =
     post?.media_url &&
     post?.media_type &&
-    String(post.media_type).startsWith("video");
+    String(
+      post.media_type
+    ).startsWith("video");
 
-  const isFormationShare = post?.media_type === "formation_share";
+  const isFormationShare =
+    post?.media_type ===
+    "formation_share";
 
-  function updateMediaAspectRatio(width, height) {
+  function updateMediaAspectRatio(
+    width,
+    height
+  ) {
     const w = Number(width);
     const h = Number(height);
 
-    if (!w || !h || w <= 0 || h <= 0) return;
+    if (
+      !w ||
+      !h ||
+      w <= 0 ||
+      h <= 0
+    ) {
+      return;
+    }
 
-    const ratio = w / h;
+    const ratio =
+      w / h;
 
     // Keep very unusual/broken metadata from creating unusable layouts.
     // 0.45 is tall portrait, 2.2 is wide landscape.
-    const safeRatio = Math.min(Math.max(ratio, 0.45), 2.2);
+    const safeRatio =
+      Math.min(
+        Math.max(
+          ratio,
+          0.45
+        ),
+        2.2
+      );
 
-    setMediaAspectRatio(safeRatio);
+    setMediaAspectRatio(
+      safeRatio
+    );
   }
 
-  const displayAspectRatio = mediaAspectRatio || (isVideo ? 9 / 16 : 1);
+  const displayAspectRatio =
+    mediaAspectRatio ||
+    (isVideo
+      ? 9 / 16
+      : 1);
 
-  const formationTitle = post?.link_title || "Daily Formation";
+  const formationTitle =
+    post?.link_title ||
+    "Daily Formation";
+
   const formationDescription =
-    post?.link_description || "Formation practice shared today.";
+    post?.link_description ||
+    "Formation practice shared today.";
 
-  const who = author?.name || "Member on Triunely";
-  const avatarUrl = author?.avatarUrl || null;
-  const initials = (who || "T").slice(0, 1).toUpperCase();
-  const isOwner = !!author?.isOwner;
+  const who =
+    author?.name ||
+    "Member on Triunely";
+
+  const avatarUrl =
+    author?.avatarUrl ||
+    null;
+
+  const initials =
+    (who || "T")
+      .slice(0, 1)
+      .toUpperCase();
+
+  const isOwner =
+    !!author?.isOwner;
 
   const canPressAvatar =
-    typeof onPressAvatar === "function" && !author?.isAnonymous && !!author?.id;
+    typeof onPressAvatar ===
+      "function" &&
+    !author?.isAnonymous &&
+    !!author?.id;
 
   const socialRight =
-    Number(post?.comment_count || 0) > 0
+    Number(
+      post?.comment_count ||
+      0
+    ) > 0
       ? `${post.comment_count} comment${
           post.comment_count === 1
             ? ""
@@ -867,13 +1292,31 @@ export default function PostCard({
   }
 
   const openYouTubeModal = () => {
-    if (!preferInAppYouTube) return;
+    if (!preferInAppYouTube) {
+      return;
+    }
 
-    ytAutoOpenedRef.current = false;
+    ytAutoOpenedRef.current =
+      false;
 
-    console.log("[YT] raw url:", post?.url);
-    console.log("[YT] extracted id:", ytId);
-    console.log("[YT] embed url:", ytId ? buildYouTubeEmbedUrl(ytId) : null);
+    console.log(
+      "[YT] raw url:",
+      post?.url
+    );
+
+    console.log(
+      "[YT] extracted id:",
+      ytId
+    );
+
+    console.log(
+      "[YT] embed url:",
+      ytId
+        ? buildYouTubeEmbedUrl(
+            ytId
+          )
+        : null
+    );
 
     setYtError(null);
     setYtLoading(!!ytId);
@@ -885,124 +1328,209 @@ export default function PostCard({
     dragY.setValue(0);
 
     Animated.parallel([
-      Animated.timing(backdropOpacity, {
-        toValue: 1,
-        duration: 180,
-        useNativeDriver: true,
-      }),
-      Animated.timing(sheetTranslateY, {
-        toValue: 0,
-        duration: 220,
-        useNativeDriver: true,
-      }),
-      Animated.timing(sheetScale, {
-        toValue: 1,
-        duration: 220,
-        useNativeDriver: true,
-      }),
+      Animated.timing(
+        backdropOpacity,
+        {
+          toValue: 1,
+          duration: 180,
+          useNativeDriver: true,
+        }
+      ),
+      Animated.timing(
+        sheetTranslateY,
+        {
+          toValue: 0,
+          duration: 220,
+          useNativeDriver: true,
+        }
+      ),
+      Animated.timing(
+        sheetScale,
+        {
+          toValue: 1,
+          duration: 220,
+          useNativeDriver: true,
+        }
+      ),
     ]).start();
   };
 
   const closeYouTubeModal = () => {
     Animated.parallel([
-      Animated.timing(backdropOpacity, {
-        toValue: 0,
-        duration: 160,
-        useNativeDriver: true,
-      }),
-      Animated.timing(sheetTranslateY, {
-        toValue: 30,
-        duration: 180,
-        useNativeDriver: true,
-      }),
-      Animated.timing(sheetScale, {
-        toValue: 0.98,
-        duration: 180,
-        useNativeDriver: true,
-      }),
+      Animated.timing(
+        backdropOpacity,
+        {
+          toValue: 0,
+          duration: 160,
+          useNativeDriver: true,
+        }
+      ),
+      Animated.timing(
+        sheetTranslateY,
+        {
+          toValue: 30,
+          duration: 180,
+          useNativeDriver: true,
+        }
+      ),
+      Animated.timing(
+        sheetScale,
+        {
+          toValue: 0.98,
+          duration: 180,
+          useNativeDriver: true,
+        }
+      ),
     ]).start(() => {
       setYtVisible(false);
       setYtLoading(false);
       setYtError(null);
       dragY.setValue(0);
-      ytAutoOpenedRef.current = false;
+
+      ytAutoOpenedRef.current =
+        false;
     });
   };
 
-  const handleOpenInYouTube = async () => {
-    try {
-      await openYouTubeExternally({ rawUrl: post?.url, videoId: ytId });
-    } catch {
-      Alert.alert("Could not open YouTube. Please try again.");
-    }
-  };
+  const handleOpenInYouTube =
+    async () => {
+      try {
+        await openYouTubeExternally({
+          rawUrl: post?.url,
+          videoId: ytId,
+        });
+      } catch {
+        Alert.alert(
+          "Could not open YouTube. Please try again."
+        );
+      }
+    };
 
-  const autoFallbackToYouTube = async () => {
-    if (ytAutoOpenedRef.current) return;
-    ytAutoOpenedRef.current = true;
+  const autoFallbackToYouTube =
+    async () => {
+      if (
+        ytAutoOpenedRef.current
+      ) {
+        return;
+      }
 
-    setYtLoading(false);
-    setYtError("This video can’t play in-app. Opening YouTube…");
+      ytAutoOpenedRef.current =
+        true;
 
-    try {
-      await handleOpenInYouTube();
-    } finally {
-      // Close quickly so the user never gets stuck on a dead player
-      setTimeout(() => {
-        closeYouTubeModal();
-      }, 250);
-    }
-  };
+      setYtLoading(false);
 
-  const panResponder = useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gesture) => {
-        if (!ytVisible) return false;
-        const isMostlyVertical = Math.abs(gesture.dy) > Math.abs(gesture.dx);
-        return isMostlyVertical && gesture.dy > 6;
-      },
-      onPanResponderMove: (_, gesture) => {
-        const dy = Math.max(0, gesture.dy);
-        dragY.setValue(dy);
-      },
-      onPanResponderRelease: (_, gesture) => {
-        const dy = Math.max(0, gesture.dy);
-        const vy = gesture.vy;
+      setYtError(
+        "This video can’t play in-app. Opening YouTube…"
+      );
 
-        const shouldDismiss = dy > 140 || vy > 1.2;
-        if (shouldDismiss) {
+      try {
+        await handleOpenInYouTube();
+      } finally {
+        // Close quickly so the user never gets stuck on a dead player.
+        setTimeout(() => {
           closeYouTubeModal();
-          return;
-        }
+        }, 250);
+      }
+    };
 
-        Animated.spring(dragY, {
-          toValue: 0,
-          useNativeDriver: true,
-          bounciness: 0,
-        }).start();
-      },
-    })
-  ).current;
+  const panResponder =
+    useRef(
+      PanResponder.create({
+        onMoveShouldSetPanResponder:
+          (_, gesture) => {
+            if (!ytVisible) {
+              return false;
+            }
+
+            const isMostlyVertical =
+              Math.abs(
+                gesture.dy
+              ) >
+              Math.abs(
+                gesture.dx
+              );
+
+            return (
+              isMostlyVertical &&
+              gesture.dy > 6
+            );
+          },
+
+        onPanResponderMove:
+          (_, gesture) => {
+            const dy =
+              Math.max(
+                0,
+                gesture.dy
+              );
+
+            dragY.setValue(dy);
+          },
+
+        onPanResponderRelease:
+          (_, gesture) => {
+            const dy =
+              Math.max(
+                0,
+                gesture.dy
+              );
+
+            const vy =
+              gesture.vy;
+
+            const shouldDismiss =
+              dy > 140 ||
+              vy > 1.2;
+
+            if (shouldDismiss) {
+              closeYouTubeModal();
+              return;
+            }
+
+            Animated.spring(
+              dragY,
+              {
+                toValue: 0,
+                useNativeDriver:
+                  true,
+                bounciness: 0,
+              }
+            ).start();
+          },
+      })
+    ).current;
 
   function handlePressLink() {
-    if (!post?.url) return;
+    if (!post?.url) {
+      return;
+    }
 
-    // For YouTube: open our modal. If YouTube refuses playback, we auto-open the YouTube app.
-    if (isYouTubeLink && preferInAppYouTube) {
+    // For YouTube: open our modal.
+    // If YouTube refuses playback, automatically open the YouTube app.
+    if (
+      isYouTubeLink &&
+      preferInAppYouTube
+    ) {
       openYouTubeModal();
       return;
     }
 
-    openExternalUrl(post.url, Linking, Alert);
+    openExternalUrl(
+      post.url,
+      Linking,
+      Alert
+    );
   }
 
   return (
     <View
       style={{
-        backgroundColor: theme.colors.surface,
+        backgroundColor:
+          theme.colors.surface,
         borderTopWidth: 1,
         borderBottomWidth: 1,
-        borderColor: theme.colors.divider,
+        borderColor:
+          theme.colors.divider,
         paddingHorizontal: 16,
         paddingTop: 12,
         paddingBottom: 10,
@@ -1013,7 +1541,9 @@ export default function PostCard({
           visible={ytVisible}
           transparent
           animationType="none"
-          onRequestClose={closeYouTubeModal}
+          onRequestClose={
+            closeYouTubeModal
+          }
         >
           <StatusBar
             barStyle="light-content"
@@ -1024,11 +1554,20 @@ export default function PostCard({
           <Animated.View
             style={{
               flex: 1,
-              backgroundColor: "rgba(0,0,0,0.98)",
-              opacity: backdropOpacity,
+              backgroundColor:
+                "rgba(0,0,0,0.98)",
+              opacity:
+                backdropOpacity,
             }}
           >
-            <Pressable style={{ flex: 1 }} onPress={closeYouTubeModal} />
+            <Pressable
+              style={{
+                flex: 1,
+              }}
+              onPress={
+                closeYouTubeModal
+              }
+            />
           </Animated.View>
 
           <Animated.View
@@ -1040,126 +1579,232 @@ export default function PostCard({
               right: 0,
               bottom: 0,
               transform: [
-                { translateY: Animated.add(sheetTranslateY, dragY) },
-                { scale: sheetScale },
+                {
+                  translateY:
+                    Animated.add(
+                      sheetTranslateY,
+                      dragY
+                    ),
+                },
+                {
+                  scale:
+                    sheetScale,
+                },
               ],
             }}
           >
-            <View style={{ flex: 1, backgroundColor: "transparent" }}>
+            <View
+              style={{
+                flex: 1,
+                backgroundColor:
+                  "transparent",
+              }}
+            >
               <View
                 style={{
-                  position: "absolute",
-                  top: Platform.OS === "android" ? 14 : 18,
+                  position:
+                    "absolute",
+                  top:
+                    Platform.OS ===
+                    "android"
+                      ? 14
+                      : 18,
                   left: 14,
                   right: 14,
                   zIndex: 20,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "space-between",
+                  flexDirection:
+                    "row",
+                  alignItems:
+                    "center",
+                  justifyContent:
+                    "space-between",
                 }}
                 pointerEvents="box-none"
               >
                 <View
                   style={{
-                    paddingHorizontal: 10,
-                    paddingVertical: 6,
-                    borderRadius: 999,
-                    backgroundColor: "rgba(255,255,255,0.10)",
+                    paddingHorizontal:
+                      10,
+                    paddingVertical:
+                      6,
+                    borderRadius:
+                      999,
+                    backgroundColor:
+                      "rgba(255,255,255,0.10)",
                     borderWidth: 1,
-                    borderColor: "rgba(255,255,255,0.12)",
+                    borderColor:
+                      "rgba(255,255,255,0.12)",
                   }}
                 >
                   <Text
-                    style={{ color: "white", fontSize: 12, fontWeight: "700" }}
+                    style={{
+                      color:
+                        "white",
+                      fontSize:
+                        12,
+                      fontWeight:
+                        "700",
+                    }}
                   >
                     YouTube
                   </Text>
                 </View>
 
-                <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <View
+                  style={{
+                    flexDirection:
+                      "row",
+                    alignItems:
+                      "center",
+                  }}
+                >
                   <Pressable
-                    onPress={handleOpenInYouTube}
+                    onPress={
+                      handleOpenInYouTube
+                    }
                     style={{
-                      paddingHorizontal: 12,
-                      paddingVertical: 8,
-                      borderRadius: 999,
-                      backgroundColor: "rgba(255,255,255,0.12)",
-                      borderWidth: 1,
-                      borderColor: "rgba(255,255,255,0.12)",
-                      marginRight: 10,
+                      paddingHorizontal:
+                        12,
+                      paddingVertical:
+                        8,
+                      borderRadius:
+                        999,
+                      backgroundColor:
+                        "rgba(255,255,255,0.12)",
+                      borderWidth:
+                        1,
+                      borderColor:
+                        "rgba(255,255,255,0.12)",
+                      marginRight:
+                        10,
                     }}
                     hitSlop={10}
                   >
                     <Text
-                      style={{ color: "white", fontSize: 12, fontWeight: "700" }}
+                      style={{
+                        color:
+                          "white",
+                        fontSize:
+                          12,
+                        fontWeight:
+                          "700",
+                      }}
                     >
                       Open in YouTube
                     </Text>
                   </Pressable>
 
                   <Pressable
-                    onPress={closeYouTubeModal}
+                    onPress={
+                      closeYouTubeModal
+                    }
                     style={{
                       width: 42,
                       height: 42,
-                      borderRadius: 999,
-                      backgroundColor: "rgba(255,255,255,0.12)",
-                      borderWidth: 1,
-                      borderColor: "rgba(255,255,255,0.12)",
-                      alignItems: "center",
-                      justifyContent: "center",
+                      borderRadius:
+                        999,
+                      backgroundColor:
+                        "rgba(255,255,255,0.12)",
+                      borderWidth:
+                        1,
+                      borderColor:
+                        "rgba(255,255,255,0.12)",
+                      alignItems:
+                        "center",
+                      justifyContent:
+                        "center",
                     }}
                     hitSlop={10}
                   >
-                    <Text style={{ color: "white", fontSize: 18, fontWeight: "900" }}>
+                    <Text
+                      style={{
+                        color:
+                          "white",
+                        fontSize:
+                          18,
+                        fontWeight:
+                          "900",
+                      }}
+                    >
                       ×
                     </Text>
                   </Pressable>
                 </View>
               </View>
 
-              <View style={{ flex: 1, backgroundColor: "black" }}>
+              <View
+                style={{
+                  flex: 1,
+                  backgroundColor:
+                    "black",
+                }}
+              >
                 {!ytId ? (
                   <View
                     style={{
                       flex: 1,
-                      alignItems: "center",
-                      justifyContent: "center",
+                      alignItems:
+                        "center",
+                      justifyContent:
+                        "center",
                       padding: 24,
                     }}
                   >
                     <Text
                       style={{
-                        color: "white",
-                        fontSize: 16,
-                        fontWeight: "800",
-                        marginBottom: 10,
+                        color:
+                          "white",
+                        fontSize:
+                          16,
+                        fontWeight:
+                          "800",
+                        marginBottom:
+                          10,
                       }}
                     >
                       This video can’t be played here
                     </Text>
+
                     <Text
                       style={{
-                        color: "rgba(255,255,255,0.75)",
-                        textAlign: "center",
-                        marginBottom: 16,
+                        color:
+                          "rgba(255,255,255,0.75)",
+                        textAlign:
+                          "center",
+                        marginBottom:
+                          16,
                       }}
                     >
                       We couldn’t extract a valid YouTube video ID. You can still open it in YouTube.
                     </Text>
 
                     <Pressable
-                      onPress={handleOpenInYouTube}
+                      onPress={
+                        handleOpenInYouTube
+                      }
                       style={{
-                        paddingHorizontal: 14,
-                        paddingVertical: 10,
-                        borderRadius: 999,
-                        backgroundColor: "rgba(255,255,255,0.14)",
-                        borderWidth: 1,
-                        borderColor: "rgba(255,255,255,0.12)",
+                        paddingHorizontal:
+                          14,
+                        paddingVertical:
+                          10,
+                        borderRadius:
+                          999,
+                        backgroundColor:
+                          "rgba(255,255,255,0.14)",
+                        borderWidth:
+                          1,
+                        borderColor:
+                          "rgba(255,255,255,0.12)",
                       }}
                     >
-                      <Text style={{ color: "white", fontWeight: "800" }}>
+                      <Text
+                        style={{
+                          color:
+                            "white",
+                          fontWeight:
+                            "800",
+                        }}
+                      >
                         Open in YouTube
                       </Text>
                     </Pressable>
@@ -1168,72 +1813,160 @@ export default function PostCard({
                   <>
                     <WebView
                       source={{
-                        html: buildYouTubeEmbedHtml(ytId),
-                        baseUrl: "https://www.youtube.com",
+                        html:
+                          buildYouTubeEmbedHtml(
+                            ytId
+                          ),
+                        baseUrl:
+                          "https://www.youtube.com",
                       }}
                       javaScriptEnabled
                       domStorageEnabled
                       allowsFullscreenVideo
-                      mediaPlaybackRequiresUserAction={false}
+                      mediaPlaybackRequiresUserAction={
+                        false
+                      }
                       allowsInlineMediaPlayback
-                      thirdPartyCookiesEnabled={true}
-                      sharedCookiesEnabled={true}
+                      thirdPartyCookiesEnabled={
+                        true
+                      }
+                      sharedCookiesEnabled={
+                        true
+                      }
                       mixedContentMode="always"
-                      javaScriptCanOpenWindowsAutomatically={false}
-                      setSupportMultipleWindows={false}
+                      javaScriptCanOpenWindowsAutomatically={
+                        false
+                      }
+                      setSupportMultipleWindows={
+                        false
+                      }
                       userAgent={
-                        Platform.OS === "android"
+                        Platform.OS ===
+                        "android"
                           ? "Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
                           : "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
                       }
-                      onLoadStart={(e) => {
-                        setYtLoading(true);
-                        setYtError(null);
-                        console.log("[YT] load start:", e?.nativeEvent?.url);
-                      }}
-                      onLoadEnd={(e) => {
-                        setYtLoading(false);
-                        console.log("[YT] load end:", e?.nativeEvent?.url);
-                      }}
-                      onError={(e) => {
-                        console.log("[YT] webview error:", e?.nativeEvent);
-                        autoFallbackToYouTube();
-                      }}
-                      onHttpError={(e) => {
-                        console.log("[YT] http error:", e?.nativeEvent);
-                        autoFallbackToYouTube();
-                      }}
-                      onNavigationStateChange={(navState) => {
-                        const url = navState?.url;
-                        if (!url) return;
+                      onLoadStart={(
+                        event
+                      ) => {
+                        setYtLoading(
+                          true
+                        );
 
-                        // If YouTube refuses the embed on this device/build, it often navigates to YouTube home.
-                        if (isYouTubeHomeRedirect(url)) {
-                          console.log("[YT] redirected to YouTube home (embed refused):", url);
+                        setYtError(
+                          null
+                        );
+
+                        console.log(
+                          "[YT] load start:",
+                          event
+                            ?.nativeEvent
+                            ?.url
+                        );
+                      }}
+                      onLoadEnd={(
+                        event
+                      ) => {
+                        setYtLoading(
+                          false
+                        );
+
+                        console.log(
+                          "[YT] load end:",
+                          event
+                            ?.nativeEvent
+                            ?.url
+                        );
+                      }}
+                      onError={(
+                        event
+                      ) => {
+                        console.log(
+                          "[YT] webview error:",
+                          event
+                            ?.nativeEvent
+                        );
+
+                        autoFallbackToYouTube();
+                      }}
+                      onHttpError={(
+                        event
+                      ) => {
+                        console.log(
+                          "[YT] http error:",
+                          event
+                            ?.nativeEvent
+                        );
+
+                        autoFallbackToYouTube();
+                      }}
+                      onNavigationStateChange={(
+                        navState
+                      ) => {
+                        const url =
+                          navState
+                            ?.url;
+
+                        if (!url) {
+                          return;
+                        }
+
+                        // If YouTube refuses the embed on this device/build,
+                        // it often navigates to the YouTube home page.
+                        if (
+                          isYouTubeHomeRedirect(
+                            url
+                          )
+                        ) {
+                          console.log(
+                            "[YT] redirected to YouTube home (embed refused):",
+                            url
+                          );
+
                           autoFallbackToYouTube();
                         }
                       }}
-                      originWhitelist={["*"]}
-                      style={{ flex: 1, backgroundColor: "black" }}
+                      originWhitelist={[
+                        "*",
+                      ]}
+                      style={{
+                        flex: 1,
+                        backgroundColor:
+                          "black",
+                      }}
                     />
 
                     {ytLoading && (
                       <View
                         style={{
-                          position: "absolute",
+                          position:
+                            "absolute",
                           top: 0,
                           left: 0,
                           right: 0,
                           bottom: 0,
-                          alignItems: "center",
-                          justifyContent: "center",
-                          backgroundColor: "rgba(0,0,0,0.35)",
+                          alignItems:
+                            "center",
+                          justifyContent:
+                            "center",
+                          backgroundColor:
+                            "rgba(0,0,0,0.35)",
                           padding: 24,
                         }}
                         pointerEvents="none"
                       >
                         <ActivityIndicator />
-                        <Text style={{ color: "white", marginTop: 10, fontWeight: "700" }}>
+
+                        <Text
+                          style={{
+                            color:
+                              "white",
+                            marginTop:
+                              10,
+                            fontWeight:
+                              "700",
+                          }}
+                        >
                           Loading video…
                         </Text>
                       </View>
@@ -1242,42 +1975,67 @@ export default function PostCard({
                     {!!ytError && (
                       <View
                         style={{
-                          position: "absolute",
+                          position:
+                            "absolute",
                           top: 0,
                           left: 0,
                           right: 0,
                           bottom: 0,
-                          alignItems: "center",
-                          justifyContent: "center",
-                          backgroundColor: "rgba(0,0,0,0.70)",
+                          alignItems:
+                            "center",
+                          justifyContent:
+                            "center",
+                          backgroundColor:
+                            "rgba(0,0,0,0.70)",
                           padding: 24,
                         }}
                       >
                         <Text
                           style={{
-                            color: "white",
-                            fontSize: 16,
-                            fontWeight: "900",
-                            marginBottom: 10,
-                            textAlign: "center",
+                            color:
+                              "white",
+                            fontSize:
+                              16,
+                            fontWeight:
+                              "900",
+                            marginBottom:
+                              10,
+                            textAlign:
+                              "center",
                           }}
                         >
                           {ytError}
                         </Text>
 
                         <Pressable
-                          onPress={handleOpenInYouTube}
+                          onPress={
+                            handleOpenInYouTube
+                          }
                           style={{
-                            marginTop: 10,
-                            paddingHorizontal: 14,
-                            paddingVertical: 10,
-                            borderRadius: 999,
-                            backgroundColor: "rgba(255,255,255,0.14)",
-                            borderWidth: 1,
-                            borderColor: "rgba(255,255,255,0.12)",
+                            marginTop:
+                              10,
+                            paddingHorizontal:
+                              14,
+                            paddingVertical:
+                              10,
+                            borderRadius:
+                              999,
+                            backgroundColor:
+                              "rgba(255,255,255,0.14)",
+                            borderWidth:
+                              1,
+                            borderColor:
+                              "rgba(255,255,255,0.12)",
                           }}
                         >
-                          <Text style={{ color: "white", fontWeight: "800" }}>
+                          <Text
+                            style={{
+                              color:
+                                "white",
+                              fontWeight:
+                                "800",
+                            }}
+                          >
                             Open in YouTube
                           </Text>
                         </Pressable>
@@ -1292,43 +2050,110 @@ export default function PostCard({
       )}
 
       {/* Header */}
-      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-        <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent:
+            "space-between",
+        }}
+      >
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            flex: 1,
+          }}
+        >
           <Pressable
-            disabled={!canPressAvatar}
-            onPress={() => onPressAvatar?.(author?.id)}
+            disabled={
+              !canPressAvatar
+            }
+            onPress={() =>
+              onPressAvatar?.(
+                author?.id
+              )
+            }
             hitSlop={10}
             style={({ pressed }) => ({
               width: 40,
               height: 40,
               borderRadius: 20,
-              backgroundColor: theme.colors.surfaceAlt,
+              backgroundColor:
+                theme.colors
+                  .surfaceAlt,
               borderWidth: 1,
-              borderColor: theme.colors.divider,
+              borderColor:
+                theme.colors
+                  .divider,
               alignItems: "center",
-              justifyContent: "center",
+              justifyContent:
+                "center",
               overflow: "hidden",
-              opacity: !canPressAvatar ? 1 : pressed ? 0.75 : 1,
+              opacity:
+                !canPressAvatar
+                  ? 1
+                  : pressed
+                    ? 0.75
+                    : 1,
             })}
           >
             {avatarUrl ? (
-              <Image source={{ uri: avatarUrl }} style={{ width: 40, height: 40 }} />
+              <Image
+                source={{
+                  uri:
+                    avatarUrl,
+                }}
+                style={{
+                  width: 40,
+                  height: 40,
+                }}
+              />
             ) : (
-              <Text style={{ color: theme.colors.text2, fontWeight: "900" }}>
+              <Text
+                style={{
+                  color:
+                    theme.colors
+                      .text2,
+                  fontWeight:
+                    "900",
+                }}
+              >
                 {initials}
               </Text>
             )}
           </Pressable>
 
-          <View style={{ marginLeft: 10, flex: 1 }}>
+          <View
+            style={{
+              marginLeft: 10,
+              flex: 1,
+            }}
+          >
             <Text
-              style={{ color: theme.colors.text, fontWeight: "900", fontSize: 14 }}
+              style={{
+                color:
+                  theme.colors
+                    .text,
+                fontWeight:
+                  "900",
+                fontSize: 14,
+              }}
               numberOfLines={1}
             >
               {who}
             </Text>
+
             {!!createdLabel && (
-              <Text style={{ color: theme.colors.muted, fontSize: 12, marginTop: 1 }}>
+              <Text
+                style={{
+                  color:
+                    theme.colors
+                      .muted,
+                  fontSize: 12,
+                  marginTop: 1,
+                }}
+              >
                 {createdLabel}
               </Text>
             )}
@@ -1337,11 +2162,29 @@ export default function PostCard({
 
         {currentUserId ? (
           <Pressable
-            onPress={() => (isOwner ? onDelete?.(post.id) : onHide?.(post.id))}
-            style={{ paddingHorizontal: 6, paddingVertical: 6 }}
+            onPress={() =>
+              isOwner
+                ? onDelete?.(
+                    post.id
+                  )
+                : onHide?.(
+                    post.id
+                  )
+            }
+            style={{
+              paddingHorizontal: 6,
+              paddingVertical: 6,
+            }}
             hitSlop={8}
           >
-            <Ionicons name="ellipsis-horizontal" size={18} color={theme.colors.muted} />
+            <Ionicons
+              name="ellipsis-horizontal"
+              size={18}
+              color={
+                theme.colors
+                  .muted
+              }
+            />
           </Pressable>
         ) : null}
       </View>
@@ -1352,28 +2195,41 @@ export default function PostCard({
             marginTop: 12,
             borderRadius: 22,
             overflow: "hidden",
-            backgroundColor: "#FFFCF5",
+            backgroundColor:
+              "#FFFCF5",
             borderWidth: 1,
-            borderColor: "rgba(180, 83, 9, 0.18)",
-            shadowColor: "rgba(15, 23, 42, 0.10)",
-            shadowOpacity: 0.08,
-            shadowRadius: 12,
-            shadowOffset: { width: 0, height: 5 },
+            borderColor:
+              "rgba(180, 83, 9, 0.18)",
+            shadowColor:
+              "rgba(15, 23, 42, 0.10)",
+            shadowOpacity:
+              0.08,
+            shadowRadius:
+              12,
+            shadowOffset: {
+              width: 0,
+              height: 5,
+            },
             elevation: 2,
           }}
         >
           <View
             style={{
               padding: 15,
-              backgroundColor: "rgba(180, 83, 9, 0.08)",
-              borderBottomWidth: 1,
-              borderBottomColor: "rgba(180, 83, 9, 0.14)",
+              backgroundColor:
+                "rgba(180, 83, 9, 0.08)",
+              borderBottomWidth:
+                1,
+              borderBottomColor:
+                "rgba(180, 83, 9, 0.14)",
             }}
           >
             <View
               style={{
-                flexDirection: "row",
-                alignItems: "center",
+                flexDirection:
+                  "row",
+                alignItems:
+                  "center",
                 gap: 11,
               }}
             >
@@ -1381,25 +2237,43 @@ export default function PostCard({
                 style={{
                   width: 44,
                   height: 44,
-                  borderRadius: 999,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  backgroundColor: "#FFFFFF",
+                  borderRadius:
+                    999,
+                  alignItems:
+                    "center",
+                  justifyContent:
+                    "center",
+                  backgroundColor:
+                    "#FFFFFF",
                   borderWidth: 1,
-                  borderColor: "rgba(180, 83, 9, 0.20)",
+                  borderColor:
+                    "rgba(180, 83, 9, 0.20)",
                 }}
               >
-                <Ionicons name="leaf-outline" size={22} color="#B45309" />
+                <Ionicons
+                  name="leaf-outline"
+                  size={22}
+                  color="#B45309"
+                />
               </View>
 
-              <View style={{ flex: 1 }}>
+              <View
+                style={{
+                  flex: 1,
+                }}
+              >
                 <Text
                   style={{
-                    color: "#7C2D12",
-                    fontSize: 12,
-                    fontWeight: "900",
-                    textTransform: "uppercase",
-                    letterSpacing: 0.5,
+                    color:
+                      "#7C2D12",
+                    fontSize:
+                      12,
+                    fontWeight:
+                      "900",
+                    textTransform:
+                      "uppercase",
+                    letterSpacing:
+                      0.5,
                   }}
                 >
                   Daily Formation
@@ -1407,11 +2281,13 @@ export default function PostCard({
 
                 <Text
                   style={{
-                    color: "#1F2933",
+                    color:
+                      "#1F2933",
                     marginTop: 3,
                     fontSize: 18,
                     lineHeight: 22,
-                    fontWeight: "900",
+                    fontWeight:
+                      "900",
                   }}
                 >
                   {formationTitle}
@@ -1420,60 +2296,97 @@ export default function PostCard({
             </View>
           </View>
 
-          <View style={{ padding: 15 }}>
+          <View
+            style={{
+              padding: 15,
+            }}
+          >
             <View
               style={{
-                alignSelf: "flex-start",
-                paddingHorizontal: 11,
-                paddingVertical: 7,
-                borderRadius: 999,
-                backgroundColor: "rgba(79, 99, 59, 0.10)",
+                alignSelf:
+                  "flex-start",
+                paddingHorizontal:
+                  11,
+                paddingVertical:
+                  7,
+                borderRadius:
+                  999,
+                backgroundColor:
+                  "rgba(79, 99, 59, 0.10)",
                 borderWidth: 1,
-                borderColor: "rgba(79, 99, 59, 0.18)",
-                flexDirection: "row",
-                alignItems: "center",
+                borderColor:
+                  "rgba(79, 99, 59, 0.18)",
+                flexDirection:
+                  "row",
+                alignItems:
+                  "center",
                 gap: 6,
               }}
             >
-              <Ionicons name="checkmark-circle-outline" size={15} color="#4F633B" />
+              <Ionicons
+                name="checkmark-circle-outline"
+                size={15}
+                color="#4F633B"
+              />
 
               <Text
                 style={{
-                  color: "#4F633B",
-                  fontSize: 12,
-                  fontWeight: "900",
+                  color:
+                    "#4F633B",
+                  fontSize:
+                    12,
+                  fontWeight:
+                    "900",
                 }}
               >
-                {formationDescription}
+                {
+                  formationDescription
+                }
               </Text>
             </View>
 
             <View
               style={{
                 marginTop: 14,
-                flexDirection: "row",
+                flexDirection:
+                  "row",
                 flexWrap: "wrap",
                 gap: 8,
               }}
             >
-              {["Scripture", "Prayer", "Obedience", "Service", "Renunciation"].map(
+              {[
+                "Scripture",
+                "Prayer",
+                "Obedience",
+                "Service",
+                "Renunciation",
+              ].map(
                 (label) => (
                   <View
                     key={label}
                     style={{
-                      paddingHorizontal: 10,
-                      paddingVertical: 6,
-                      borderRadius: 999,
-                      backgroundColor: "#FFFFFF",
-                      borderWidth: 1,
-                      borderColor: "rgba(15, 23, 42, 0.08)",
+                      paddingHorizontal:
+                        10,
+                      paddingVertical:
+                        6,
+                      borderRadius:
+                        999,
+                      backgroundColor:
+                        "#FFFFFF",
+                      borderWidth:
+                        1,
+                      borderColor:
+                        "rgba(15, 23, 42, 0.08)",
                     }}
                   >
                     <Text
                       style={{
-                        color: "#6B7280",
-                        fontSize: 11,
-                        fontWeight: "800",
+                        color:
+                          "#6B7280",
+                        fontSize:
+                          11,
+                        fontWeight:
+                          "800",
                       }}
                     >
                       {label}
@@ -1486,11 +2399,13 @@ export default function PostCard({
             {!!post?.content ? (
               <Text
                 style={{
-                  color: "#1F2933",
+                  color:
+                    "#1F2933",
                   marginTop: 15,
                   fontSize: 15,
                   lineHeight: 22,
-                  fontWeight: "600",
+                  fontWeight:
+                    "600",
                 }}
               >
                 {post.content}
@@ -1501,20 +2416,30 @@ export default function PostCard({
               style={{
                 marginTop: 15,
                 paddingTop: 13,
-                borderTopWidth: 1,
-                borderTopColor: "rgba(15, 23, 42, 0.08)",
-                flexDirection: "row",
-                alignItems: "center",
+                borderTopWidth:
+                  1,
+                borderTopColor:
+                  "rgba(15, 23, 42, 0.08)",
+                flexDirection:
+                  "row",
+                alignItems:
+                  "center",
               }}
             >
-              <Ionicons name="people-outline" size={16} color="#4F633B" />
+              <Ionicons
+                name="people-outline"
+                size={16}
+                color="#4F633B"
+              />
 
               <Text
                 style={{
-                  color: "#6B7280",
+                  color:
+                    "#6B7280",
                   marginLeft: 7,
                   fontSize: 12,
-                  fontWeight: "800",
+                  fontWeight:
+                    "800",
                 }}
               >
                 Shared for fellowship encouragement
@@ -1523,8 +2448,7 @@ export default function PostCard({
           </View>
         </View>
       )}
-
-      {!isFormationShare &&
+            {!isFormationShare &&
         !!post?.content && (
           <Text
             style={{
@@ -1565,76 +2489,61 @@ export default function PostCard({
             borderRadius: 14,
             overflow: "hidden",
             width: "100%",
-            backgroundColor: theme.colors.surfaceAlt,
+            backgroundColor:
+              theme.colors.surfaceAlt,
             borderWidth: 1,
-            borderColor: theme.colors.divider,
+            borderColor:
+              theme.colors.divider,
           }}
         >
           <Image
-            source={{ uri: post.media_url }}
+            source={{
+              uri: post.media_url,
+            }}
             style={{
               width: "100%",
-              aspectRatio: displayAspectRatio,
-              backgroundColor: theme.colors.surfaceAlt,
+              aspectRatio:
+                displayAspectRatio,
+              backgroundColor:
+                theme.colors
+                  .surfaceAlt,
             }}
             resizeMode="cover"
             onLoad={(event) => {
-              const source = event?.nativeEvent?.source;
+              const source =
+                event?.nativeEvent
+                  ?.source;
 
-              updateMediaAspectRatio(source?.width, source?.height);
+              updateMediaAspectRatio(
+                source?.width,
+                source?.height
+              );
             }}
           />
         </View>
       )}
 
       {isVideo && (
-        <View
-          style={{
+        <CommunityVideoPreview
+          uri={post.media_url}
+          thumbnailUrl={
+            post
+              ?.media_thumbnail_url ||
+            null
+          }
+          fallbackAspectRatio={
+            displayAspectRatio
+          }
+          resizeMode="cover"
+          loop={false}
+          containerStyle={{
             marginTop: 10,
             borderRadius: 14,
-            overflow: "hidden",
-            width: "100%",
-            backgroundColor: "#000",
             borderWidth: 1,
-            borderColor: theme.colors.divider,
+            borderColor:
+              theme.colors.divider,
           }}
-        >
-          <Video
-            source={{ uri: post.media_url }}
-            style={{
-              width: "100%",
-              aspectRatio: displayAspectRatio,
-              backgroundColor: "#000",
-            }}
-            useNativeControls
-            resizeMode="cover"
-            shouldPlay={false}
-            isLooping={false}
-            onReadyForDisplay={(event) => {
-              const naturalSize = event?.naturalSize;
-
-              updateMediaAspectRatio(
-                naturalSize?.width,
-                naturalSize?.height
-              );
-            }}
-            onError={(e) => {
-              console.log("PostCard video playback error:", {
-                error: e,
-                mediaUrl: post?.media_url,
-                mediaType: post?.media_type,
-                postId: post?.id,
-              });
-            }}
-            onLoad={() => {
-              console.log("PostCard video loaded:", {
-                mediaUrl: post?.media_url,
-                mediaType: post?.media_type,
-                postId: post?.id,
-              });
-            }}
-          />
-        </View>
+        />
       )}
 
       {/* Link preview */}
@@ -1645,27 +2554,38 @@ export default function PostCard({
             marginTop: 10,
             borderRadius: 14,
             overflow: "hidden",
-            backgroundColor: theme.colors.surfaceAlt,
+            backgroundColor:
+              theme.colors.surfaceAlt,
             borderWidth: 1,
-            borderColor: theme.colors.divider,
+            borderColor:
+              theme.colors.divider,
           }}
         >
           {youtubeThumb ? (
             <View>
               <Image
-                source={{ uri: youtubeThumb }}
-                style={{ width: "100%", height: 190 }}
+                source={{
+                  uri: youtubeThumb,
+                }}
+                style={{
+                  width: "100%",
+                  height: 190,
+                }}
                 resizeMode="cover"
               />
+
               <View
                 style={{
-                  position: "absolute",
+                  position:
+                    "absolute",
                   top: 0,
                   left: 0,
                   right: 0,
                   bottom: 0,
-                  alignItems: "center",
-                  justifyContent: "center",
+                  alignItems:
+                    "center",
+                  justifyContent:
+                    "center",
                 }}
                 pointerEvents="none"
               >
@@ -1674,49 +2594,89 @@ export default function PostCard({
                     width: 56,
                     height: 56,
                     borderRadius: 28,
-                    backgroundColor: "rgba(0,0,0,0.55)",
-                    alignItems: "center",
-                    justifyContent: "center",
+                    backgroundColor:
+                      "rgba(0,0,0,0.55)",
+                    alignItems:
+                      "center",
+                    justifyContent:
+                      "center",
                     borderWidth: 1,
-                    borderColor: "rgba(255,255,255,0.25)",
+                    borderColor:
+                      "rgba(255,255,255,0.25)",
                   }}
                 >
-                  <Ionicons name="play" size={26} color="#fff" style={{ marginLeft: 2 }} />
+                  <Ionicons
+                    name="play"
+                    size={26}
+                    color="#fff"
+                    style={{
+                      marginLeft: 2,
+                    }}
+                  />
                 </View>
               </View>
             </View>
           ) : null}
 
-          <View style={{ padding: 12 }}>
+          <View
+            style={{
+              padding: 12,
+            }}
+          >
             <Text
               style={{
-                color: theme.colors.muted,
+                color:
+                  theme.colors
+                    .muted,
                 fontSize: 12,
-                fontWeight: "800",
-                marginBottom: 4,
+                fontWeight:
+                  "800",
+                marginBottom:
+                  4,
               }}
             >
-              {domain ? domain.toUpperCase() : "LINK"}
-            </Text>
-
-            <Text style={{ color: theme.colors.text, fontWeight: "900", fontSize: 13 }}>
-              {domain ? `Open on ${domain}` : "Open link"}
+              {domain
+                ? domain.toUpperCase()
+                : "LINK"}
             </Text>
 
             <Text
-              style={{ color: theme.colors.text2, marginTop: 4, fontSize: 12 }}
+              style={{
+                color:
+                  theme.colors.text,
+                fontWeight:
+                  "900",
+                fontSize: 13,
+              }}
+            >
+              {domain
+                ? `Open on ${domain}`
+                : "Open link"}
+            </Text>
+
+            <Text
+              style={{
+                color:
+                  theme.colors.text2,
+                marginTop: 4,
+                fontSize: 12,
+              }}
               numberOfLines={1}
             >
               {post.url}
             </Text>
 
-            {isYouTubeLink && preferInAppYouTube ? (
+            {isYouTubeLink &&
+            preferInAppYouTube ? (
               <Text
                 style={{
-                  color: theme.colors.muted,
+                  color:
+                    theme.colors
+                      .muted,
                   marginTop: 6,
                   fontSize: 12,
-                  fontWeight: "800",
+                  fontWeight:
+                    "800",
                 }}
               >
                 Opens full screen in-app (auto-falls back to YouTube if blocked)
@@ -1724,21 +2684,47 @@ export default function PostCard({
             ) : null}
 
             {isYouTubeLink ? (
-              <View style={{ marginTop: 10, flexDirection: "row" }}>
+              <View
+                style={{
+                  marginTop: 10,
+                  flexDirection:
+                    "row",
+                }}
+              >
                 <Pressable
-                  onPress={handleOpenInYouTube}
+                  onPress={
+                    handleOpenInYouTube
+                  }
                   style={{
-                    alignSelf: "flex-start",
-                    paddingHorizontal: 12,
-                    paddingVertical: 8,
-                    borderRadius: 999,
-                    backgroundColor: theme.colors.surface,
+                    alignSelf:
+                      "flex-start",
+                    paddingHorizontal:
+                      12,
+                    paddingVertical:
+                      8,
+                    borderRadius:
+                      999,
+                    backgroundColor:
+                      theme.colors
+                        .surface,
                     borderWidth: 1,
-                    borderColor: theme.colors.divider,
+                    borderColor:
+                      theme.colors
+                        .divider,
                   }}
                   hitSlop={8}
                 >
-                  <Text style={{ color: theme.colors.text, fontWeight: "900", fontSize: 12 }}>
+                  <Text
+                    style={{
+                      color:
+                        theme.colors
+                          .text,
+                      fontWeight:
+                        "900",
+                      fontSize:
+                        12,
+                    }}
+                  >
                     Open in YouTube
                   </Text>
                 </Pressable>
@@ -1748,66 +2734,101 @@ export default function PostCard({
         </Pressable>
       ) : null}
 
-      {(totalReactions > 0 || socialRight) ? (
+      {totalReactions > 0 ||
+      socialRight ? (
         <View
           style={{
             marginTop: 13,
             paddingTop: 10,
             borderTopWidth: 1,
-            borderTopColor: "rgba(15, 23, 42, 0.08)",
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "space-between",
+            borderTopColor:
+              "rgba(15, 23, 42, 0.08)",
+            flexDirection:
+              "row",
+            alignItems:
+              "center",
+            justifyContent:
+              "space-between",
           }}
         >
           <View
             style={{
-              flexDirection: "row",
-              alignItems: "center",
+              flexDirection:
+                "row",
+              alignItems:
+                "center",
             }}
           >
-            {visibleReactionTypes.length > 0 ? (
+            {visibleReactionTypes.length >
+            0 ? (
               <View
                 style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  marginRight: 6,
+                  flexDirection:
+                    "row",
+                  alignItems:
+                    "center",
+                  marginRight:
+                    6,
                 }}
               >
-                {visibleReactionTypes.map((reaction, index) => (
-                  <View
-                    key={reaction.type}
-                    style={{
-                      width: 25,
-                      height: 25,
-                      borderRadius: 13,
-                      marginLeft: index === 0 ? 0 : -6,
-                      backgroundColor: "#FFFCF5",
-                      borderWidth: 1.5,
-                      borderColor: "#FFFFFF",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      zIndex: visibleReactionTypes.length - index,
-                    }}
-                  >
-                    <Text
+                {visibleReactionTypes.map(
+                  (
+                    reaction,
+                    index
+                  ) => (
+                    <View
+                      key={
+                        reaction.type
+                      }
                       style={{
-                        fontSize: 14,
+                        width: 25,
+                        height: 25,
+                        borderRadius:
+                          13,
+                        marginLeft:
+                          index === 0
+                            ? 0
+                            : -6,
+                        backgroundColor:
+                          "#FFFCF5",
+                        borderWidth:
+                          1.5,
+                        borderColor:
+                          "#FFFFFF",
+                        alignItems:
+                          "center",
+                        justifyContent:
+                          "center",
+                        zIndex:
+                          visibleReactionTypes.length -
+                          index,
                       }}
                     >
-                      {reaction.emoji}
-                    </Text>
-                  </View>
-                ))}
+                      <Text
+                        style={{
+                          fontSize:
+                            14,
+                        }}
+                      >
+                        {
+                          reaction.emoji
+                        }
+                      </Text>
+                    </View>
+                  )
+                )}
               </View>
             ) : null}
 
             {totalReactions > 0 ? (
               <Text
                 style={{
-                  color: "#6B7280",
-                  fontSize: 12,
-                  fontWeight: "800",
+                  color:
+                    "#6B7280",
+                  fontSize:
+                    12,
+                  fontWeight:
+                    "800",
                 }}
               >
                 {totalReactions}
@@ -1817,16 +2838,28 @@ export default function PostCard({
 
           {socialRight ? (
             <Pressable
-              onPress={() => onOpenComments?.(post)}
-              style={({ pressed }) => ({
-                opacity: pressed ? 0.68 : 1,
+              onPress={() =>
+                onOpenComments?.(
+                  post
+                )
+              }
+              style={({
+                pressed,
+              }) => ({
+                opacity:
+                  pressed
+                    ? 0.68
+                    : 1,
               })}
             >
               <Text
                 style={{
-                  color: "#6B7280",
-                  fontSize: 12,
-                  fontWeight: "800",
+                  color:
+                    "#6B7280",
+                  fontSize:
+                    12,
+                  fontWeight:
+                    "800",
                 }}
               >
                 {socialRight}
@@ -1841,68 +2874,111 @@ export default function PostCard({
           marginTop: 9,
           padding: 4,
           borderRadius: 19,
-          backgroundColor: "#FFFCF5",
+          backgroundColor:
+            "#FFFCF5",
           borderWidth: 1,
-          borderColor: "rgba(79, 99, 59, 0.15)",
-          flexDirection: "row",
-          alignItems: "center",
+          borderColor:
+            "rgba(79, 99, 59, 0.15)",
+          flexDirection:
+            "row",
+          alignItems:
+            "center",
         }}
       >
         <FeedActionButton
-          icon={selectedReaction ? undefined : "thumbs-up-outline"}
-          emoji={selectedReaction?.emoji}
-          label={selectedReaction?.label || "React"}
-          active={Boolean(selectedReaction)}
-          onPress={handlePrimaryReactionPress}
-          onLongPress={toggleReactionPicker}
+          icon={
+            selectedReaction
+              ? undefined
+              : "thumbs-up-outline"
+          }
+          emoji={
+            selectedReaction
+              ?.emoji
+          }
+          label={
+            selectedReaction
+              ?.label ||
+            "React"
+          }
+          active={Boolean(
+            selectedReaction
+          )}
+          onPress={
+            handlePrimaryReactionPress
+          }
+          onLongPress={
+            toggleReactionPicker
+          }
         />
 
         <View
           style={{
             width: 1,
             height: 25,
-            backgroundColor: "rgba(79, 99, 59, 0.14)",
+            backgroundColor:
+              "rgba(79, 99, 59, 0.14)",
           }}
         />
 
         <FeedActionButton
           icon="chatbubble-ellipses-outline"
           label="Comment"
-          onPress={() => onOpenComments?.(post)}
+          onPress={() =>
+            onOpenComments?.(
+              post
+            )
+          }
         />
 
         <View
           style={{
             width: 1,
             height: 25,
-            backgroundColor: "rgba(79, 99, 59, 0.14)",
+            backgroundColor:
+              "rgba(79, 99, 59, 0.14)",
           }}
         />
 
         <FeedActionButton
           icon="arrow-redo-outline"
           label="Share"
-          disabled={typeof onShare !== "function"}
-          onPress={() => onShare?.(post)}
+          disabled={
+            typeof onShare !==
+            "function"
+          }
+          onPress={() =>
+            onShare?.(post)
+          }
         />
       </View>
 
-      {reactionPickerForPost === post.id ? (
+      {reactionPickerForPost ===
+      post.id ? (
         <View
           style={{
             marginTop: 9,
-            alignSelf: "flex-start",
+            alignSelf:
+              "flex-start",
             borderRadius: 22,
-            backgroundColor: "#FFFFFF",
+            backgroundColor:
+              "#FFFFFF",
             borderWidth: 1,
-            borderColor: "rgba(79, 99, 59, 0.18)",
-            paddingHorizontal: 7,
-            paddingVertical: 7,
-            flexDirection: "row",
-            alignItems: "center",
-            shadowColor: "rgba(15, 23, 42, 0.12)",
-            shadowOpacity: 0.14,
-            shadowRadius: 10,
+            borderColor:
+              "rgba(79, 99, 59, 0.18)",
+            paddingHorizontal:
+              7,
+            paddingVertical:
+              7,
+            flexDirection:
+              "row",
+            alignItems:
+              "center",
+            shadowColor:
+              "rgba(15, 23, 42, 0.12)",
+            shadowOpacity:
+              0.14,
+            shadowRadius:
+              10,
             shadowOffset: {
               width: 0,
               height: 4,
@@ -1910,73 +2986,104 @@ export default function PostCard({
             elevation: 5,
           }}
         >
-          {POST_REACTIONS.map((reaction) => {
-            const isSelected =
-              userReaction?.type === reaction.type;
+          {POST_REACTIONS.map(
+            (reaction) => {
+              const isSelected =
+                userReaction
+                  ?.type ===
+                reaction.type;
 
-            return (
-              <Pressable
-                key={reaction.type}
-                onPress={() =>
-                  onSetReaction?.(
-                    post.id,
+              return (
+                <Pressable
+                  key={
                     reaction.type
-                  )
-                }
-                accessibilityLabel={reaction.label}
-                style={({ pressed }) => ({
-                  width: 43,
-                  height: 43,
-                  borderRadius: 16,
-                  marginHorizontal: 2,
-                  backgroundColor: isSelected
-                    ? "rgba(180, 83, 9, 0.12)"
-                    : pressed
-                      ? "rgba(79, 99, 59, 0.10)"
-                      : "transparent",
-                  borderWidth: isSelected ? 1 : 0,
-                  borderColor:
-                    "rgba(180, 83, 9, 0.25)",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  transform: [
-                    {
-                      scale: pressed
-                        ? 1.12
-                        : isSelected
-                          ? 1.06
-                          : 1,
-                    },
-                  ],
-                })}
-              >
-                <Text
-                  style={{
-                    fontSize: 23,
-                    lineHeight: 28,
-                  }}
+                  }
+                  onPress={() =>
+                    onSetReaction?.(
+                      post.id,
+                      reaction.type
+                    )
+                  }
+                  accessibilityLabel={
+                    reaction.label
+                  }
+                  style={({
+                    pressed,
+                  }) => ({
+                    width: 43,
+                    height: 43,
+                    borderRadius:
+                      16,
+                    marginHorizontal:
+                      2,
+                    backgroundColor:
+                      isSelected
+                        ? "rgba(180, 83, 9, 0.12)"
+                        : pressed
+                          ? "rgba(79, 99, 59, 0.10)"
+                          : "transparent",
+                    borderWidth:
+                      isSelected
+                        ? 1
+                        : 0,
+                    borderColor:
+                      "rgba(180, 83, 9, 0.25)",
+                    alignItems:
+                      "center",
+                    justifyContent:
+                      "center",
+                    transform: [
+                      {
+                        scale:
+                          pressed
+                            ? 1.12
+                            : isSelected
+                              ? 1.06
+                              : 1,
+                      },
+                    ],
+                  })}
                 >
-                  {reaction.emoji}
-                </Text>
-              </Pressable>
-            );
-          })}
+                  <Text
+                    style={{
+                      fontSize:
+                        23,
+                      lineHeight:
+                        28,
+                    }}
+                  >
+                    {
+                      reaction.emoji
+                    }
+                  </Text>
+                </Pressable>
+              );
+            }
+          )}
 
           <Pressable
             onPress={() =>
-              setReactionPickerForPost?.(null)
+              setReactionPickerForPost?.(
+                null
+              )
             }
             hitSlop={7}
-            style={({ pressed }) => ({
+            style={({
+              pressed,
+            }) => ({
               width: 33,
               height: 33,
-              borderRadius: 12,
+              borderRadius:
+                12,
               marginLeft: 4,
-              backgroundColor: pressed
-                ? "rgba(79, 99, 59, 0.10)"
-                : "#FFFCF5",
-              alignItems: "center",
-              justifyContent: "center",
+              backgroundColor:
+                pressed
+                  ? "rgba(79, 99, 59, 0.10)"
+                  : "#FFFCF5",
+              alignItems:
+                "center",
+              justifyContent:
+                "center",
             })}
           >
             <Ionicons

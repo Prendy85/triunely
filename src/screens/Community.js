@@ -45,6 +45,7 @@ import TriunelyStoryMediaPicker from "../components/media/TriunelyStoryMediaPick
 import TriunelyStoryPreview from "../components/media/TriunelyStoryPreview";
 
 import UnifiedInboxHeaderButton from "../components/UnifiedInboxHeaderButton";
+import { useBackgroundUploads } from "../context/BackgroundUploadProvider";
 import { useFellowshipRequestsModal } from "../context/FellowshipRequestsModalProvider";
 import { useRealtime } from "../context/RealtimeProvider";
 import PartnerCommunityPostCard from "../features/partners/components/PartnerCommunityPostCard";
@@ -411,6 +412,13 @@ export default function Community() {
   const [currentUserId, setCurrentUserId] = useState(null);
   const [profileAvatarUrl, setProfileAvatarUrl] = useState(null);
   const rt = useRealtime();
+
+  const {
+    startUpload,
+    setUploadProgress,
+    completeUpload,
+    failUpload,
+  } = useBackgroundUploads();
 
 // Always live values (provided by RealtimeProvider)
 const unreadNotificationCount = rt?.unreadNotificationCount ?? 0;
@@ -1835,148 +1843,327 @@ function handleOpenFellowship() {
     setSelectedOverlayId(null);
   }
 
-  async function handleCreatePost(content, url, isAnonymous, media) {
-    if (!content.trim() && !media) {
-      Alert.alert("Message required", "Please write something or attach an image.");
+  async function handleCreatePost(
+    content,
+    url,
+    isAnonymous,
+    media
+  ) {
+    const cleanContent =
+      String(content || "").trim();
+
+    const cleanUrl =
+      String(url || "").trim();
+
+    if (!cleanContent && !media) {
+      Alert.alert(
+        "Message required",
+        "Please write something or attach media."
+      );
+
       return;
     }
+
+    const mediaIsVideo =
+      isFeedVideoMedia(media);
+
+    const mediaIsImage =
+      Boolean(media?.uri) &&
+      !mediaIsVideo;
+
+    let backgroundUploadId =
+      null;
 
     try {
       setPosting(true);
 
-      // Get current user
-      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError) throw sessionError;
+      const {
+        data: sessionData,
+        error: sessionError,
+      } =
+        await supabase.auth
+          .getSession();
 
-      const userId = sessionData?.session?.user?.id;
-      if (!userId) {
-        Alert.alert("Not signed in", "Please sign in again before posting a message.");
-        return;
+      if (sessionError) {
+        throw sessionError;
       }
 
-      // ---------- 1) Upload media to Supabase Storage ----------
+      const userId =
+        sessionData?.session
+          ?.user?.id;
+
+      if (!userId) {
+        throw new Error(
+          "Please sign in again before posting."
+        );
+      }
+
+      backgroundUploadId =
+        startUpload({
+          title: mediaIsVideo
+            ? "Uploading Community video…"
+            : mediaIsImage
+              ? "Uploading Community photo…"
+              : "Publishing Community post…",
+
+          subtitle:
+            "You can continue using Triunely while this finishes.",
+
+          mediaType: mediaIsVideo
+            ? "video"
+            : mediaIsImage
+              ? "image"
+              : null,
+
+          metadata: {
+            destination:
+              "community",
+          },
+        });
+
+      setUploadProgress(
+        backgroundUploadId,
+        0.06
+      );
+
       let mediaUrl = null;
       let mediaType = null;
 
-      if (media && media.uri) {
-        try {
-          const uploaded = await uploadFeedMedia({
+      if (media?.uri) {
+        setUploadProgress(
+          backgroundUploadId,
+          0.12
+        );
+
+        const uploaded =
+          await uploadFeedMedia({
             media,
             scope: "posts",
             ownerId: userId,
-            folderId: HOME_COMMUNITY_ID,
+            folderId:
+              HOME_COMMUNITY_ID,
           });
 
-          mediaUrl = uploaded.mediaUrl;
-          mediaType = uploaded.mediaType;
-        } catch (e) {
-          console.log("Community media upload error:", e);
+        mediaUrl =
+          uploaded?.mediaUrl ||
+          null;
 
-          Alert.alert(
-            "Upload failed",
-            isFeedVideoMedia(media)
-              ? "We couldn’t upload your video. Try a shorter clip or export it as MP4, then try again."
-              : "We couldn’t upload your image. You can still post text only."
+        mediaType =
+          uploaded?.mediaType ||
+          null;
+
+        if (!mediaUrl) {
+          throw new Error(
+            mediaIsVideo
+              ? "Triunely could not upload the selected video."
+              : "Triunely could not upload the selected photo."
+          );
+        }
+
+        setUploadProgress(
+          backgroundUploadId,
+          0.82
+        );
+      } else {
+        setUploadProgress(
+          backgroundUploadId,
+          0.72
+        );
+      }
+
+      if (!HOME_COMMUNITY_ID) {
+        throw new Error(
+          "Triunely could not identify the Community feed."
+        );
+      }
+
+      const payload = {
+        user_id: userId,
+        community_id:
+          HOME_COMMUNITY_ID,
+        church_id: null,
+        visibility:
+          "communities",
+        is_anonymous:
+          Boolean(isAnonymous),
+        content: cleanContent,
+      };
+
+      if (cleanUrl) {
+        payload.url =
+          cleanUrl;
+      }
+
+      if (mediaUrl) {
+        payload.media_url =
+          mediaUrl;
+
+        payload.media_type =
+          mediaType;
+      }
+
+      if (cleanUrl) {
+        try {
+          const {
+            data: previewData,
+            error: previewError,
+          } =
+            await supabase.functions
+              .invoke(
+                "link-preview",
+                {
+                  body: {
+                    url: cleanUrl,
+                  },
+                }
+              );
+
+          console.log(
+            "link-preview data:",
+            previewData
+          );
+
+          console.log(
+            "link-preview error:",
+            previewError
+          );
+
+          if (
+            !previewError &&
+            previewData?.ok
+          ) {
+            payload.link_title =
+              previewData.title ||
+              null;
+
+            payload.link_description =
+              previewData.description ||
+              null;
+
+            payload.link_image =
+              previewData.image ||
+              null;
+          }
+        } catch (error) {
+          console.log(
+            "link-preview failed",
+            error
           );
         }
       }
-      // ---------- 2) Insert the post row ----------
-const feedCommunityId = church?.feed_community_id || null;
 
-if (!feedCommunityId) {
-  Alert.alert(
-    "Church feed not linked",
-    "This church does not have a linked feed yet. Please check the church setup."
-  );
-  return;
-}
+      setUploadProgress(
+        backgroundUploadId,
+        0.92
+      );
 
-const payload = {
-  user_id: userId,
-  community_id: feedCommunityId,
-  church_id: churchId,
-  visibility: "church",
-  is_anonymous: false,
-  content: content.trim(),
-};
+      const {
+        data,
+        error,
+      } =
+        await supabase
+          .from("posts")
+          .insert(payload)
+          .select(
+            `
+            id,
+            user_id,
+            church_id,
+            content,
+            url,
+            link_title,
+            link_description,
+            link_image,
+            is_anonymous,
+            media_url,
+            media_type,
+            created_at
+            `
+          )
+          .single();
 
-
-
-      if (url && url.trim()) payload.url = url.trim();
-      if (mediaUrl) {
-        payload.media_url = mediaUrl;
-        payload.media_type = mediaType;
+      if (error) {
+        throw error;
       }
 
-      
-// ✅ ADD THIS BLOCK RIGHT HERE (BEFORE THE INSERT)
-let linkPreview = null;
+      const newPost = {
+        ...data,
+        church: null,
+        reactions: [],
+        comment_count: 0,
+      };
 
-if (url && url.trim()) {
-  try {
-    const { data: previewData, error: previewError } =
-      await supabase.functions.invoke("link-preview", {
-        body: { url: url.trim() },
+      setPosts((previous) => {
+        const alreadyExists =
+          previous.some(
+            (post) =>
+              post.id ===
+              newPost.id
+          );
+
+        if (alreadyExists) {
+          return previous;
+        }
+
+        return [
+          newPost,
+          ...previous,
+        ];
       });
 
-    // ✅ PUT THE LOGS EXACTLY HERE
-    console.log("link-preview data:", previewData);
-    console.log("link-preview error:", previewError);
-
-    if (!previewError && previewData?.ok) {
-      linkPreview = previewData;
-    }
-  } catch (e) {
-    console.log("link-preview failed", e);
-  }
-}
-
-
-// ✅ ADD THIS BLOCK RIGHT HERE (STILL BEFORE THE INSERT)
-if (linkPreview) {
-  payload.link_title = linkPreview.title || null;
-  payload.link_description = linkPreview.description || null;
-  payload.link_image = linkPreview.image || null;
-}
-
-      const { data, error } = await supabase
-        .from("posts")
-        .insert(payload)
-        .select(
-          `
-          id,
-  user_id,
-  content,
-  url,
-  link_title,
-  link_description,
-  link_image,
-  is_anonymous,
-  media_url,
-  media_type,
-  created_at
-      `
-        )
-        .single();
-
-      if (error) throw error;
-
-      const newPost = { ...data, reactions: [], comment_count: 0 };
-
-      // Put new post at the top of the feed
-      setPosts((prev) => [newPost, ...prev]);
-
-      // NEW: Ensure we have the author's profile cached for immediate render
-      if (!newPost.is_anonymous && newPost.user_id) {
-        fetchProfilesForUsers([newPost.user_id]);
+      if (
+        !newPost.is_anonymous &&
+        newPost.user_id
+      ) {
+        fetchProfilesForUsers([
+          newPost.user_id,
+        ]);
       }
 
-      setShowNewModal(false);
-    } catch (e) {
-      console.log("Error creating post", e);
-      const msg =
-        e?.message || e?.error_description || "We couldn’t post your message right now. Please try again.";
-      Alert.alert("Could not post", msg);
+      setUploadProgress(
+        backgroundUploadId,
+        1
+      );
+
+      completeUpload(
+        backgroundUploadId,
+        {
+          title: mediaIsVideo
+            ? "Community video posted"
+            : mediaIsImage
+              ? "Community photo posted"
+              : "Community post published",
+
+          subtitle:
+            "Your post is now live in Community.",
+
+          metadata: {
+            destination:
+              "community",
+            postId:
+              newPost.id,
+          },
+        }
+      );
+    } catch (error) {
+      console.log(
+        "Error creating Community post:",
+        error
+      );
+
+      if (backgroundUploadId) {
+        failUpload(
+          backgroundUploadId,
+          error?.message ||
+            "Triunely could not publish this post."
+        );
+      } else {
+        Alert.alert(
+          "Could not post",
+          error?.message ||
+            "Triunely could not publish this post."
+        );
+      }
     } finally {
       setPosting(false);
     }

@@ -5,7 +5,7 @@ import { FileSystemUploadType } from "expo-file-system/legacy";
 import { supabase } from "./supabase";
 
 const BUCKET = "post_media";
-const SOFT_MAX_VIDEO_BYTES = 45 * 1024 * 1024;
+const SOFT_MAX_VIDEO_BYTES = 250 * 1024 * 1024;
 
 function encodeStoragePath(p) {
   return String(p)

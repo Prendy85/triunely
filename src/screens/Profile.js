@@ -599,6 +599,57 @@ export default function Profile({ navigation, route }) {
   const [adminChurchId, setAdminChurchId] = useState(null);
   const [checkingChurchAdmin, setCheckingChurchAdmin] = useState(false);
 
+  const [platformAuthority, setPlatformAuthority] =
+    useState(null);
+
+  const [checkingPlatformAuthority, setCheckingPlatformAuthority] =
+    useState(false);
+
+  const refreshPlatformAuthorityStatus = useCallback(
+    async (userIdOverride) => {
+      const uid = userIdOverride || user?.id;
+
+      if (!uid) {
+        setPlatformAuthority(null);
+        return;
+      }
+
+      try {
+        setCheckingPlatformAuthority(true);
+
+        const { data, error } = await supabase.rpc(
+          "get_my_triunely_platform_authority_rpc"
+        );
+
+        if (error) {
+          console.log(
+            "Platform authority lookup error:",
+            error
+          );
+
+          setPlatformAuthority(null);
+          return;
+        }
+
+        const resolvedAuthority = Array.isArray(data)
+          ? data[0] || null
+          : data || null;
+
+        setPlatformAuthority(resolvedAuthority);
+      } catch (error) {
+        console.log(
+          "Platform authority lookup exception:",
+          error
+        );
+
+        setPlatformAuthority(null);
+      } finally {
+        setCheckingPlatformAuthority(false);
+      }
+    },
+    [user?.id]
+  );
+
   const refreshChurchAdminStatus = useCallback(
     async (userIdOverride) => {
       const uid = userIdOverride || user?.id;
@@ -766,8 +817,14 @@ export default function Profile({ navigation, route }) {
   useFocusEffect(
     useCallback(() => {
       if (!user?.id) return;
+
       refreshChurchAdminStatus(user.id);
-    }, [user?.id, refreshChurchAdminStatus])
+      refreshPlatformAuthorityStatus(user.id);
+    }, [
+      user?.id,
+      refreshChurchAdminStatus,
+      refreshPlatformAuthorityStatus,
+    ])
   );
     useEffect(() => {
     (async () => {
@@ -1695,7 +1752,7 @@ export default function Profile({ navigation, route }) {
 
     go();
   }
-  
+
     function renderOptionPills(options, selected, onSelect) {
     return (
       <View
@@ -3338,6 +3395,209 @@ export default function Profile({ navigation, route }) {
                   ? renderEventsTab()
                   : renderPostsTab()}
               </View>
+
+              {platformAuthority?.can_access_platform_review ||
+              platformAuthority?.can_manage_platform_staff ||
+              checkingPlatformAuthority ? (
+                <View
+                  style={{
+                    ...premiumCardStyle,
+                    padding: 16,
+                    marginBottom: 16,
+                    borderColor: AMBER_BORDER,
+                  }}
+                >
+                  <PremiumSectionHeader
+                    title="Triunely Platform Operations"
+                    subtitle="Protected governance and delegated authority"
+                    icon="shield-checkmark-outline"
+                  />
+
+                  {checkingPlatformAuthority ? (
+                    <View
+                      style={{
+                        borderRadius: 18,
+                        backgroundColor: AMBER_SOFT,
+                        borderWidth: 1,
+                        borderColor: AMBER_BORDER,
+                        padding: 13,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color: MUTED,
+                          fontSize: 13.5,
+                          fontWeight: "800",
+                          lineHeight: 20,
+                        }}
+                      >
+                        Checking platform authority…
+                      </Text>
+                    </View>
+                  ) : (
+                    <View>
+                      {platformAuthority?.can_access_platform_review ? (
+                        <Pressable
+                          onPress={() =>
+                            navigation.navigate(
+                              "TriunelyRecoveryReview"
+                            )
+                          }
+                          style={({ pressed }) => ({
+                            borderRadius: 18,
+                            backgroundColor: pressed
+                              ? "rgba(180, 83, 9, 0.14)"
+                              : AMBER_SOFT,
+                            borderWidth: 1,
+                            borderColor: AMBER_BORDER,
+                            padding: 14,
+                          })}
+                        >
+                          <View
+                            style={{
+                              flexDirection: "row",
+                              alignItems: "center",
+                            }}
+                          >
+                            <View
+                              style={{
+                                width: 44,
+                                height: 44,
+                                borderRadius: 22,
+                                alignItems: "center",
+                                justifyContent: "center",
+                                backgroundColor: SURFACE,
+                                borderWidth: 1,
+                                borderColor: AMBER_BORDER,
+                                marginRight: 11,
+                              }}
+                            >
+                              <Ionicons
+                                name="shield-half-outline"
+                                size={21}
+                                color={EVENT_AMBER}
+                              />
+                            </View>
+
+                            <View style={{ flex: 1 }}>
+                              <Text
+                                style={{
+                                  color: EVENT_BROWN,
+                                  fontSize: 14,
+                                  fontWeight: "900",
+                                }}
+                              >
+                                Platform Recovery Review
+                              </Text>
+
+                              <Text
+                                style={{
+                                  color: MUTED,
+                                  fontSize: 11.5,
+                                  fontWeight: "700",
+                                  lineHeight: 17,
+                                  marginTop: 3,
+                                }}
+                              >
+                                Review protected Network ownership
+                                recovery cases awaiting an independent
+                                platform decision.
+                              </Text>
+                            </View>
+
+                            <Ionicons
+                              name="chevron-forward"
+                              size={19}
+                              color={EVENT_AMBER}
+                            />
+                          </View>
+                        </Pressable>
+                      ) : null}
+
+                      {platformAuthority?.can_manage_platform_staff ? (
+                        <Pressable
+                          onPress={() =>
+                            navigation.navigate(
+                              "TriunelyPlatformStaffManagement"
+                            )
+                          }
+                          style={({ pressed }) => ({
+                            borderRadius: 18,
+                            backgroundColor: pressed
+                              ? "rgba(79, 99, 59, 0.14)"
+                              : OLIVE_SOFT,
+                            borderWidth: 1,
+                            borderColor: OLIVE_BORDER,
+                            padding: 14,
+                            marginTop:
+                              platformAuthority?.can_access_platform_review
+                                ? 10
+                                : 0,
+                          })}
+                        >
+                          <View
+                            style={{
+                              flexDirection: "row",
+                              alignItems: "center",
+                            }}
+                          >
+                            <View
+                              style={{
+                                width: 44,
+                                height: 44,
+                                borderRadius: 22,
+                                alignItems: "center",
+                                justifyContent: "center",
+                                backgroundColor: SURFACE,
+                                borderWidth: 1,
+                                borderColor: OLIVE_BORDER,
+                                marginRight: 11,
+                              }}
+                            >
+                              <Ionicons
+                                name="people-outline"
+                                size={21}
+                                color={OLIVE}
+                              />
+                            </View>
+
+                            <View style={{ flex: 1 }}>
+                              <Text
+                                style={{
+                                  color: OLIVE,
+                                  fontSize: 14,
+                                  fontWeight: "900",
+                                }}
+                              >
+                                Platform Staff Management
+                              </Text>
+
+                              <Text
+                                style={{
+                                  color: MUTED,
+                                  fontSize: 11.5,
+                                  fontWeight: "700",
+                                  lineHeight: 17,
+                                  marginTop: 3,
+                                }}
+                              >
+                                Appoint, change, suspend and restore
+                                delegated Triunely platform authority.
+                              </Text>
+                            </View>
+
+                            <Ionicons
+                              name="chevron-forward"
+                              size={19}
+                              color={OLIVE}
+                            />
+                          </View>
+                        </Pressable>
+                      ) : null}
+                    </View>
+                  )}
+                </View>
+              ) : null}
 
               <View
                 style={{

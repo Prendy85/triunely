@@ -21,8 +21,10 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
+import BackgroundUploadBanner from "./src/components/BackgroundUploadBanner";
 import ImpactModal from "./src/components/ImpactModal";
 import InAppNotificationBanner from "./src/components/InAppNotificationBanner";
+import { BackgroundUploadProvider } from "./src/context/BackgroundUploadProvider";
 import { FellowshipRequestsModalProvider } from "./src/context/FellowshipRequestsModalProvider";
 import { PointsProvider } from "./src/context/PointsContext";
 import { RealtimeProvider } from "./src/context/RealtimeProvider";
@@ -45,13 +47,25 @@ import Profile from "./src/screens/Profile";
 
 // Global / shared screens
 import Chat from "./src/screens/Chat";
+import CreateNetwork from "./src/screens/CreateNetwork";
 import DirectMessageUserSearch from "./src/screens/DirectMessageUserSearch";
 import GlobalSearch from "./src/screens/GlobalSearch";
 import MessagesInbox from "./src/screens/MessagesInbox";
+import MyNetworkInvitations from "./src/screens/MyNetworkInvitations";
+import NetworkAdmin from "./src/screens/NetworkAdmin";
 import NetworkDetail from "./src/screens/NetworkDetail";
+import NetworkInvitationsAdmin from "./src/screens/NetworkInvitationsAdmin";
+import NetworkMembersAdmin from "./src/screens/NetworkMembersAdmin";
+import NetworkOwnershipRecovery from "./src/screens/NetworkOwnershipRecovery";
+import NetworkPostComposer from "./src/screens/NetworkPostComposer";
+import NetworkPostEditor from "./src/screens/NetworkPostEditor";
+import NetworkPostsAdmin from "./src/screens/NetworkPostsAdmin";
+import NetworkRolesAdmin from "./src/screens/NetworkRolesAdmin";
 import Networks from "./src/screens/Networks";
 import NotificationsScreen from "./src/screens/NotificationsScreen";
 import SharePostRecipientScreen from "./src/screens/SharePostRecipientScreen";
+import TriunelyPlatformStaffManagement from "./src/screens/TriunelyPlatformStaffManagement";
+import TriunelyRecoveryReview from "./src/screens/TriunelyRecoveryReview";
 import UserProfile from "./src/screens/UserProfile";
 
 // Apologetics screens
@@ -470,10 +484,70 @@ function CommunityStackNavigator() {
       />
 
       <CommunityStack.Screen
+        name="CreateNetwork"
+        component={CreateNetwork}
+        options={{ animation: "slide_from_right" }}
+      />
+
+      <CommunityStack.Screen
         name="NetworkDetail"
         component={NetworkDetail}
         options={{ animation: "slide_from_right" }}
       />
+
+      <CommunityStack.Screen
+        name="NetworkAdmin"
+        component={NetworkAdmin}
+        options={{ animation: "slide_from_right" }}
+      />
+
+      <CommunityStack.Screen
+        name="NetworkMembersAdmin"
+        component={NetworkMembersAdmin}
+        options={{ animation: "slide_from_right" }}
+      />
+
+      <CommunityStack.Screen
+        name="NetworkInvitationsAdmin"
+        component={NetworkInvitationsAdmin}
+        options={{ animation: "slide_from_right" }}
+      />
+
+      <CommunityStack.Screen
+        name="MyNetworkInvitations"
+        component={MyNetworkInvitations}
+        options={{ animation: "slide_from_right" }}
+      />
+
+      <CommunityStack.Screen
+        name="NetworkRolesAdmin"
+        component={NetworkRolesAdmin}
+        options={{ animation: "slide_from_right" }}
+      />
+
+<CommunityStack.Screen
+  name="NetworkOwnershipRecovery"
+  component={NetworkOwnershipRecovery}
+  options={{ animation: "slide_from_right" }}
+/>
+
+<CommunityStack.Screen
+  name="NetworkPostsAdmin"
+  component={NetworkPostsAdmin}
+  options={{ animation: "slide_from_right" }}
+/>
+
+<CommunityStack.Screen
+  name="NetworkPostEditor"
+  component={NetworkPostEditor}
+  options={{ animation: "slide_from_right" }}
+/>
+
+<CommunityStack.Screen
+  name="NetworkPostComposer"
+  component={NetworkPostComposer}
+  options={{ animation: "slide_from_right" }}
+/>
     </CommunityStack.Navigator>
   );
 }
@@ -495,7 +569,22 @@ function PrayerStackNavigator() {
 function ProfileStackNavigator() {
   return (
     <ProfileStack.Navigator screenOptions={{ headerShown: false }}>
-      <ProfileStack.Screen name="ProfileMain" component={Profile} />
+      <ProfileStack.Screen
+        name="ProfileMain"
+        component={Profile}
+      />
+
+      <ProfileStack.Screen
+        name="TriunelyRecoveryReview"
+        component={TriunelyRecoveryReview}
+        options={{ animation: "slide_from_right" }}
+      />
+
+      <ProfileStack.Screen
+        name="TriunelyPlatformStaffManagement"
+        component={TriunelyPlatformStaffManagement}
+        options={{ animation: "slide_from_right" }}
+      />
     </ProfileStack.Navigator>
   );
 }
@@ -1366,17 +1455,29 @@ useEffect(() => {
                   />
                 ) : (
                   <>
-                    <FellowshipRequestsModalProvider>
-                      <RealtimeProvider session={session} profile={profile}>
-                        <NavigationContainer
-                          ref={navigationRef}
-                          linking={linking}
+                    <BackgroundUploadProvider>
+                      <FellowshipRequestsModalProvider>
+                        <RealtimeProvider
+                          session={session}
+                          profile={profile}
                         >
-                          <RootNavigator initialTabName={initialTabName} />
-                          <InAppNotificationBanner navigation={navigationRef} />
-                        </NavigationContainer>
-                      </RealtimeProvider>
-                    </FellowshipRequestsModalProvider>
+                          <NavigationContainer
+                            ref={navigationRef}
+                            linking={linking}
+                          >
+                            <RootNavigator
+                              initialTabName={initialTabName}
+                            />
+
+                            <InAppNotificationBanner
+                              navigation={navigationRef}
+                            />
+                          </NavigationContainer>
+                        </RealtimeProvider>
+                      </FellowshipRequestsModalProvider>
+
+                      <BackgroundUploadBanner />
+                    </BackgroundUploadProvider>
 
                     <ImpactModal
                       visible={showImpact}
