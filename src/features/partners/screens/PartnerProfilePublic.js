@@ -110,6 +110,7 @@ export default function PartnerProfilePublic({
   const partnerProfileId =
     route?.params?.partnerProfileId;
 
+
   const [loading, setLoading] =
     useState(true);
 
@@ -1345,6 +1346,9 @@ export default function PartnerProfilePublic({
               partner={partner}
               typeIcon={typeIcon}
               typeLabel={typeLabel}
+showVerifiedBadge={
+  partner?.badge_active === true
+}
               isOwner={isOwner}
               isConnected={isConnected}
               connectionCount={
@@ -1380,9 +1384,10 @@ export default function PartnerProfilePublic({
             />
 
             {activeTab === "posts" ? (
-              <PartnerPostsTab
-                posts={posts}
-                isOwner={isOwner}
+<PartnerPostsTab
+  posts={posts}
+  partner={partner}
+  isOwner={isOwner}
                 onCreatePost={
                   handleCreatePost
                 }

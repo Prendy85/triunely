@@ -13,6 +13,7 @@ import {
 } from "react-native";
 
 import Screen from "../components/Screen";
+import useCommercialAccountScope from "../hooks/useCommercialAccountScope";
 import { supabase } from "../lib/supabase";
 
 const PREMIUM_CREAM = "#FFFCF5";
@@ -222,6 +223,11 @@ export default function NetworkAdmin() {
     route.params?.networkUuid ||
     route.params?.networkId ||
     null;
+
+  useCommercialAccountScope(
+    "network",
+    networkUuid
+  );
 
   const [network, setNetwork] = useState(null);
   const [currentUserId, setCurrentUserId] = useState(null);

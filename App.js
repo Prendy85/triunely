@@ -25,6 +25,7 @@ import BackgroundUploadBanner from "./src/components/BackgroundUploadBanner";
 import ImpactModal from "./src/components/ImpactModal";
 import InAppNotificationBanner from "./src/components/InAppNotificationBanner";
 import { BackgroundUploadProvider } from "./src/context/BackgroundUploadProvider";
+import { CommercialProvider } from "./src/context/CommercialProvider";
 import { FellowshipRequestsModalProvider } from "./src/context/FellowshipRequestsModalProvider";
 import { PointsProvider } from "./src/context/PointsContext";
 import { RealtimeProvider } from "./src/context/RealtimeProvider";
@@ -118,6 +119,7 @@ import CreatePartnerProfile from "./src/features/partners/screens/CreatePartnerP
 import CreatePromotionCampaign from "./src/features/partners/screens/CreatePromotionCampaign";
 import ManagePartnerGalleryItem from "./src/features/partners/screens/ManagePartnerGalleryItem";
 import MyPartnerProfiles from "./src/features/partners/screens/MyPartnerProfiles";
+import PartnerGrowth from "./src/features/partners/screens/PartnerGrowth";
 import PartnerProfilePublic from "./src/features/partners/screens/PartnerProfilePublic";
 import PartnerProfilesDirectory from "./src/features/partners/screens/PartnerProfilesDirectory";
 import ReorderPartnerGallery from "./src/features/partners/screens/ReorderPartnerGallery";
@@ -924,6 +926,12 @@ function RootNavigator({ initialTabName = "Daily" }) {
       />
 
       <RootStack.Screen
+        name="PartnerGrowth"
+        component={PartnerGrowth}
+        options={{ animation: "slide_from_right" }}
+      />
+
+      <RootStack.Screen
         name="CreatePartnerProfile"
         component={CreatePartnerProfile}
         options={{ animation: "slide_from_right" }}
@@ -1461,18 +1469,20 @@ useEffect(() => {
                           session={session}
                           profile={profile}
                         >
-                          <NavigationContainer
-                            ref={navigationRef}
-                            linking={linking}
-                          >
-                            <RootNavigator
-                              initialTabName={initialTabName}
-                            />
+                          <CommercialProvider>
+                            <NavigationContainer
+                              ref={navigationRef}
+                              linking={linking}
+                            >
+                              <RootNavigator
+                                initialTabName={initialTabName}
+                              />
 
-                            <InAppNotificationBanner
-                              navigation={navigationRef}
-                            />
-                          </NavigationContainer>
+                              <InAppNotificationBanner
+                                navigation={navigationRef}
+                              />
+                            </NavigationContainer>
+                          </CommercialProvider>
                         </RealtimeProvider>
                       </FellowshipRequestsModalProvider>
 

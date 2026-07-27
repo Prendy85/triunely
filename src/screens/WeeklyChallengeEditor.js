@@ -1106,12 +1106,13 @@ export default function WeeklyChallengeEditor({ route, navigation }) {
       setGenerating(true);
 
       const { data, error } = await supabase.functions.invoke("faith-coach", {
-        body: {
-          action: "generate_weekly_challenge",
-          church_name: churchName,
-          week_start,
-          topic: `${discipline}${topic ? `: ${String(topic).trim()}` : ""}`,
-        },
+body: {
+  action: "generate_weekly_challenge",
+  church_id: churchId,
+  church_name: churchName,
+  week_start,
+  topic: `${discipline}${topic ? `: ${String(topic).trim()}` : ""}`,
+},
       });
 
       if (error) {

@@ -11,6 +11,7 @@ import {
 
 import VerifiedBadge from "../../../components/VerifiedBadge";
 
+
 const SURFACE = "#FFFFFF";
 const EVENT_AMBER = "#B45309";
 const EVENT_BROWN = "#7C2D12";
@@ -350,6 +351,7 @@ export default function PartnerHeroCard({
   partner,
   typeIcon,
   typeLabel,
+  showVerifiedBadge = false,
   isOwner = false,
   isConnected = false,
   connectionCount = 0,
@@ -483,39 +485,11 @@ export default function PartnerHeroCard({
             )}
           </View>
 
-          {partner?.is_verified ? (
-            <View
-              style={{
-                marginLeft: "auto",
-                marginBottom: 7,
-                borderRadius: 999,
-                backgroundColor:
-                  AMBER_SOFT,
-                borderWidth: 1,
-                borderColor:
-                  AMBER_BORDER,
-                paddingHorizontal: 10,
-                paddingVertical: 7,
-                flexDirection: "row",
-                alignItems: "center",
-              }}
-            >
-              <VerifiedBadge
-                size={14}
-              />
-
-              <Text
-                style={{
-                  color: EVENT_BROWN,
-                  fontSize: 11.5,
-                  fontWeight: "900",
-                  marginLeft: 5,
-                }}
-              >
-                Verified Partner
-              </Text>
-            </View>
-          ) : null}
+          <View
+            style={{
+              marginLeft: "auto",
+            }}
+          />
         </View>
 
         <View
@@ -523,15 +497,37 @@ export default function PartnerHeroCard({
             marginTop: 12,
           }}
         >
-          <Text
+          <View
             style={{
-              ...serifHeading,
-              fontSize: 28,
-              lineHeight: 34,
+              flexDirection: "row",
+              alignItems: "center",
+              flexWrap: "wrap",
             }}
           >
-            {partner?.name}
-          </Text>
+            <Text
+              style={{
+                ...serifHeading,
+                fontSize: 28,
+                lineHeight: 34,
+                flexShrink: 1,
+              }}
+            >
+              {partner?.name}
+            </Text>
+
+{showVerifiedBadge === true ? (
+              <View
+                style={{
+                  marginLeft: 8,
+                  marginTop: 2,
+                }}
+              >
+                <VerifiedBadge
+                  size={21}
+                />
+              </View>
+            ) : null}
+          </View>
 
           <View
             style={{

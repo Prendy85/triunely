@@ -19,6 +19,8 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import VerifiedBadge from "../../../components/VerifiedBadge";
+
 import {
     createPartnerPostComment,
     deletePartnerPostComment,
@@ -331,6 +333,7 @@ function PartnerPostComment({
 export default function PartnerPostCommentsSheet({
   visible = false,
   partnerPost = null,
+  partner = null,
   currentUserId = null,
   canManage = false,
   onClose,
@@ -367,8 +370,12 @@ export default function PartnerPostCommentsSheet({
     setCommentText,
   ] = useState("");
 
-  const partnerPostId =
-    partnerPost?.id || null;
+const partnerPostId =
+  partnerPost?.id || null;
+
+const partnerName =
+  partner?.name ||
+  "Christian Partner";
 
   const loadComments =
     useCallback(async () => {
@@ -660,102 +667,169 @@ export default function PartnerPostCommentsSheet({
               }}
             />
 
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-              }}
-            >
-              <View
-                style={{
-                  width: 42,
-                  height: 42,
-                  borderRadius: 21,
-                  backgroundColor:
-                    AMBER_SOFT,
-                  borderWidth: 1,
-                  borderColor:
-                    AMBER_BORDER,
-                  alignItems: "center",
-                  justifyContent:
-                    "center",
-                  marginRight: 10,
-                }}
-              >
-                <Ionicons
-                  name="chatbubbles-outline"
-                  size={20}
-                  color={EVENT_AMBER}
-                />
-              </View>
+<View
+  style={{
+    flexDirection: "row",
+    alignItems: "center",
+  }}
+>
+  <View
+    style={{
+      width: 46,
+      height: 46,
+      borderRadius: 16,
+      backgroundColor:
+        OLIVE_SOFT,
+      borderWidth: 1,
+      borderColor:
+        OLIVE_BORDER,
+      overflow: "hidden",
+      alignItems: "center",
+      justifyContent: "center",
+      marginRight: 10,
+    }}
+  >
+    {partner?.logo_url ? (
+      <Image
+        source={{
+          uri: partner.logo_url,
+        }}
+        resizeMode="cover"
+        style={{
+          width: "100%",
+          height: "100%",
+        }}
+      />
+    ) : (
+      <Text
+        style={{
+          color: OLIVE,
+          fontSize: 14,
+          fontWeight: "900",
+        }}
+      >
+        {getInitials(partnerName)}
+      </Text>
+    )}
+  </View>
 
-              <View
-                style={{
-                  flex: 1,
-                  minWidth: 0,
-                }}
-              >
-                <Text
-                  style={{
-                    fontFamily:
-                      displayFont,
-                    color: TEXT,
-                    fontSize: 22,
-                    lineHeight: 27,
-                    fontWeight: "900",
-                    letterSpacing:
-                      -0.35,
-                  }}
-                >
-                  Comments
-                </Text>
+  <View
+    style={{
+      flex: 1,
+      minWidth: 0,
+    }}
+  >
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        minWidth: 0,
+      }}
+    >
+      <Text
+        numberOfLines={1}
+        style={{
+          fontFamily:
+            displayFont,
+          color: TEXT,
+          fontSize: 19,
+          lineHeight: 24,
+          fontWeight: "900",
+          letterSpacing:
+            -0.3,
+          flexShrink: 1,
+        }}
+      >
+        {partnerName}
+      </Text>
 
-                <Text
-                  style={{
-                    color: MUTED,
-                    fontSize: 12,
-                    fontWeight: "700",
-                    marginTop: 1,
-                  }}
-                >
-                  {comments.length ===
-                  1
-                    ? "1 comment"
-                    : `${comments.length} comments`}
-                </Text>
-              </View>
+      {partner?.badge_active ===
+      true ? (
+        <View
+          style={{
+            marginLeft: 6,
+            flexShrink: 0,
+          }}
+        >
+          <VerifiedBadge
+            size={15}
+          />
+        </View>
+      ) : null}
+    </View>
 
-              <Pressable
-                onPress={onClose}
-                hitSlop={10}
-                style={({ pressed }) => ({
-                  width: 40,
-                  height: 40,
-                  borderRadius: 20,
-                  backgroundColor:
-                    pressed
-                      ? OLIVE_SOFT
-                      : PREMIUM_CREAM,
-                  borderWidth: 1,
-                  borderColor:
-                    CARD_BORDER,
-                  alignItems:
-                    "center",
-                  justifyContent:
-                    "center",
-                  opacity:
-                    pressed
-                      ? 0.72
-                      : 1,
-                })}
-              >
-                <Ionicons
-                  name="close"
-                  size={23}
-                  color={OLIVE}
-                />
-              </Pressable>
-            </View>
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        marginTop: 2,
+      }}
+    >
+      <Text
+        style={{
+          color: EVENT_BROWN,
+          fontSize: 11.5,
+          fontWeight: "900",
+        }}
+      >
+        Partner Post comments
+      </Text>
+
+      <Text
+        style={{
+          color: MUTED,
+          fontSize: 11.5,
+          fontWeight: "800",
+          marginHorizontal: 5,
+        }}
+      >
+        •
+      </Text>
+
+      <Text
+        style={{
+          color: MUTED,
+          fontSize: 11.5,
+          fontWeight: "800",
+        }}
+      >
+        {comments.length === 1
+          ? "1 comment"
+          : `${comments.length} comments`}
+      </Text>
+    </View>
+  </View>
+
+  <Pressable
+    onPress={onClose}
+    hitSlop={10}
+    style={({ pressed }) => ({
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor:
+        pressed
+          ? OLIVE_SOFT
+          : PREMIUM_CREAM,
+      borderWidth: 1,
+      borderColor:
+        CARD_BORDER,
+      alignItems: "center",
+      justifyContent: "center",
+      opacity:
+        pressed
+          ? 0.72
+          : 1,
+      marginLeft: 8,
+    })}
+  >
+    <Ionicons
+      name="close"
+      size={23}
+      color={OLIVE}
+    />
+  </Pressable>
+</View>
           </View>
 
           <ScrollView

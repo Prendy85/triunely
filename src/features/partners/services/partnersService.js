@@ -256,9 +256,78 @@ export function createPartnerSlug(name) {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
 
-  const suffix = Math.random().toString(36).slice(2, 7);
+  const suffix = Math.random()
+    .toString(36)
+    .slice(2, 7);
 
   return `${base || "partner"}-${suffix}`;
+}
+
+async function addPartnerBadgeStates(
+  partners = []
+) {
+  const safePartners = Array.isArray(
+    partners
+  )
+    ? partners
+    : [];
+
+  const partnerIds = [
+    ...new Set(
+      safePartners
+        .map((partner) => partner?.id)
+        .filter(Boolean)
+    ),
+  ];
+
+  if (partnerIds.length === 0) {
+    return safePartners;
+  }
+
+  const {
+    data: badgeRows,
+    error: badgeError,
+  } = await supabase.rpc(
+    "get_partner_badge_states",
+    {
+      p_partner_ids: partnerIds,
+    }
+  );
+
+  if (badgeError) {
+    console.log(
+      "addPartnerBadgeStates error:",
+      badgeError
+    );
+
+    return safePartners.map(
+      (partner) => ({
+        ...partner,
+        badge_active: false,
+      })
+    );
+  }
+
+  const badgeByPartnerId = (
+    badgeRows || []
+  ).reduce(
+    (result, row) => {
+      result[row.partner_profile_id] =
+        row.badge_active === true;
+
+      return result;
+    },
+    {}
+  );
+
+  return safePartners.map(
+    (partner) => ({
+      ...partner,
+      badge_active:
+        badgeByPartnerId[partner.id] ===
+        true,
+    })
+  );
 }
 
 export async function fetchPartnerProfiles({
@@ -269,6 +338,24 @@ export async function fetchPartnerProfiles({
   limit = 30,
 } = {}) {
   try {
+    const safeLimit = Math.min(
+      Math.max(
+        Number(limit) || 30,
+        1
+      ),
+      100
+    );
+
+    const queryLimit = onlyVerified
+      ? Math.min(
+          Math.max(
+            safeLimit * 4,
+            100
+          ),
+          250
+        )
+      : safeLimit;
+
     let query = supabase
       .from("partner_profiles")
       .select(
@@ -303,11 +390,14 @@ export async function fetchPartnerProfiles({
       `
       )
       .eq("status", "published")
-      .order("is_verified", { ascending: false })
-      .order("created_at", { ascending: false })
-      .limit(limit);
+      .order("created_at", {
+        ascending: false,
+      })
+      .limit(queryLimit);
 
-    const cleanSearch = String(search || "").trim();
+    const cleanSearch = String(
+      search || ""
+    ).trim();
 
     if (cleanSearch) {
       query = query.or(
@@ -316,27 +406,77 @@ export async function fetchPartnerProfiles({
     }
 
     if (partnerType) {
-      query = query.eq("partner_type", partnerType);
+      query = query.eq(
+        "partner_type",
+        partnerType
+      );
     }
 
     if (category) {
-      query = query.ilike("category", `%${category}%`);
+      query = query.ilike(
+        "category",
+        `%${category}%`
+      );
     }
 
-    if (onlyVerified) {
-      query = query.eq("is_verified", true);
+    const { data, error } =
+      await query;
+
+    if (error) {
+      throw error;
     }
 
-    const { data, error } = await query;
+    const partnersWithBadgeState =
+      await addPartnerBadgeStates(
+        data || []
+      );
 
-    if (error) throw error;
+    const filteredPartners =
+      onlyVerified
+        ? partnersWithBadgeState.filter(
+            (partner) =>
+              partner?.badge_active ===
+              true
+          )
+        : partnersWithBadgeState;
+
+    const sortedPartners = [
+      ...filteredPartners,
+    ].sort((first, second) => {
+      const badgeDifference =
+        Number(
+          second?.badge_active === true
+        ) -
+        Number(
+          first?.badge_active === true
+        );
+
+      if (badgeDifference !== 0) {
+        return badgeDifference;
+      }
+
+      return (
+        new Date(
+          second?.created_at || 0
+        ).getTime() -
+        new Date(
+          first?.created_at || 0
+        ).getTime()
+      );
+    });
 
     return {
       ok: true,
-      partners: data || [],
+      partners: sortedPartners.slice(
+        0,
+        safeLimit
+      ),
     };
   } catch (error) {
-    console.log("fetchPartnerProfiles error:", error);
+    console.log(
+      "fetchPartnerProfiles error:",
+      error
+    );
 
     return {
       ok: false,
@@ -395,12 +535,18 @@ export async function fetchMyPartnerProfiles({
       .order("created_at", { ascending: false })
       .limit(limit);
 
-    if (error) throw error;
+if (error) throw error;
 
-    return {
-      ok: true,
-      partners: data || [],
-    };
+const partnersWithBadgeState =
+  await addPartnerBadgeStates(
+    data || []
+  );
+
+return {
+  ok: true,
+  partners:
+    partnersWithBadgeState,
+};
   } catch (error) {
     console.log("fetchMyPartnerProfiles error:", error);
 
@@ -461,9 +607,17 @@ export async function fetchPartnerProfileById(partnerProfileId) {
 
     if (error) throw error;
 
+    const partnersWithBadgeState =
+      await addPartnerBadgeStates(
+        data ? [data] : []
+      );
+
     return {
       ok: true,
-      partner: data,
+      partner:
+        partnersWithBadgeState[0] ||
+        data ||
+        null,
     };
   } catch (error) {
     console.log("fetchPartnerProfileById error:", error);
@@ -3701,6 +3855,11 @@ export async function fetchMyConnectedPartnerProfiles({
       throw partnersError;
     }
 
+    const partnersWithBadgeState =
+      await addPartnerBadgeStates(
+        partnerProfiles || []
+      );
+
     const connectionByPartnerId = (
       connectionRows || []
     ).reduce(
@@ -3718,7 +3877,7 @@ export async function fetchMyConnectedPartnerProfiles({
     );
 
     const partners = (
-      partnerProfiles || []
+      partnersWithBadgeState || []
     )
       .map((partner) => ({
         ...partner,
@@ -3890,9 +4049,14 @@ export async function fetchConnectedPartnerFeedPosts({
       throw partnerPostsResult.error;
     }
 
-    const partnersById = (
-      partnerProfilesResult.data || []
-    ).reduce(
+const partnersWithBadgeState =
+  await addPartnerBadgeStates(
+    partnerProfilesResult.data || []
+  );
+
+const partnersById = (
+  partnersWithBadgeState || []
+).reduce(
       (result, partner) => {
         if (partner?.id) {
           result[partner.id] =

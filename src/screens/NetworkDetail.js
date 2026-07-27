@@ -18,6 +18,7 @@ import {
 
 import NetworkPostsFeed from "../components/NetworkPostsFeed";
 import Screen from "../components/Screen";
+import useUserCommercialAccountScope from "../hooks/useUserCommercialAccountScope";
 import { supabase } from "../lib/supabase";
 
 const PREMIUM_CREAM = "#FFFCF5";
@@ -909,6 +910,8 @@ function InformationModal({
 }
 
 export default function NetworkDetail() {
+  useUserCommercialAccountScope();
+
   const navigation = useNavigation();
   const route = useRoute();
 

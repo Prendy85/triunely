@@ -1,6 +1,11 @@
 // src/features/partners/components/PartnerCommunityPostCard.js
 import { Ionicons } from "@expo/vector-icons";
 import {
+    useVideoPlayer,
+    VideoView,
+} from "expo-video";
+import * as VideoThumbnails from "expo-video-thumbnails";
+import {
     useCallback,
     useEffect,
     useState,
@@ -140,6 +145,338 @@ function safeInitials(name) {
   );
 }
 
+function isPartnerPostVideo(mediaItem) {
+  const mediaType = String(
+    mediaItem?.media_type || ""
+  ).toLowerCase();
+
+  const mediaUrl = String(
+    mediaItem?.media_url || ""
+  ).toLowerCase();
+
+  return (
+    mediaType.startsWith("video/") ||
+    mediaType === "video" ||
+    mediaUrl.includes(".mp4") ||
+    mediaUrl.includes(".mov") ||
+    mediaUrl.includes(".webm")
+  );
+}
+
+function FullscreenPartnerVideoPlayer({
+  uri,
+  onClose,
+}) {
+  const player = useVideoPlayer(
+    {
+      uri,
+      useCaching: false,
+    },
+    (videoPlayer) => {
+      videoPlayer.loop = false;
+
+      videoPlayer.bufferOptions = {
+        maxBufferBytes:
+          12 * 1024 * 1024,
+        preferredForwardBufferDuration:
+          8,
+        minBufferForPlayback:
+          1.5,
+      };
+
+      videoPlayer.play();
+    }
+  );
+
+  function closePlayer() {
+    try {
+      player.pause();
+    } catch (error) {
+      console.log(
+        "Community Partner video pause error:",
+        error
+      );
+    }
+
+    onClose?.();
+  }
+
+  return (
+    <Modal
+      visible
+      animationType="fade"
+      presentationStyle="fullScreen"
+      statusBarTranslucent
+      onRequestClose={closePlayer}
+    >
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: "#000000",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <VideoView
+          player={player}
+          nativeControls
+          contentFit="contain"
+          surfaceType="surfaceView"
+          style={{
+            width: "100%",
+            height: "100%",
+            backgroundColor: "#000000",
+          }}
+        />
+
+        <Pressable
+          onPress={closePlayer}
+          hitSlop={12}
+          style={({ pressed }) => ({
+            position: "absolute",
+            top:
+              Platform.OS === "android"
+                ? 34
+                : 52,
+            right: 18,
+            width: 44,
+            height: 44,
+            borderRadius: 22,
+            backgroundColor:
+              pressed
+                ? "rgba(255,255,255,0.30)"
+                : "rgba(0,0,0,0.64)",
+            borderWidth: 1,
+            borderColor:
+              "rgba(255,255,255,0.25)",
+            alignItems: "center",
+            justifyContent: "center",
+          })}
+        >
+          <Ionicons
+            name="close"
+            size={25}
+            color="#FFFFFF"
+          />
+        </Pressable>
+      </View>
+    </Modal>
+  );
+}
+
+function PartnerCommunityVideoPreview({
+  uri,
+  thumbnailUrl = null,
+}) {
+  const [
+    generatedThumbnail,
+    setGeneratedThumbnail,
+  ] = useState(null);
+
+  const [
+    preparingThumbnail,
+    setPreparingThumbnail,
+  ] = useState(
+    !Boolean(thumbnailUrl)
+  );
+
+  const [
+    playerVisible,
+    setPlayerVisible,
+  ] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+
+    if (!uri || thumbnailUrl) {
+      setGeneratedThumbnail(null);
+      setPreparingThumbnail(false);
+
+      return undefined;
+    }
+
+    async function createThumbnail() {
+      try {
+        setPreparingThumbnail(true);
+
+        const result =
+          await VideoThumbnails
+            .getThumbnailAsync(
+              uri,
+              {
+                time: 300,
+                quality: 0.45,
+              }
+            );
+
+        if (!active) {
+          return;
+        }
+
+        setGeneratedThumbnail(
+          result?.uri || null
+        );
+      } catch (error) {
+        console.log(
+          "Community Partner video thumbnail error:",
+          error
+        );
+
+        if (active) {
+          setGeneratedThumbnail(null);
+        }
+      } finally {
+        if (active) {
+          setPreparingThumbnail(false);
+        }
+      }
+    }
+
+    createThumbnail();
+
+    return () => {
+      active = false;
+    };
+  }, [
+    thumbnailUrl,
+    uri,
+  ]);
+
+  if (!uri) {
+    return null;
+  }
+
+  const previewUri =
+    thumbnailUrl ||
+    generatedThumbnail;
+
+  return (
+    <>
+      <Pressable
+        onPress={() =>
+          setPlayerVisible(true)
+        }
+        accessibilityRole="button"
+        accessibilityLabel="Play Partner video fullscreen"
+        style={({ pressed }) => ({
+          width: "100%",
+          aspectRatio: 1,
+          borderRadius: 18,
+          backgroundColor: "#000000",
+          alignItems: "center",
+          justifyContent: "center",
+          overflow: "hidden",
+          opacity:
+            pressed ? 0.92 : 1,
+        })}
+      >
+        {previewUri ? (
+          <Image
+            source={{
+              uri: previewUri,
+            }}
+            resizeMode="cover"
+            style={{
+              width: "100%",
+              height: "100%",
+              backgroundColor:
+                "#000000",
+            }}
+          />
+        ) : null}
+
+        <View
+          pointerEvents="none"
+          style={{
+            position: "absolute",
+            top: 0,
+            right: 0,
+            bottom: 0,
+            left: 0,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor:
+              previewUri
+                ? "rgba(0,0,0,0.20)"
+                : "rgba(0,0,0,0.88)",
+          }}
+        >
+          {preparingThumbnail ? (
+            <>
+              <ActivityIndicator
+                size="small"
+                color="#FFFFFF"
+              />
+
+              <Text
+                style={{
+                  color: "#FFFFFF",
+                  fontSize: 11.5,
+                  fontWeight: "800",
+                  marginTop: 9,
+                }}
+              >
+                Preparing video…
+              </Text>
+            </>
+          ) : (
+            <>
+              <View
+                style={{
+                  width: 60,
+                  height: 60,
+                  borderRadius: 30,
+                  backgroundColor:
+                    "rgba(255,255,255,0.95)",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  shadowColor: "#000000",
+                  shadowOpacity: 0.24,
+                  shadowRadius: 10,
+                  shadowOffset: {
+                    width: 0,
+                    height: 4,
+                  },
+                  elevation: 5,
+                }}
+              >
+                <Ionicons
+                  name="play"
+                  size={28}
+                  color={EVENT_AMBER}
+                  style={{
+                    marginLeft: 4,
+                  }}
+                />
+              </View>
+
+              <Text
+                style={{
+                  color: "#FFFFFF",
+                  fontSize: 11.5,
+                  fontWeight: "900",
+                  marginTop: 10,
+                }}
+              >
+                Play video
+              </Text>
+            </>
+          )}
+        </View>
+      </Pressable>
+
+      {playerVisible ? (
+        <FullscreenPartnerVideoPlayer
+          uri={uri}
+          onClose={() =>
+            setPlayerVisible(false)
+          }
+        />
+      ) : null}
+    </>
+  );
+}
+
 function getReactionDetails(
   reactionType
 ) {
@@ -150,6 +487,48 @@ function getReactionDetails(
         reactionType
     ) || null
   );
+}
+
+function getSummaryReactionEmojis(
+  summary
+) {
+  const countByReaction = {
+    like:
+      Number(summary?.likeCount) || 0,
+    love:
+      Number(summary?.loveCount) || 0,
+    laugh:
+      Number(summary?.laughCount) || 0,
+    sad:
+      Number(summary?.sadCount) || 0,
+    angry:
+      Number(summary?.angryCount) || 0,
+    pray:
+      Number(summary?.prayCount) || 0,
+  };
+
+  return PARTNER_POST_REACTION_TYPES
+    .map((reaction) => ({
+      ...reaction,
+      count:
+        countByReaction[
+          reaction.value
+        ] || 0,
+    }))
+    .filter(
+      (reaction) =>
+        reaction.count > 0
+    )
+    .sort(
+      (first, second) =>
+        second.count - first.count
+    )
+    .slice(0, 3)
+    .map(
+      (reaction) =>
+        reaction.emoji
+    )
+    .join(" ");
 }
 
 function createShareMessage(
@@ -445,20 +824,35 @@ function PartnerPostMediaCarousel({
                     : 9,
               }}
             >
-              <Image
-                source={{
-                  uri:
-                    mediaItem.media_url,
-                }}
-                style={{
-                  width: "100%",
-                  height: 238,
-                  borderRadius: 18,
-                  backgroundColor:
-                    OLIVE_SOFT,
-                }}
-                resizeMode="cover"
-              />
+{isPartnerPostVideo(
+  mediaItem
+) ? (
+  <PartnerCommunityVideoPreview
+    uri={mediaItem.media_url}
+    thumbnailUrl={
+      mediaItem
+        ?.thumbnail_url ||
+      mediaItem
+        ?.media_thumbnail_url ||
+      null
+    }
+  />
+) : (
+  <Image
+    source={{
+      uri:
+        mediaItem.media_url,
+    }}
+    style={{
+      width: "100%",
+      aspectRatio: 1,
+      borderRadius: 18,
+      backgroundColor:
+        OLIVE_SOFT,
+    }}
+    resizeMode="cover"
+  />
+)}
             </View>
           )
         )}
@@ -1018,7 +1412,7 @@ export default function PartnerCommunityPostCard({
                 {partnerName}
               </Text>
 
-              {partner?.is_verified ? (
+              {partner?.badge_active === true ? (
                 <View
                   style={{
                     marginLeft: 6,
@@ -1247,7 +1641,9 @@ export default function PartnerCommunityPostCard({
                       marginRight: 5,
                     }}
                   >
-                    👍 ❤️
+                    {getSummaryReactionEmojis(
+  summary
+)}
                   </Text>
 
                   <Text
@@ -1388,16 +1784,17 @@ export default function PartnerCommunityPostCard({
           )
         }
       >
-        <PartnerPostCommentsSheet
-          visible={Boolean(
-            selectedPostForComments
-          )}
-          partnerPost={
-            selectedPostForComments
-          }
-          currentUserId={
-            currentUserId
-          }
+<PartnerPostCommentsSheet
+  visible={Boolean(
+    selectedPostForComments
+  )}
+  partnerPost={
+    selectedPostForComments
+  }
+  partner={partner}
+  currentUserId={
+    currentUserId
+  }
           canManage={false}
           onClose={() =>
             setSelectedPostForComments(

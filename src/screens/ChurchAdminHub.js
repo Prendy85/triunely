@@ -7,10 +7,11 @@ import {
   Pressable,
   ScrollView,
   Text,
-  View,
+  View
 } from "react-native";
 
 import Screen from "../components/Screen";
+import useCommercialAccountScope from "../hooks/useCommercialAccountScope";
 import { supabase } from "../lib/supabase";
 
 const PREMIUM_CREAM = "#FFFCF5";
@@ -395,6 +396,8 @@ function QuickActionCard({ icon, title, subtitle, onPress, tint = "olive" }) {
 
 export default function ChurchAdminHub({ route, navigation }) {
   const { churchId, churchName, role } = route?.params || {};
+
+  useCommercialAccountScope("church", churchId);
 
   const [loading, setLoading] = useState(true);
   const [church, setChurch] = useState(null);

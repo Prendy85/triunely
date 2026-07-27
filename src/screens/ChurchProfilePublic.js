@@ -32,6 +32,7 @@ import {
   fetchUpcomingEventsForChurch,
   formatEventDateTime,
 } from "../features/events/services/eventsService";
+import useUserCommercialAccountScope from "../hooks/useUserCommercialAccountScope";
 import { getOrCreateChurchConversation } from "../lib/messages";
 import { supabase } from "../lib/supabase";
 import { isFeedVideoMedia, uploadFeedMedia } from "../lib/uploadFeedMedia";
@@ -689,6 +690,8 @@ function MemberPreviewStack({ members = [], total = 0 }) {
 }
 
 export default function ChurchProfilePublic({ navigation, route }) {
+  useUserCommercialAccountScope();
+
   const churchId = route?.params?.churchId;
   const rt = useRealtime();
   const { openFellowshipRequests } = useFellowshipRequestsModal();
@@ -3556,31 +3559,36 @@ function renderDetailsPreview() {
   <View
     style={{
       flexDirection: "row",
-      alignItems: "flex-start",
+      alignItems: "center",
       flex: 1,
       minWidth: 0,
     }}
   >
-                        <Text
-  style={{
-    ...serifHeading,
-    fontSize: 25,
-    lineHeight: 30,
-    flexShrink: 1,
-  }}
-  numberOfLines={2}
-  adjustsFontSizeToFit
-  minimumFontScale={0.78}
->
-  {churchName}
-</Text>
+    <Text
+      style={{
+        ...serifHeading,
+        fontSize: 25,
+        lineHeight: 30,
+        flexShrink: 1,
+      }}
+      numberOfLines={2}
+      adjustsFontSizeToFit
+      minimumFontScale={0.78}
+    >
+      {churchName}
+    </Text>
 
-                        {isVerified ? (
-                          <View style={{ marginLeft: 7 }}>
-                            <VerifiedBadge size={17} />
-                          </View>
-                        ) : null}
-                      </View>
+    {isVerified ? (
+      <View
+        style={{
+          marginLeft: 7,
+          flexShrink: 0,
+        }}
+      >
+        <VerifiedBadge size={20} />
+      </View>
+    ) : null}
+  </View>
 
                       {!isAdmin ? <PremiumSparkIcon size={38} amber /> : null}
                     </View>

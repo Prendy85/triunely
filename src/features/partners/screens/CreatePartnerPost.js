@@ -12,6 +12,7 @@ import {
     Alert,
     Image,
     KeyboardAvoidingView,
+    Modal,
     Platform,
     Pressable,
     ScrollView,
@@ -21,8 +22,13 @@ import {
 } from "react-native";
 
 import Screen from "../../../components/Screen";
+import useCommercial from "../../../hooks/useCommercial";
+import useCommercialAccountScope from "../../../hooks/useCommercialAccountScope";
 import { supabase } from "../../../lib/supabase";
-import { uploadFeedMedia } from "../../../lib/uploadFeedMedia";
+import {
+    isFeedVideoMedia,
+    uploadFeedMedia,
+} from "../../../lib/uploadFeedMedia";
 
 import {
     createPartnerPost,
@@ -369,6 +375,21 @@ export default function CreatePartnerPost({
     route?.params
       ?.partnerProfileId || null;
 
+  useCommercialAccountScope(
+    "partner",
+    partnerProfileId
+  );
+
+  const {
+    loading: commercialLoading,
+    canPostNativeVideo,
+    canUploadPermanentVideo,
+  } = useCommercial();
+
+  const canAddPartnerVideo =
+    canPostNativeVideo === true &&
+    canUploadPermanentVideo === true;
+
   const partnerPostId =
     route?.params
       ?.partnerPostId || null;
@@ -427,6 +448,21 @@ export default function CreatePartnerPost({
     selectedMedia,
     setSelectedMedia,
   ] = useState([]);
+
+  const [
+    selectedVideo,
+    setSelectedVideo,
+  ] = useState(null);
+
+  const [
+    videoUpgradeModalVisible,
+    setVideoUpgradeModalVisible,
+  ] = useState(false);
+
+  const [
+    upgradeOptionsRequested,
+    setUpgradeOptionsRequested,
+  ] = useState(false);
 
   const [
     existingMedia,
@@ -653,6 +689,82 @@ export default function CreatePartnerPost({
     load();
   }, [load]);
 
+  async function handleChooseVideo() {
+    try {
+      if (saving || commercialLoading) {
+        return;
+      }
+
+      if (!canAddPartnerVideo) {
+        setUpgradeOptionsRequested(false);
+        setVideoUpgradeModalVisible(true);
+        return;
+      }
+
+      const permissionResult =
+        await ImagePicker
+          .requestMediaLibraryPermissionsAsync();
+
+      if (!permissionResult.granted) {
+        Alert.alert(
+          "Video access required",
+          "Allow Triunely to access your videos so you can add one to this Partner Post."
+        );
+
+        return;
+      }
+
+      const result =
+        await ImagePicker
+          .launchImageLibraryAsync({
+            mediaTypes: [
+              "videos",
+            ],
+            allowsMultipleSelection:
+              false,
+            quality: 1,
+          });
+
+      if (
+        result.canceled ||
+        !Array.isArray(result.assets) ||
+        !result.assets[0]
+      ) {
+        return;
+      }
+
+      const asset = {
+        ...result.assets[0],
+        localId:
+          result.assets[0].assetId ||
+          `${Date.now()}-${result.assets[0].uri}`,
+        kind: "video",
+        assetType: "video",
+        mediaType: "video",
+      };
+
+      if (!isFeedVideoMedia(asset)) {
+        throw new Error(
+          "The selected file was not recognised as a video."
+        );
+      }
+
+      setSelectedMedia([]);
+      setSelectedVideo(asset);
+    } catch (error) {
+      console.log(
+        "CreatePartnerPost video picker error:",
+        error
+      );
+
+      Alert.alert(
+        "Add video",
+        error?.message ||
+          "We couldn't open your video library."
+      );
+    }
+  }
+
   async function handleChooseImages() {
     try {
       if (saving) {
@@ -695,6 +807,8 @@ export default function CreatePartnerPost({
       ) {
         return;
       }
+
+      setSelectedVideo(null);
 
       const incomingAssets =
         result.assets
@@ -764,6 +878,15 @@ export default function CreatePartnerPost({
     }
   }
 
+  function handleRemoveSelectedVideo() {
+    if (saving) {
+      return;
+    }
+
+    setSelectedVideo(null);
+  }
+
+
   function handleRemoveSelectedImage(
     indexToRemove
   ) {
@@ -779,6 +902,45 @@ export default function CreatePartnerPost({
             indexToRemove
         )
     );
+  }
+
+  async function uploadSelectedVideo() {
+    if (!selectedVideo) {
+      return null;
+    }
+
+    if (!canAddPartnerVideo) {
+      throw new Error(
+        "This Partner Profile does not have permission to publish permanent native video."
+      );
+    }
+
+    setUploadProgress(
+      "Uploading Partner video…"
+    );
+
+    const uploadResult =
+      await uploadFeedMedia({
+        media: selectedVideo,
+        scope: "partner-posts",
+        ownerId: currentUserId,
+        folderId: partnerProfileId,
+        allowPermanentVideo: true,
+      });
+
+    if (!uploadResult?.mediaUrl) {
+      throw new Error(
+        "The Partner video could not be uploaded."
+      );
+    }
+
+    return {
+      mediaUrl: uploadResult.mediaUrl,
+      mediaType:
+        uploadResult.mediaType ||
+        "video/mp4",
+      thumbnailUrl: "",
+    };
   }
 
   async function uploadSelectedImages() {
@@ -840,6 +1002,11 @@ export default function CreatePartnerPost({
     cleanTitle,
     cleanContent,
   }) {
+    const uploadedVideo =
+      selectedVideo
+        ? await uploadSelectedVideo()
+        : null;
+
     const uploadedMedia =
       selectedMedia.length > 0
         ? await uploadSelectedImages()
@@ -850,7 +1017,9 @@ export default function CreatePartnerPost({
     );
 
     const firstMedia =
-      uploadedMedia[0] || null;
+      uploadedVideo ||
+      uploadedMedia[0] ||
+      null;
 
     const createResult =
       await createPartnerPost({
@@ -973,6 +1142,7 @@ export default function CreatePartnerPost({
         ).trim();
 
       const hasAnyMedia =
+        Boolean(selectedVideo) ||
         selectedMedia.length >
           0 ||
         existingMedia.length >
@@ -1314,6 +1484,284 @@ export default function CreatePartnerPost({
                 multiline
               />
             </View>
+
+            {!isEdit ? (
+              <View
+                style={{
+                  ...premiumCardStyle,
+                  marginHorizontal: 16,
+                  padding: 16,
+                  marginBottom: 14,
+                }}
+              >
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                  }}
+                >
+                  <View
+                    style={{
+                      flex: 1,
+                      minWidth: 0,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        ...serifHeading,
+                        fontSize: 23,
+                        lineHeight: 28,
+                      }}
+                    >
+                      Video
+                    </Text>
+
+                    <Text
+                      style={{
+                        color: MUTED,
+                        fontSize: 12.5,
+                        fontWeight: "700",
+                        lineHeight: 18,
+                        marginTop: 4,
+                      }}
+                    >
+                      Add one permanent native video
+                      to this Partner Post.
+                    </Text>
+                  </View>
+
+                  <Pressable
+                    onPress={handleChooseVideo}
+                    disabled={
+                      saving ||
+                      commercialLoading ||
+                      Boolean(selectedVideo)
+                    }
+                    style={({ pressed }) => ({
+                      minWidth: 94,
+                      minHeight: 42,
+                      marginLeft: 12,
+                      borderRadius: 999,
+                      paddingHorizontal: 13,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor:
+                        canAddPartnerVideo
+                          ? EVENT_AMBER
+                          : OLIVE,
+                      opacity:
+                        saving ||
+                        commercialLoading ||
+                        Boolean(selectedVideo)
+                          ? 0.42
+                          : pressed
+                            ? 0.8
+                            : 1,
+                    })}
+                  >
+                    <Ionicons
+                      name={
+                        canAddPartnerVideo
+                          ? "videocam-outline"
+                          : "lock-closed-outline"
+                      }
+                      size={17}
+                      color={SURFACE}
+                      style={{
+                        marginRight: 6,
+                      }}
+                    />
+
+                    <Text
+                      style={{
+                        color: SURFACE,
+                        fontSize: 12.5,
+                        fontWeight: "900",
+                      }}
+                    >
+                      {commercialLoading
+                        ? "Checking"
+                        : canAddPartnerVideo
+                          ? "Add video"
+                          : "Upgrade"}
+                    </Text>
+                  </Pressable>
+                </View>
+
+                {selectedVideo ? (
+                  <View
+                    style={{
+                      marginTop: 15,
+                      minHeight: 118,
+                      borderRadius: 20,
+                      backgroundColor: OLIVE_SOFT,
+                      borderWidth: 1,
+                      borderColor: OLIVE_BORDER,
+                      padding: 14,
+                      flexDirection: "row",
+                      alignItems: "center",
+                    }}
+                  >
+                    <View
+                      style={{
+                        width: 76,
+                        height: 76,
+                        borderRadius: 18,
+                        backgroundColor: OLIVE,
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <Ionicons
+                        name="play"
+                        size={30}
+                        color={SURFACE}
+                      />
+                    </View>
+
+                    <View
+                      style={{
+                        flex: 1,
+                        minWidth: 0,
+                        marginLeft: 12,
+                      }}
+                    >
+                      <Text
+                        numberOfLines={1}
+                        style={{
+                          color: TEXT,
+                          fontSize: 13.5,
+                          fontWeight: "900",
+                        }}
+                      >
+                        {selectedVideo.fileName ||
+                          "Selected Partner video"}
+                      </Text>
+
+                      <Text
+                        style={{
+                          color: MUTED,
+                          fontSize: 11.5,
+                          lineHeight: 17,
+                          fontWeight: "700",
+                          marginTop: 4,
+                        }}
+                      >
+                        This video will be the primary
+                        media for the post.
+                      </Text>
+                    </View>
+
+                    <Pressable
+                      onPress={
+                        handleRemoveSelectedVideo
+                      }
+                      disabled={saving}
+                      hitSlop={8}
+                      style={({ pressed }) => ({
+                        width: 36,
+                        height: 36,
+                        borderRadius: 18,
+                        marginLeft: 8,
+                        backgroundColor: SURFACE,
+                        borderWidth: 1,
+                        borderColor: CARD_BORDER,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        opacity: pressed ? 0.7 : 1,
+                      })}
+                    >
+                      <Ionicons
+                        name="trash-outline"
+                        size={18}
+                        color={EVENT_BROWN}
+                      />
+                    </Pressable>
+                  </View>
+                ) : (
+                  <Pressable
+                    onPress={handleChooseVideo}
+                    disabled={
+                      saving ||
+                      commercialLoading
+                    }
+                    style={({ pressed }) => ({
+                      marginTop: 15,
+                      minHeight: 110,
+                      borderRadius: 22,
+                      borderWidth: 1.5,
+                      borderStyle: "dashed",
+                      borderColor:
+                        canAddPartnerVideo
+                          ? AMBER_BORDER
+                          : OLIVE_BORDER,
+                      backgroundColor:
+                        canAddPartnerVideo
+                          ? AMBER_SOFT
+                          : OLIVE_SOFT,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      padding: 18,
+                      opacity:
+                        saving ||
+                        commercialLoading
+                          ? 0.45
+                          : pressed
+                            ? 0.78
+                            : 1,
+                    })}
+                  >
+                    <Ionicons
+                      name={
+                        canAddPartnerVideo
+                          ? "videocam-outline"
+                          : "lock-closed-outline"
+                      }
+                      size={28}
+                      color={
+                        canAddPartnerVideo
+                          ? EVENT_AMBER
+                          : OLIVE
+                      }
+                    />
+
+                    <Text
+                      style={{
+                        color:
+                          canAddPartnerVideo
+                            ? EVENT_BROWN
+                            : OLIVE,
+                        fontSize: 14,
+                        fontWeight: "900",
+                        marginTop: 8,
+                      }}
+                    >
+                      {commercialLoading
+                        ? "Checking video access…"
+                        : canAddPartnerVideo
+                          ? "Choose a video"
+                          : "Video requires an eligible Partner plan"}
+                    </Text>
+
+                    <Text
+                      style={{
+                        color: MUTED,
+                        fontSize: 11.5,
+                        lineHeight: 17,
+                        fontWeight: "700",
+                        textAlign: "center",
+                        marginTop: 4,
+                      }}
+                    >
+                      {canAddPartnerVideo
+                        ? "Select one video from your media library."
+                        : "Your current Partner entitlements do not include permanent native video."}
+                    </Text>
+                  </Pressable>
+                )}
+              </View>
+            ) : null}
 
             <View
               style={{
@@ -1864,6 +2312,348 @@ export default function CreatePartnerPost({
               )}
             </Pressable>
           </View>
+
+          <Modal
+            visible={
+              videoUpgradeModalVisible
+            }
+            transparent
+            animationType="fade"
+            statusBarTranslucent
+            onRequestClose={() => {
+              setVideoUpgradeModalVisible(
+                false
+              );
+
+              setUpgradeOptionsRequested(
+                false
+              );
+            }}
+          >
+            <Pressable
+              onPress={() => {
+                setVideoUpgradeModalVisible(
+                  false
+                );
+
+                setUpgradeOptionsRequested(
+                  false
+                );
+              }}
+              style={{
+                flex: 1,
+                backgroundColor:
+                  "rgba(15,23,42,0.58)",
+                justifyContent: "center",
+                paddingHorizontal: 20,
+                paddingVertical: 32,
+              }}
+            >
+              <Pressable
+                onPress={() => {}}
+                style={{
+                  backgroundColor: SURFACE,
+                  borderRadius: 28,
+                  borderWidth: 1,
+                  borderColor: CARD_BORDER,
+                  padding: 20,
+                  shadowColor: SHADOW,
+                  shadowOpacity: 0.2,
+                  shadowRadius: 20,
+                  shadowOffset: {
+                    width: 0,
+                    height: 9,
+                  },
+                  elevation: 9,
+                }}
+              >
+                <View
+                  style={{
+                    width: 58,
+                    height: 58,
+                    borderRadius: 29,
+                    backgroundColor:
+                      AMBER_SOFT,
+                    borderWidth: 1,
+                    borderColor:
+                      AMBER_BORDER,
+                    alignItems: "center",
+                    justifyContent:
+                      "center",
+                    marginBottom: 16,
+                  }}
+                >
+                  <Ionicons
+                    name={
+                      upgradeOptionsRequested
+                        ? "heart-outline"
+                        : "videocam-outline"
+                    }
+                    size={27}
+                    color={EVENT_AMBER}
+                  />
+                </View>
+
+                {upgradeOptionsRequested ? (
+                  <>
+                    <Text
+                      style={{
+                        ...serifHeading,
+                        fontSize: 25,
+                        lineHeight: 31,
+                      }}
+                    >
+                      Partner upgrades are being
+                      prepared
+                    </Text>
+
+                    <Text
+                      style={{
+                        color: MUTED,
+                        fontSize: 13.5,
+                        fontWeight: "700",
+                        lineHeight: 21,
+                        marginTop: 10,
+                      }}
+                    >
+                      We are building the Partner
+                      upgrade experience carefully,
+                      including clear pricing and a
+                      transparent explanation of
+                      what each plan supports.
+                    </Text>
+
+                    <Text
+                      style={{
+                        color: TEXT,
+                        fontSize: 13.5,
+                        fontWeight: "800",
+                        lineHeight: 21,
+                        marginTop: 12,
+                      }}
+                    >
+                      No payment will be taken from
+                      this screen.
+                    </Text>
+
+                    <Pressable
+                      onPress={() => {
+                        setVideoUpgradeModalVisible(
+                          false
+                        );
+
+                        setUpgradeOptionsRequested(
+                          false
+                        );
+                      }}
+                      style={({ pressed }) => ({
+                        marginTop: 20,
+                        minHeight: 48,
+                        borderRadius: 999,
+                        backgroundColor:
+                          EVENT_AMBER,
+                        alignItems: "center",
+                        justifyContent:
+                          "center",
+                        opacity:
+                          pressed ? 0.84 : 1,
+                      })}
+                    >
+                      <Text
+                        style={{
+                          color: SURFACE,
+                          fontSize: 13.5,
+                          fontWeight: "900",
+                        }}
+                      >
+                        Done
+                      </Text>
+                    </Pressable>
+                  </>
+                ) : (
+                  <>
+                    <Text
+                      style={{
+                        ...serifHeading,
+                        fontSize: 25,
+                        lineHeight: 31,
+                      }}
+                    >
+                      Grow your Partner presence with video
+                    </Text>
+
+                    <Text
+                      style={{
+                        color: MUTED,
+                        fontSize: 13.5,
+                        fontWeight: "700",
+                        lineHeight: 21,
+                        marginTop: 10,
+                      }}
+                    >
+                      Hosting and delivering video
+                      creates ongoing costs for
+                      Triunely, including storage,
+                      streaming, security and
+                      platform infrastructure.
+                    </Text>
+
+                    <Text
+                      style={{
+                        color: MUTED,
+                        fontSize: 13.5,
+                        fontWeight: "700",
+                        lineHeight: 21,
+                        marginTop: 12,
+                      }}
+                    >
+                      Upgrading helps cover those
+                      costs while supporting the
+                      continued growth of Triunely
+                      as we build tools that
+                      strengthen Christians,
+                      churches and Christian
+                      organisations.
+                    </Text>
+
+                    <View
+                      style={{
+                        marginTop: 14,
+                        borderRadius: 18,
+                        backgroundColor:
+                          AMBER_SOFT,
+                        borderWidth: 1,
+                        borderColor:
+                          AMBER_BORDER,
+                        padding: 13,
+                        flexDirection: "row",
+                        alignItems:
+                          "flex-start",
+                      }}
+                    >
+                      <Ionicons
+                        name="heart-outline"
+                        size={20}
+                        color={EVENT_AMBER}
+                        style={{
+                          marginRight: 9,
+                          marginTop: 1,
+                        }}
+                      />
+
+                      <Text
+                        style={{
+                          flex: 1,
+                          color: EVENT_BROWN,
+                          fontSize: 13,
+                          fontWeight: "900",
+                          lineHeight: 20,
+                        }}
+                      >
+                        Your upgrade does more than
+                        unlock video posts. It helps
+                        us keep building a
+                        sustainable platform
+                        created to serve Christ, His
+                        Church and His mission.
+                      </Text>
+                    </View>
+
+                    <Pressable
+onPress={() => {
+  setVideoUpgradeModalVisible(
+    false
+  );
+
+  setUpgradeOptionsRequested(
+    false
+  );
+
+  navigation.navigate(
+    "PartnerGrowth",
+    {
+      partnerProfileId,
+      partnerName:
+        partner?.name ||
+        "your Partner Profile",
+    }
+  );
+}}
+                      style={({ pressed }) => ({
+                        marginTop: 20,
+                        minHeight: 48,
+                        borderRadius: 999,
+                        backgroundColor:
+                          EVENT_AMBER,
+                        flexDirection: "row",
+                        alignItems: "center",
+                        justifyContent:
+                          "center",
+                        opacity:
+                          pressed ? 0.84 : 1,
+                      })}
+                    >
+                      <Ionicons
+                        name="arrow-forward"
+                        size={18}
+                        color={SURFACE}
+                        style={{
+                          marginRight: 7,
+                        }}
+                      />
+
+                      <Text
+                        style={{
+                          color: SURFACE,
+                          fontSize: 13.5,
+                          fontWeight: "900",
+                        }}
+                      >
+                       View Partner Growth
+                      </Text>
+                    </Pressable>
+
+                    <Pressable
+                      onPress={() => {
+                        setVideoUpgradeModalVisible(
+                          false
+                        );
+
+                        setUpgradeOptionsRequested(
+                          false
+                        );
+                      }}
+                      style={({ pressed }) => ({
+                        marginTop: 9,
+                        minHeight: 44,
+                        borderRadius: 999,
+                        backgroundColor:
+                          pressed
+                            ? OLIVE_SOFT
+                            : "transparent",
+                        borderWidth: 1,
+                        borderColor:
+                          OLIVE_BORDER,
+                        alignItems: "center",
+                        justifyContent:
+                          "center",
+                      })}
+                    >
+                      <Text
+                        style={{
+                          color: OLIVE,
+                          fontSize: 13,
+                          fontWeight: "900",
+                        }}
+                      >
+                        Not now
+                      </Text>
+                    </Pressable>
+                  </>
+                )}
+              </Pressable>
+            </Pressable>
+          </Modal>
         </KeyboardAvoidingView>
       )}
     </Screen>

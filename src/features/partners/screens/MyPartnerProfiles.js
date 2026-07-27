@@ -14,6 +14,7 @@ import {
 
 import Screen from "../../../components/Screen";
 import VerifiedBadge from "../../../components/VerifiedBadge";
+import useUserCommercialAccountScope from "../../../hooks/useUserCommercialAccountScope";
 import { supabase } from "../../../lib/supabase";
 import {
     fetchMyPartnerProfiles,
@@ -231,7 +232,7 @@ function PartnerManageCard({
                 {name}
               </Text>
 
-              {partner?.is_verified ? (
+             {partner?.badge_active === true ? (
                 <View style={{ marginLeft: 7 }}>
                   <VerifiedBadge size={15} />
                 </View>
@@ -421,6 +422,8 @@ function PartnerManageCard({
 }
 
 export default function MyPartnerProfiles({ navigation }) {
+  useUserCommercialAccountScope();
+
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 

@@ -212,35 +212,11 @@ function PartnerCard({ partner, onPress }) {
             )}
           </View>
 
-          {partner?.is_verified ? (
-            <View
-              style={{
-                marginLeft: "auto",
-                marginBottom: 5,
-                borderRadius: 999,
-                backgroundColor: AMBER_SOFT,
-                borderWidth: 1,
-                borderColor: AMBER_BORDER,
-                paddingHorizontal: 10,
-                paddingVertical: 6,
-                flexDirection: "row",
-                alignItems: "center",
-              }}
-            >
-              <VerifiedBadge size={14} />
-
-              <Text
-                style={{
-                  color: EVENT_BROWN,
-                  fontSize: 11.5,
-                  fontWeight: "900",
-                  marginLeft: 5,
-                }}
-              >
-                Verified
-              </Text>
-            </View>
-          ) : null}
+          <View
+            style={{
+              marginLeft: "auto",
+            }}
+          />
         </View>
 
         <View style={{ marginTop: 10 }}>
@@ -256,12 +232,23 @@ function PartnerCard({ partner, onPress }) {
                 ...serifHeading,
                 fontSize: 21,
                 lineHeight: 26,
-                flex: 1,
+                flexShrink: 1,
               }}
               numberOfLines={1}
             >
               {name}
             </Text>
+
+            {partner?.badge_active === true ? (
+              <View
+                style={{
+                  marginLeft: 7,
+                  flexShrink: 0,
+                }}
+              >
+                <VerifiedBadge size={19} />
+              </View>
+            ) : null}
           </View>
 
           <View
@@ -445,7 +432,7 @@ export default function PartnerProfilesDirectory({ navigation }) {
 
             if (
               onlyVerified &&
-              !partner?.is_verified
+              partner?.badge_active !== true
             ) {
               return false;
             }

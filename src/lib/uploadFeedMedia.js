@@ -161,6 +161,7 @@ export async function uploadFeedMedia({
   scope = "posts",
   ownerId,
   folderId,
+  allowPermanentVideo = false,
 }) {
   if (!media?.uri) {
     return {
@@ -170,6 +171,12 @@ export async function uploadFeedMedia({
   }
 
   const video = isVideoMedia(media);
+
+  if (video && allowPermanentVideo !== true) {
+    throw new Error(
+      "Permanent video uploads are not available for this account."
+    );
+  }
 
   try {
     const info = await FileSystem.getInfoAsync(media.uri, { size: true });
